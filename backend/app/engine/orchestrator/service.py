@@ -21,8 +21,10 @@ Pinned M3 design decisions implemented here (contract docs land in a later wave)
 * **D3 — client-minted idempotency, unique per matter.** A duplicate ``idempotency_key``
   replays the first outcome (the stored record) with the CURRENT matter state; no new record.
 * **D4 — side-effects run in-transaction.** Per-(state, event) callables run inside the same
-  transaction as the transition: G2A_CONFIRMED freezes the registry version; G25_APPROVED will
-  pin the plan version at M5 (documented no-op now).
+  transaction as the transition: G2A_CONFIRMED freezes the registry version; G25_APPROVED pins the
+  matter's latest StrategyPlan (``approved`` + ``approved_by`` + ``approved_at``), refusing with a
+  ``GuardRefused``-shaped ``plan_missing`` / ``plan_registry_drift`` when no plan exists / the plan
+  is registry-stale.
 * **payload_version** ``= matter.registry_version + count(GateRecords for the matter)`` — both
   monotonic, so the sum is a fencing token with no schema change. A stale submit is refused
   with the fresh version (the FE refetch signal).
@@ -34,6 +36,7 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
@@ -53,9 +56,16 @@ from app.models.orm import (
     RegistryVersion,
     RiskFlag,
     StrategyInputs,
+    StrategyPlan,
     User,
 )
-from app.models.schemas import FactsReviewEdits, GateSubmit, StrategyIntakeEdits
+from app.models.schemas import (
+    FactsReviewEdits,
+    GateSubmit,
+    PlannedSection,
+    PlanReviewEdits,
+    StrategyIntakeEdits,
+)
 
 # --------------------------------------------------------------------------------------
 # Typed refusals (the API layer maps these to status codes; see routes/gates.py)
@@ -103,6 +113,45 @@ class GuardRefused(Exception):
         super().__init__(f"guard {guard} refused ({code}): {detail}")
 
 
+class PlanMissing(GuardRefused):
+    """G2.5 approve on a matter with no emitted StrategyPlan — a plan must exist to approve.
+
+    A :class:`GuardRefused` subclass so the route maps it with ZERO new mapping code: it surfaces
+    as the 409 ``guard_failed`` body ``{"guard": "strategy_plan", "code": "plan_missing", ...}``.
+    Raised by the G2.5 side effect (the guard table's ``registry_version_match`` covers the
+    matter-level pin; this covers "there is a plan at all").
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            guard="strategy_plan",
+            code="plan_missing",
+            detail="no StrategyPlan for the matter; emit a plan (plan/emit) before approving G2.5",
+        )
+
+
+class PlanRegistryDrift(GuardRefused):
+    """G2.5 approve when the latest plan's ``registry_version`` != the matter's — the plan is stale.
+
+    A :class:`GuardRefused` subclass -> 409 ``guard_failed`` ``{"guard": "strategy_plan", "code":
+    "plan_registry_drift", ...}``. Distinct from the transition's ``registry_version_match`` guard:
+    THAT guard pins the matter to its frozen registry version (the matter-level pin); THIS pins the
+    *plan row itself* to the matter's current registry version (the plan-level bind — a plan emitted
+    before a later freeze is stale even if the matter's own pin still holds). Both must agree to
+    approve.
+    """
+
+    def __init__(self, *, plan_version: int, matter_version: int) -> None:
+        self.plan_version = plan_version
+        self.matter_version = matter_version
+        super().__init__(
+            guard="strategy_plan",
+            code="plan_registry_drift",
+            detail=f"latest plan registry_version {plan_version} != matter registry_version "
+            f"{matter_version}; re-emit the plan at the current version",
+        )
+
+
 class OverrideRequired(Exception):
     """The approve needs an audited override — re-submit as ``action="override"`` + reason (409).
 
@@ -134,6 +183,19 @@ class UnknownDeadlineRule(Exception):
         super().__init__(f"no deadline candidate with rule_id {rule_id!r} on this matter")
 
 
+class UnknownPlanSection(Exception):
+    """A G2.5 plan edit named a ``section_id`` not on the latest plan's skeleton (422).
+
+    A plan edit refines existing planned sections (matched by ``section_id``); it must not invent a
+    section (the skeleton is pack-driven, never invented — brain2). An unknown id refuses the whole
+    edit, so a typo'd section edit can never half-apply.
+    """
+
+    def __init__(self, *, section_id: str) -> None:
+        self.section_id = section_id
+        super().__init__(f"no planned section with section_id {section_id!r} on the latest plan")
+
+
 class EditsNotSupported(Exception):
     """Non-empty edits submitted at a gate with no edit surface at M3 (422)."""
 
@@ -163,9 +225,10 @@ GATE_EVENT_BY_APPROVE: Mapping[GateState, GateEvent] = {
     GateState.COMPLIANCE_REVIEW: GateEvent.G3_APPROVED,
 }
 
-# Gates with an edit surface at M3 (G1 facts + G1.5 strategy; later waves add more).
+# Gates with an edit surface: G1 facts + G1.5 strategy (M3), G2.5 plan (M5 — the plan edit
+# re-emits a new StrategyPlan version, "edits re-emit the plan, not prose", C5).
 _EDITABLE_GATES: frozenset[GateState] = frozenset(
-    {GateState.FACTS_REVIEW, GateState.STRATEGY_INTAKE}
+    {GateState.FACTS_REVIEW, GateState.STRATEGY_INTAKE, GateState.PLAN_REVIEW}
 )
 
 
@@ -235,9 +298,14 @@ def build_guard_context(
     * ``registry_version_pinned``: the latest FROZEN RegistryVersion's version for the matter,
       or ``None`` when nothing is frozen yet (M5 refines this to the plan-pinned version).
     * ``open_high_severity_flags``: count of high-severity RiskFlags with no disposition.
-    * ``blocking_findings``: 0 at M3 — the compliance panel lands at M5; until then G3 has no
-      findings source, and the constant keeps the guard wiring honest rather than fabricated.
+    * ``blocking_findings``: open blocking compliance findings on the matter's LATEST
+      :class:`~app.models.orm.DemandDraft` (0 when there is no draft) — the M5 compliance panel's
+      ``open_blocking_count`` over that draft. This feeds the G3 ``no_blocking_findings`` guard.
     """
+    # Lazy import: the compliance engine pulls in brain2 + package + money; importing it at the top
+    # of this widely-imported service module would broaden the import graph for every caller.
+    from app.engine.compliance.engine import latest_draft, open_blocking_count
+
     deadlines_confirmed = deadlines_all_confirmed(matter)
 
     budget = load_or_create_budget(db, firm_id=matter.firm_id, matter_id=matter.id)
@@ -264,6 +332,11 @@ def build_guard_context(
         )
     ).scalar_one()
 
+    draft = latest_draft(db, matter=matter)
+    blocking_findings = (
+        open_blocking_count(db, matter=matter, draft=draft) if draft is not None else 0
+    )
+
     return GuardContext(
         actor_role=UserRole(user.role),
         deadlines_confirmed=deadlines_confirmed,
@@ -272,7 +345,7 @@ def build_guard_context(
         registry_version_current=matter.registry_version,
         open_high_severity_flags=open_high,
         override_reason=override_reason,
-        blocking_findings=0,
+        blocking_findings=blocking_findings,
     )
 
 
@@ -341,18 +414,52 @@ def _freeze_registry_version(db: Session, *, matter: Matter, user: User) -> None
         row.frozen = True
 
 
-def _pin_plan_version_noop(db: Session, *, matter: Matter, user: User) -> None:
-    """G2.5 approve will pin the StrategyPlan version — lands at M5 (documented no-op).
+def _latest_plan(db: Session, *, matter: Matter) -> StrategyPlan | None:
+    """The matter's highest-``version`` :class:`StrategyPlan`, or ``None`` (none emitted yet)."""
+    plans = list(
+        db.execute(select(StrategyPlan).where(StrategyPlan.matter_id == matter.id)).scalars()
+    )
+    if not plans:
+        return None
+    return max(plans, key=lambda p: p.version)
 
-    Registered now so the side-effect table names every human gate with a post-approve effect;
-    M5 replaces the body (pin ``StrategyPlan.registry_version`` + ``approved=True``) without
-    touching the dispatch.
+
+def _naive_utc_now() -> datetime:
+    """Wall-clock UTC as a naive datetime (house convention; see ``core.auth._utcnow_naive``)."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _approve_plan_version(db: Session, *, matter: Matter, user: User) -> None:
+    """G2.5 approve: pin + stamp the matter's LATEST StrategyPlan as attorney-approved.
+
+    Runs inside the action's transaction (design D4). Refusals (raised as :class:`GuardRefused`
+    subclasses so the route maps them to the 409 ``guard_failed`` body with no new mapping):
+
+    * no plan on the matter -> :class:`PlanMissing` (a plan must be emitted before G2.5 approve);
+    * the latest plan's ``registry_version`` != the matter's -> :class:`PlanRegistryDrift` (the
+      plan-level bind; the transition's ``registry_version_match`` guard covers the matter-level
+      pin — see :class:`PlanRegistryDrift` for the distinction).
+
+    Otherwise: ``approved=True``, ``approved_by=user.id``, ``approved_at`` = naive-UTC now (the
+    GateRecord stays the authoritative approval trail; these are the plan-row denorm). The
+    DemandDraft's bind to ``plan.version`` happens at generation (Wave B1), not here.
     """
+    plan = _latest_plan(db, matter=matter)
+    if plan is None:
+        raise PlanMissing()
+    if plan.registry_version != matter.registry_version:
+        raise PlanRegistryDrift(
+            plan_version=plan.registry_version, matter_version=matter.registry_version
+        )
+    plan.approved = True
+    plan.approved_by = user.id
+    plan.approved_at = _naive_utc_now()
+    db.add(plan)
 
 
 _SIDE_EFFECTS: Mapping[tuple[GateState, GateEvent], Callable[..., None]] = {
     (GateState.EVIDENCE_REVIEW, GateEvent.G2A_CONFIRMED): _freeze_registry_version,
-    (GateState.PLAN_REVIEW, GateEvent.G25_APPROVED): _pin_plan_version_noop,
+    (GateState.PLAN_REVIEW, GateEvent.G25_APPROVED): _approve_plan_version,
 }
 
 
@@ -361,7 +468,9 @@ _SIDE_EFFECTS: Mapping[tuple[GateState, GateEvent], Callable[..., None]] = {
 # --------------------------------------------------------------------------------------
 
 
-def _edits_payload(edits: FactsReviewEdits | StrategyIntakeEdits | dict | None) -> dict:
+def _edits_payload(
+    edits: FactsReviewEdits | StrategyIntakeEdits | PlanReviewEdits | dict | None,
+) -> dict:
     """Normalize the submit's edits union to a plain dict of SET fields.
 
     ``exclude_unset`` matters: the union parses ``{}`` into a defaulted ``FactsReviewEdits``,
@@ -445,14 +554,103 @@ def _apply_strategy_intake_edits(db: Session, *, matter: Matter, user: User, pay
             setattr(row, field, value)
 
 
+def _next_plan_version(db: Session, *, matter: Matter) -> int:
+    """One past the count of existing plans for the matter (as ``brain2.plan._next_version``)."""
+    existing = list(
+        db.execute(select(StrategyPlan.id).where(StrategyPlan.matter_id == matter.id)).scalars()
+    )
+    return len(existing) + 1
+
+
+def _apply_plan_review_edits(db: Session, *, matter: Matter, user: User, payload: dict) -> None:
+    """Apply G2.5 edits: copy the latest StrategyPlan into a NEW unapproved version + overrides.
+
+    "Edits re-emit the plan, not prose" (C5). Steps:
+
+    * validate the payload against :class:`~app.models.schemas.PlanReviewEdits` (closed; a bad key /
+      a rejected ``demand_type`` is a typed 422 ``invalid_edits``);
+    * require a latest plan to copy (:class:`PlanMissing` if none — a plan must be emitted before it
+      can be edited);
+    * copy the latest plan's ``sections`` / ``emphasis_directives`` / ``demand_*``; apply the
+      top-level non-``None`` fields; merge each :class:`~app.models.schemas.PlannedSectionEdit` onto
+      its section by ``section_id`` (an unknown id -> :class:`UnknownPlanSection` 422; the emitted
+      skeleton is the source of truth, an edit never invents a section);
+    * write the new row (``version = count+1``, ``registry_version = matter.registry_version``,
+      ``approved=False``), audit ``strategy_plan_edited`` (uncommitted — the action commits).
+    """
+    try:
+        edits = PlanReviewEdits.model_validate(payload)
+    except ValidationError as exc:
+        raise InvalidEdits(gate=GateState.PLAN_REVIEW.value, detail=str(exc)) from exc
+
+    latest = _latest_plan(db, matter=matter)
+    if latest is None:
+        # There is nothing to refine — a plan must be emitted (plan/emit) before it can be edited.
+        raise PlanMissing()
+
+    # Start from the latest plan's allocation (deep-copied dicts so JSON columns detect the change).
+    sections_by_id: dict[str, dict] = {}
+    ordered_ids: list[str] = []
+    for raw in latest.sections:
+        section = PlannedSection.model_validate(raw).model_dump()
+        sections_by_id[section["section_id"]] = section
+        ordered_ids.append(section["section_id"])
+
+    if edits.sections is not None:
+        for section_edit in edits.sections:
+            target = sections_by_id.get(section_edit.section_id)
+            if target is None:
+                raise UnknownPlanSection(section_id=section_edit.section_id)
+            if section_edit.max_words is not None:
+                target["max_words"] = section_edit.max_words
+            if section_edit.allowed_tokens is not None:
+                target["allowed_tokens"] = list(section_edit.allowed_tokens)
+            if section_edit.required_tokens is not None:
+                target["required_tokens"] = list(section_edit.required_tokens)
+
+    new_plan = StrategyPlan(
+        matter_id=matter.id,
+        version=_next_plan_version(db, matter=matter),
+        registry_version=matter.registry_version,
+        demand_amount_cents=(
+            edits.demand_amount_cents
+            if edits.demand_amount_cents is not None
+            else latest.demand_amount_cents
+        ),
+        demand_type=edits.demand_type if edits.demand_type is not None else latest.demand_type,
+        sections=[sections_by_id[sid] for sid in ordered_ids],
+        emphasis_directives=(
+            list(edits.emphasis_directives)
+            if edits.emphasis_directives is not None
+            else list(latest.emphasis_directives or [])
+        ),
+        approved=False,
+    )
+    tenant_add(db, new_plan, matter.firm_id)
+    db.flush()  # assign new_plan.id for the audit payload
+    record_event(
+        db,
+        firm_id=matter.firm_id,
+        actor_id=user.id,
+        event_kind="strategy_plan_edited",
+        payload={
+            "matter_id": str(matter.id),
+            "plan_id": str(new_plan.id),
+            "version": new_plan.version,
+            "from_version": latest.version,
+            "registry_version": new_plan.registry_version,
+        },
+    )
+
+
 def _validate_and_apply_edits(
     db: Session, *, matter: Matter, user: User, state: GateState, submit: GateSubmit
 ) -> None:
     """Step 4: per-gate edits validation + application (uncommitted — the action commits).
 
     Runs for every action (spec step order): edit and approve both accept edits, so
-    edits-then-approve is one atomic call. Gates outside the M3 edit surface refuse any
-    non-empty edits with a typed 422.
+    edits-then-approve is one atomic call. Gates outside the edit surface refuse any non-empty
+    edits with a typed 422.
     """
     payload = _edits_payload(submit.edits)
     if state not in _EDITABLE_GATES:
@@ -463,8 +661,10 @@ def _validate_and_apply_edits(
         return
     if state is GateState.FACTS_REVIEW:
         _apply_facts_review_edits(db, matter=matter, user=user, payload=payload)
-    else:  # GateState.STRATEGY_INTAKE (the only other member of _EDITABLE_GATES)
+    elif state is GateState.STRATEGY_INTAKE:
         _apply_strategy_intake_edits(db, matter=matter, user=user, payload=payload)
+    else:  # GateState.PLAN_REVIEW (the M5 edit surface — re-emits a new plan version)
+        _apply_plan_review_edits(db, matter=matter, user=user, payload=payload)
 
 
 # --------------------------------------------------------------------------------------
@@ -654,8 +854,11 @@ __all__ = [
     "InvalidEdits",
     "OverrideReasonRequired",
     "OverrideRequired",
+    "PlanMissing",
+    "PlanRegistryDrift",
     "StalePayloadVersion",
     "UnknownDeadlineRule",
+    "UnknownPlanSection",
     "apply_gate_action",
     "build_guard_context",
     "deadlines_all_confirmed",
