@@ -448,7 +448,14 @@ export interface RoleAffordances {
 export interface GateEnvelope {
   gate: GateState;
   payload_version: number;
-  view_model: FactsVM | StrategyIntakeVM | EvidenceReviewVM | MinimalGateVM;
+  view_model:
+    | FactsVM
+    | StrategyIntakeVM
+    | EvidenceReviewVM
+    | PlanReviewVM
+    | ComplianceReviewVM
+    | PackageVM
+    | MinimalGateVM;
   role_affordances: RoleAffordances;
 }
 
@@ -483,7 +490,7 @@ export interface GateSubmitBody {
   idempotency_key: string;
   payload_version: number;
   override_reason?: string;
-  edits?: FactsReviewEdits | StrategyIntakeEdits;
+  edits?: FactsReviewEdits | StrategyIntakeEdits | PlanReviewEdits;
 }
 
 /** The gate submit success body (200). */
@@ -621,4 +628,237 @@ export interface ExhibitView {
   excluded_pages: number[];
   phi_disposition: PhiDisposition;
   sort_order: number;
+}
+
+// ---------------------------------------------------------------------------------------
+// M5 (plan_review / drafting / compliance_review / package_*) — hand-mirrored from the
+// backend view-models read at M5-Wave-D2 build time:
+//   - plan_review_vm / compliance_review_vm / package_vm  → backend/app/api/view_models.py
+//   - PlanView (StrategyPlan) / PlannedSection            → backend/app/models/schemas.py
+//   - ComplianceFindingView / RenderedSpan / SpanRef      → backend/app/models/schemas.py
+//   - enum string values (CheckKind / FindingBucket / …)  → backend/app/models/enums.py
+//   - SSE frame shapes + finding-action refusals          → backend/app/engine/brain2/generate.py,
+//     backend/app/api/routes/drafting.py
+// Every money value is integer cents (the FE renders via centsToDollars — it NEVER sums).
+// Nothing token-shaped arrives: section previews are RENDERED (tokens resolved); a span's
+// `token_id` is the BARE registry id ("FACT_3") and is display-inert until M6 wires click-through.
+// ---------------------------------------------------------------------------------------
+
+/** DemandType — the closed v1 set: only "open" (a `time_limited` demand is a later version). */
+export type DemandType = "open";
+
+/** CheckKind — the G3 compliance-check taxonomy (mirror CheckKind in enums.py). */
+export type CheckKind =
+  | "orphan_token"
+  | "amt_ledger_mismatch"
+  | "dead_anchor"
+  | "missing_exhibit"
+  | "missing_statutory_term"
+  | "undisposed_adverse"
+  | "prose_total_mismatch"
+  | "unsupported_causation"
+  | "strategy_drift"
+  | "tone";
+
+/**
+ * The five HARD-BLOCK check kinds — never overridable to ship; they must be fixed at the
+ * underlying data (compliance §Vocabulary). The panel shows an explanatory chip for these.
+ */
+export const HARD_BLOCK_CHECK_KINDS: ReadonlySet<CheckKind> = new Set<CheckKind>([
+  "orphan_token",
+  "amt_ledger_mismatch",
+  "dead_anchor",
+  "missing_exhibit",
+  "undisposed_adverse",
+]);
+
+/** FindingBucket — mechanical (span-patch-routable) vs semantic (the Sonnet judge). */
+export type FindingBucket = "mechanical" | "semantic";
+
+/** FindingSeverity (ORM column `severity`, enum FindingGating) — blocking gates G3; advisory does not. */
+export type FindingSeverity = "blocking" | "advisory";
+
+/** FindingStatus — the G3 finding lifecycle (mirror FindingStatus in enums.py). */
+export type FindingStatus =
+  | "open"
+  | "patched"
+  | "regenerated"
+  | "re_verified"
+  | "dispositioned";
+
+/** FindingDisposition — the attorney's reasoned disposition (accept the fix / override past advisory). */
+export type FindingDisposition = "accept" | "override";
+
+/** SectionValidation — deterministic validation state of a draft section. */
+export type SectionValidation = "passed" | "retry_pending" | "surfaced_failed";
+
+/** One planned demand section — the token budget for a section of the letter (bare token ids). */
+export interface PlannedSectionView {
+  section_id: string;
+  purpose: string;
+  allowed_tokens: string[];
+  required_tokens: string[];
+  max_words: number;
+}
+
+/** PlanView — the latest StrategyPlan projected onto the wire (the G2.5 drafting contract). */
+export interface PlanView {
+  id: string;
+  matter_id: string;
+  version: number;
+  registry_version: number;
+  demand_amount_cents: number | null;
+  demand_type: DemandType;
+  sections: PlannedSectionView[];
+  emphasis_directives: string[];
+  approved: boolean;
+  approved_by?: string | null;
+  approved_at?: string | null;
+}
+
+/** The G2.5 (plan_review) view-model — the latest plan (or null) + a build-plan affordance. */
+export interface PlanReviewVM {
+  plan: PlanView | null;
+  plan_missing: boolean;
+  /** The matter's current registry version — compared to plan.registry_version to surface drift. */
+  registry_version_current: number;
+}
+
+/**
+ * One G2.5 per-section plan edit — a partial override of a planned section. `section_id` names
+ * an EXISTING planned section (an unknown id is a typed 422 `unknown_plan_section`); every other
+ * field is applied only when present. Token lists carry BARE ids (never the bracketed shape).
+ */
+export interface PlannedSectionEdit {
+  section_id: string;
+  max_words?: number;
+  allowed_tokens?: string[];
+  required_tokens?: string[];
+}
+
+/**
+ * G2.5 (plan_review) edit payload — a partial override that RE-EMITS a new (unapproved) plan
+ * version. Only fields present (non-undefined) are sent. `demand_type` is the closed "open" set.
+ */
+export interface PlanReviewEdits {
+  demand_amount_cents?: number | null;
+  demand_type?: DemandType;
+  emphasis_directives?: string[];
+  sections?: PlannedSectionEdit[];
+}
+
+/** POST /api/matters/{id}/plan/emit → 200 `{ plan }` (the freshly emitted, unapproved plan). */
+export interface PlanEmitResponse {
+  plan: PlanView;
+}
+
+/** A rendered char-offset span into a section's rendered text — M6 provenance click-through. */
+export interface RenderedSpanView {
+  span_id: string;
+  start: number;
+  end: number;
+  /** The BARE registry id (e.g. "FACT_3") — display-inert until M6 wires click-through. */
+  token_id: string;
+}
+
+/** A `{start, end}` char-offset range (the mechanical-splice target a finding carries). */
+export interface SpanRefView {
+  start: number;
+  end: number;
+}
+
+/** One draft section for the compliance panel — the RENDERED preview + spans (never the body). */
+export interface ComplianceSectionView {
+  section_id: string;
+  sort_order: number;
+  validation: SectionValidation;
+  /** Tokens resolved to display forms; the tokenized body is deliberately absent (inv 11). */
+  rendered_preview: string | null;
+  spans: RenderedSpanView[];
+}
+
+/** One G3 compliance finding as the wire projects it (mirror ComplianceFindingView). */
+export interface ComplianceFindingView {
+  id: string;
+  draft_id: string;
+  section_id: string;
+  registry_version: number;
+  check_kind: CheckKind | string;
+  bucket: FindingBucket;
+  severity: FindingSeverity;
+  detail: string;
+  anchors: unknown[];
+  span: SpanRefView | null;
+  status: FindingStatus;
+  disposition: FindingDisposition | null;
+  override_reason: string | null;
+}
+
+/** The latest draft summary — id/version/registry_version/status/memo (null when none exists). */
+export interface ComplianceDraftView {
+  id: string;
+  version: number;
+  registry_version: number;
+  status: string;
+  memo: string | null;
+}
+
+/** The G3 (compliance_review) view-model — the latest draft + sections + findings + counts. */
+export interface ComplianceReviewVM {
+  draft: ComplianceDraftView | null;
+  sections: ComplianceSectionView[];
+  /** Findings ordered blocking-first then oldest-first (the attorney works blockers first). */
+  findings: ComplianceFindingView[];
+  /** The exact count the G3 `no_blocking_findings` guard reads. */
+  open_blocking: number;
+  /** Routing summary over the OPEN findings: span-patchable vs regen. */
+  buckets: { mechanical: number; semantic: number };
+}
+
+/**
+ * POST /api/findings/{id}/action body — CLOSED. `override` REQUIRES a non-blank `override_reason`
+ * (the FE client-validates non-blank before firing). `accept` may carry one too (advisory).
+ */
+export interface FindingActionBody {
+  action: "patch" | "regen" | "accept" | "override";
+  override_reason?: string;
+}
+
+/** POST /api/findings/{id}/action success (200) — the refreshed finding + the open-blocking count. */
+export interface FindingActionResponse {
+  finding: ComplianceFindingView;
+  open_blocking: number;
+}
+
+/** One built artifact of a set — the kind-keyed download `url` (never the internal object_key). */
+export interface ArtifactView {
+  kind: string;
+  sha256: string;
+  byte_count: number;
+  /** Same-origin GET — a plain `<a href>` triggers the browser-native download. */
+  url: string;
+}
+
+/** One artifact set (a completed package build) — its versions + created_at + artifacts. */
+export interface ArtifactSetView {
+  id: string;
+  draft_version: number;
+  registry_version: number;
+  /** ISO datetime string (or null). */
+  created_at: string | null;
+  artifacts: ArtifactView[];
+}
+
+/**
+ * The package_assembly / package_ready view-model — the artifact sets (latest first) + a
+ * `buildable` flag (only meaningful at package_assembly: the latest draft is approved).
+ */
+export interface PackageVM {
+  artifact_sets: ArtifactSetView[];
+  buildable: boolean;
+}
+
+/** GET /api/matters/{id}/artifacts → `{ sets: [...] }` (the artifact-sets list). */
+export interface ArtifactsResponse {
+  sets: ArtifactSetView[];
 }

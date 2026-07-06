@@ -23,17 +23,24 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet } from "@/lib/api";
 import { gateKey, useGate } from "@/lib/gates";
 import type {
+  ComplianceReviewVM,
   EvidenceReviewVM,
   FactsVM,
   GateEnvelope,
   MatterView,
+  PackageVM,
+  PlanReviewVM,
   StrategyIntakeVM,
 } from "@/lib/types";
+import { CompliancePanel } from "@/components/compliance-panel";
 import { DeadlineBanner } from "@/components/deadline-banner";
+import { DemandGenerationCard } from "@/components/demand-generation-card";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { EvidenceWorkbench } from "@/components/evidence-workbench";
 import { FactsReviewCard } from "@/components/facts-review-card";
 import { GateStepper } from "@/components/gate-stepper";
+import { PackageCard } from "@/components/package-card";
+import { PlanReviewCard } from "@/components/plan-review-card";
 import { StrategyIntakeCard } from "@/components/strategy-intake-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -226,6 +233,44 @@ function GatePanel({
         payloadVersion={envelope.payload_version}
         roleAffordances={envelope.role_affordances}
         analysisRunning={false}
+        onGateReady={onGateReady}
+      />
+    );
+  }
+
+  if (envelope.gate === "plan_review") {
+    return (
+      <PlanReviewCard
+        matterId={matterId}
+        vm={envelope.view_model as PlanReviewVM}
+        payloadVersion={envelope.payload_version}
+        roleAffordances={envelope.role_affordances}
+      />
+    );
+  }
+
+  if (envelope.gate === "drafting") {
+    // The generate stream IS the surface here (the drafting VM is a minimal state placeholder).
+    return <DemandGenerationCard matterId={matterId} onGateReady={onGateReady} />;
+  }
+
+  if (envelope.gate === "compliance_review") {
+    return (
+      <CompliancePanel
+        matterId={matterId}
+        vm={envelope.view_model as ComplianceReviewVM}
+        payloadVersion={envelope.payload_version}
+        roleAffordances={envelope.role_affordances}
+      />
+    );
+  }
+
+  if (envelope.gate === "package_assembly" || envelope.gate === "package_ready") {
+    return (
+      <PackageCard
+        matterId={matterId}
+        gate={envelope.gate}
+        vm={envelope.view_model as PackageVM}
         onGateReady={onGateReady}
       />
     );
