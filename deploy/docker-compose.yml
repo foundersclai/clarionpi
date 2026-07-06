@@ -1,0 +1,31 @@
+# Dev-only. Brings up Postgres (with pgvector) and MinIO for local integration
+# testing against real services. `make test` does NOT need this — it runs against
+# an in-memory SQLite DB. Use this when you need to exercise real Postgres/MinIO
+# behavior (migrations, object storage, vector search) by hand.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: clarionpi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clarionpi_dev}
+      POSTGRES_DB: clarionpi
+    ports:
+      - "5433:5432"
+    volumes:
+      - clarionpi_db_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9401"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clarionpi}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clarionpi_dev_secret}
+    ports:
+      - "9400:9000"
+      - "9401:9401"
+    volumes:
+      - clarionpi_minio_data:/data
+
+volumes:
+  clarionpi_db_data:
+  clarionpi_minio_data:
