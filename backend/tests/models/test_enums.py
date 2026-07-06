@@ -95,6 +95,8 @@ def test_gate_event_has_exactly_fourteen_values() -> None:
             enums.FlagDisposition,
             {"address_in_letter", "omit_with_rationale", "need_more_records"},
         ),
+        (enums.FlagDetector, {"date_math", "label", "heuristic_llm"}),
+        (enums.PhiDisposition, {"pending", "cleared", "excluded"}),
         (enums.FindingBucket, {"mechanical", "semantic"}),
         (enums.FindingGating, {"blocking", "advisory"}),
         (enums.RunKind, {"phase0", "analysis", "demand"}),

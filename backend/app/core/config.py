@@ -64,6 +64,17 @@ class Settings:
     auth_mode: str = "stub"
     session_ttl_minutes: int = 720
     session_cookie_name: str = "clarionpi_session"
+    # Risk flags (M4). GapDetectorConfig threshold: a treatment gap wider than this many days
+    # (pre-MMI) flags. Firm-configurable later; a plain int day count, not money.
+    treatment_gap_max_days: int = 30
+    # Below this property-damage figure, any injury treatment trips a low-property-damage flag
+    # ($1,500 default). Integer cents (money boundary); calibration pending (risk_flag_engine §8).
+    low_property_damage_threshold_cents: int = 150000
+    # Flood guard: at most this many flags surfaced per kind. Capped flags are still SURFACED,
+    # never silently dropped — the cap bounds display volume, not the underlying findings.
+    risk_flag_per_kind_cap: int = 12
+    # Model for the LLM risk-labeling pass (risk_flag_engine).
+    risk_label_model: str = "claude-sonnet-5"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -137,4 +148,8 @@ def get_settings() -> Settings:
         auth_mode=os.environ.get("AUTH_MODE", "stub"),
         session_ttl_minutes=_env_int("SESSION_TTL_MINUTES", 720),
         session_cookie_name=os.environ.get("SESSION_COOKIE_NAME", "clarionpi_session"),
+        treatment_gap_max_days=_env_int("TREATMENT_GAP_MAX_DAYS", 30),
+        low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
+        risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),
+        risk_label_model=os.environ.get("RISK_LABEL_MODEL", "claude-sonnet-5"),
     )

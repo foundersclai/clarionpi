@@ -444,12 +444,20 @@ class RiskFlag(Base, FirmScoped):
     )
     kind: Mapped[str] = mapped_column(sa.String(48), nullable=False)  # FlagKind
     severity: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # FlagSeverity
+    # How the flag was produced (# FlagDetector). Server-default "label" in the migration so
+    # the not-null ADD succeeds on any existing rows; the ORM default is FlagDetector.LABEL.
+    detector: Mapped[str] = mapped_column(
+        sa.String(24), nullable=False, default="label", server_default="label"
+    )
     anchors: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     detail: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     disposition: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)  # FlagDisposition
     disposition_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.Uuid, ForeignKey("users.id"), nullable=True
     )
+    # Actor's role at disposition time — an audit denormalization for fast display/filtering;
+    # the GateRecord (actor_id + actor_role) remains the authoritative disposition audit trail.
+    disposition_role: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)  # UserRole
     disposition_rationale: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
@@ -679,17 +687,42 @@ class AuditEvent(Base, FirmScoped):
 
 
 class Exhibit(Base, FirmScoped):
-    """An exhibit collating pages of a source document; reaches the matter via document FK."""
+    """An exhibit collating pages of a source document (package_builder §3).
+
+    One row per (matter, document) at v1 — a pick is per-document with page lists. Pages are
+    tri-state: those in ``include_pages`` collate into the binder; those in ``excluded_pages``
+    are explicitly dropped; a page in NEITHER list is "not yet decided". Bates numbering is M5
+    and is not on this row yet.
+    """
 
     __tablename__ = "exhibits"
+    __table_args__ = (
+        UniqueConstraint("matter_id", "document_id", name="uq_exhibit_matter_document"),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
+    # Table is empty pre-M4, so the not-null FK is a plain ADD in migration 0006 (no backfill).
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
     document_id: Mapped[uuid.UUID] = mapped_column(
         sa.Uuid, ForeignKey("case_documents.id"), index=True, nullable=False
     )
     exhibit_no: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # Pages that collate into the binder (only these). Absence of a page here is not exclusion.
     include_pages: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Pages explicitly dropped. A page in neither include_pages nor here is "not yet decided".
+    excluded_pages: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Third-party-PHI disposition (# PhiDisposition); "pending" blocks the M5 binder build.
+    phi_disposition: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, default="pending", server_default="pending"
+    )
+    # Manifest collation order — collation order == index order across a matter's exhibits.
+    sort_order: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
 
 
 class LlmCall(Base, FirmScoped):

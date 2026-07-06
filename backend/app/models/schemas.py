@@ -15,7 +15,7 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import (
     ClaimType,
@@ -24,6 +24,7 @@ from app.models.enums import (
     DedupStatus,
     DocStatus,
     DocType,
+    FlagDetector,
     FlagDisposition,
     FlagKind,
     FlagSeverity,
@@ -302,17 +303,25 @@ class FactToken(_ORMModel):
 
 
 class RiskFlag(_ORMModel):
-    """Risk-flag view — anchored adverse fact awaiting disposition."""
+    """Risk-flag view — anchored adverse fact awaiting disposition.
+
+    ``detector`` is the flag's provenance (deterministic date/amount math vs the LLM labeling
+    pass); the G2a workbench renders it so an attorney can see *how* a flag was produced.
+    ``disposition_role`` is the actor's role captured at disposition time (an audit
+    denormalization — the GateRecord remains the authoritative trail).
+    """
 
     id: uuid.UUID
     firm_id: uuid.UUID
     matter_id: uuid.UUID
     kind: FlagKind
     severity: FlagSeverity
+    detector: FlagDetector
     anchors: list[PageAnchor] = Field(default_factory=list)
     detail: str
     disposition: FlagDisposition | None = None
     disposition_by: uuid.UUID | None = None
+    disposition_role: UserRole | None = None
     disposition_rationale: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -521,3 +530,132 @@ class ClassifierOutput(BaseModel):
     doc_type: DocType
     confidence: float = Field(ge=0, le=1)
     rationale: str = ""
+
+
+# --------------------------------------------------------------------------------------
+# G2a evidence-workbench + risk-flag input schemas (M4) — all CLOSED (extra="forbid"),
+# same anti-echo discipline as the M3 gate submits.
+# --------------------------------------------------------------------------------------
+
+
+class FlagDispositionRequest(BaseModel):
+    """Attorney disposition of a single risk flag at G2a.
+
+    ``rationale`` is REQUIRED (non-blank) when the disposition is ``omit_with_rationale`` — an
+    attorney who drops an adverse fact from the letter must record why (the audit trail for the
+    omission). It is optional for ``address_in_letter`` / ``need_more_records``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    disposition: FlagDisposition
+    rationale: str | None = None
+
+    @model_validator(mode="after")
+    def _omit_requires_rationale(self) -> FlagDispositionRequest:
+        if self.disposition is FlagDisposition.OMIT_WITH_RATIONALE and not (
+            self.rationale and self.rationale.strip()
+        ):
+            raise ValueError("omit_with_rationale requires a non-blank rationale")
+        return self
+
+
+class ExhibitPickRequest(BaseModel):
+    """A per-document exhibit pick at G2a — the page-level include/exclude lists + order.
+
+    Pages are 1-based. A page in neither list is "not yet decided" (only ``include_pages``
+    collate). ``sort_order`` is this exhibit's slot in the manifest collation order.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: uuid.UUID
+    include_pages: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list)
+    excluded_pages: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list)
+    sort_order: int = 0
+
+
+class BillingLineEdit(BaseModel):
+    """One edit to a SOURCE billing-line row from the G2a ledger grid.
+
+    The grid writes source rows only (never the computed SPECIALS_LEDGER view, which is
+    derived). Money fields are dollar *strings* (e.g. ``"$1,234.56"``) parsed to integer cents
+    by ``app.money.types`` at the service layer — the schema carries the string as-typed; only
+    non-``None`` fields are applied.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    billing_line_id: uuid.UUID
+    category: LedgerCategory | None = None
+    billed: str | None = None
+    adjusted: str | None = None
+    paid: str | None = None
+    outstanding: str | None = None
+
+
+class BillingLineEditBatch(BaseModel):
+    """A batch of source-row billing-line edits from the ledger grid."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    edits: list[BillingLineEdit] = Field(min_length=1)
+
+
+# The closed vocabulary of chronology-overlay edit keys. The date of service is the chronology
+# SPINE (it orders every row and feeds the treatment-gap detector), so it is deliberately NOT
+# overridable here — a wrong DOS is fixed by re-extraction, not a display overlay. `provider` /
+# `facility` / `encounter_type` are the display fields a paralegal corrects; `narrative_override`
+# supersedes the generated tokens-only narrative with the paralegal's own text.
+_OVERLAY_EDIT_KEYS: frozenset[str] = frozenset(
+    {"narrative_override", "provider_display", "facility_display", "encounter_type"}
+)
+
+
+class ChronologyOverlayRequest(BaseModel):
+    """A paralegal's chronology-row overlay edit at G2a — the CLOSED edited-fields set.
+
+    ``edited_fields`` is validated against the closed :data:`_OVERLAY_EDIT_KEYS` vocabulary: an
+    unknown key or a non-string value is a ``ValueError`` (the route maps the validation failure to
+    a ``422 invalid_edits``). An **empty** dict is also rejected — clearing an overlay is out of
+    scope at M4, so an empty edit set is a no-op the route must not accept (a `PUT` that means to
+    clear has nothing to write). The whole set replaces any prior overlay wholesale (an overlay is
+    the full edit set for a row, not a patch history).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    edited_fields: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _closed_vocabulary(self) -> ChronologyOverlayRequest:
+        if not self.edited_fields:
+            raise ValueError("edited_fields must be non-empty (clearing is out of scope at M4)")
+        unknown = sorted(set(self.edited_fields) - _OVERLAY_EDIT_KEYS)
+        if unknown:
+            raise ValueError(
+                f"unknown overlay edit key(s): {unknown}; allowed: {sorted(_OVERLAY_EDIT_KEYS)}"
+            )
+        non_str = sorted(k for k, v in self.edited_fields.items() if not isinstance(v, str))
+        if non_str:
+            raise ValueError(f"overlay edit value(s) must be strings: {non_str}")
+        return self
+
+
+class RiskLabelOutput(BaseModel):
+    """LLM structured output for ONE flag from the risk-labeling pass.
+
+    ``anchor_pages`` is non-empty (inv 2): an unanchored label fails the build — every risk flag
+    must cite at least one page, 1-based within the labeled span.
+    """
+
+    kind: FlagKind
+    severity: FlagSeverity
+    detail: str
+    anchor_pages: list[int] = Field(min_length=1)
+
+
+class RiskLabelBatch(BaseModel):
+    """A labeling pass's worth of risk-flag outputs."""
+
+    flags: list[RiskLabelOutput] = Field(default_factory=list)

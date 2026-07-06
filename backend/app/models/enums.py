@@ -233,6 +233,32 @@ class FlagDisposition(StrEnum):
     NEED_MORE_RECORDS = "need_more_records"
 
 
+class FlagDetector(StrEnum):
+    """Provenance of a risk flag — how it was produced (risk_flag_engine §3).
+
+    ``DATE_MATH`` is a deterministic date-arithmetic detector (e.g. the treatment-gap gap
+    check); ``LABEL`` is the LLM labeling pass over the record; ``HEURISTIC_LLM`` is a
+    rule-plus-LLM heuristic (e.g. low-property-damage cross-checked against injury treatment).
+    """
+
+    DATE_MATH = "date_math"
+    LABEL = "label"
+    HEURISTIC_LLM = "heuristic_llm"
+
+
+class PhiDisposition(StrEnum):
+    """Third-party-PHI disposition on an exhibit (package_builder §3).
+
+    ``PENDING`` (the default) blocks the M5 binder build until a human decides: a page with
+    someone else's PHI is neither cleared for inclusion (``CLEARED``) nor dropped from the
+    exhibit (``EXCLUDED``) until reviewed.
+    """
+
+    PENDING = "pending"
+    CLEARED = "cleared"
+    EXCLUDED = "excluded"
+
+
 class FindingBucket(StrEnum):
     """Compliance-finding bucket (G3 panel)."""
 
