@@ -25,24 +25,32 @@ from app.models.enums import (
     DedupStatus,
     DocStatus,
     DocType,
+    DraftStatus,
+    FindingBucket,
+    FindingStatus,
     GateState,
     TextSource,
     UploadSessionStatus,
 )
 from app.models.orm import (
+    ArtifactSet,
     CaseDocument,
+    ComplianceFinding,
     DedupDecision,
     DocumentPage,
+    DraftSection,
     Exhibit,
     IncidentFacts,
     Matter,
     RiskFlag,
     StrategyInputs,
+    StrategyPlan,
     UploadSession,
     UploadSlot,
 )
-from app.models.schemas import DeadlineCandidate
+from app.models.schemas import ComplianceFindingView, DeadlineCandidate
 from app.models.schemas import RiskFlag as RiskFlagView
+from app.models.schemas import StrategyPlan as StrategyPlanView
 from app.money.assemble import compute_matter_ledger
 from app.money.specials import SpecialsLedger
 from app.package import manifest as manifest_service
@@ -449,3 +457,193 @@ def evidence_review_vm(db: Session, matter: Matter) -> dict:
         "exhibits": _manifest_evidence_view(manifest, exhibit_id_by_document),
         "dedup_pending": dedup_pending,
     }
+
+
+# --------------------------------------------------------------------------------------
+# G2.5 / G3 / package view-models (M5 Wave D1) — the gate envelopes the workbench reviews.
+#
+# All build JSON-safe plain dicts (uuids stringified, dates ISO, tokens BARE) so the gates
+# route's ``wire_guard.scan_wire_payload`` passes them through untouched. NOTHING token-shaped
+# ever appears: the compliance panel exposes each section's RENDERED preview (never the
+# ``body_tokenized`` body — that would trip the wire scanner). GETs never spend LLM.
+# --------------------------------------------------------------------------------------
+
+
+def _latest_plan(db: Session, matter: Matter) -> StrategyPlan | None:
+    """The matter's highest-``version`` :class:`StrategyPlan`, or ``None`` (none emitted)."""
+    plans = list(
+        db.execute(select(StrategyPlan).where(StrategyPlan.matter_id == matter.id)).scalars()
+    )
+    if not plans:
+        return None
+    return max(plans, key=lambda p: p.version)
+
+
+def plan_review_vm(db: Session, matter: Matter) -> dict:
+    """The G2.5 (plan_review) view-model: the latest StrategyPlan + a build-plan affordance.
+
+    ``plan`` is the latest plan projected through the :class:`~app.models.schemas.StrategyPlan`
+    view (sections, emphasis, demand, approval denorm) — or ``None`` when no plan has been emitted
+    (the FE shows "Build plan", which drives ``POST /plan/emit``). ``plan_missing`` mirrors that as
+    a flag; ``registry_version_current`` is the matter's registry version (the FE compares it to the
+    plan's ``registry_version`` to surface plan-level drift before an approve).
+    """
+    plan = _latest_plan(db, matter)
+    plan_view = StrategyPlanView.model_validate(plan).model_dump(mode="json") if plan else None
+    return {
+        "plan": plan_view,
+        "plan_missing": plan is None,
+        "registry_version_current": matter.registry_version,
+    }
+
+
+def _draft_section_compliance_view(section: DraftSection) -> dict:
+    """One draft section for the compliance panel — rendered preview + spans (never the body).
+
+    The ``rendered_preview`` is the attorney-facing surface (tokens resolved to display forms); the
+    tokenized body is deliberately absent (inv 11 — a ``[[FACT_n]]`` string must never reach the
+    wire). ``spans`` carry BARE token ids (the :class:`~app.models.schemas.RenderedSpan` shape).
+    """
+    return {
+        "section_id": section.section_id,
+        "sort_order": section.sort_order,
+        "validation": section.validation,
+        "rendered_preview": section.rendered_preview,
+        "spans": list(section.spans or []),
+    }
+
+
+def compliance_review_vm(db: Session, matter: Matter) -> dict:
+    """The G3 (compliance_review) view-model: the latest draft + its sections + findings + counts.
+
+    Composed budget-free over the latest :class:`~app.models.orm.DemandDraft`:
+
+    * ``draft`` — id/version/registry_version/status/memo (``None`` when no draft exists yet);
+    * ``sections`` — the draft's sections in collation order, each carrying the RENDERED preview +
+      spans (NEVER the tokenized body — inv 11);
+    * ``findings`` — every finding on the draft as a
+      :class:`~app.models.schemas.ComplianceFindingView`, ordered blocking-first then ``created_at``
+      (the attorney works blockers first);
+    * ``open_blocking`` — the exact count the G3 ``no_blocking_findings`` guard reads;
+    * ``buckets`` — ``{mechanical, semantic}`` counts over the OPEN findings (the panel's routing
+      summary: span-patchable vs regen).
+    """
+    # Lazy import: the compliance engine pulls in brain2 + package + money; keep this module's
+    # import graph narrow (mirrors service.build_guard_context).
+    from app.engine.compliance.engine import latest_draft, open_blocking_count
+
+    draft = latest_draft(db, matter=matter)
+    if draft is None:
+        return {
+            "draft": None,
+            "sections": [],
+            "findings": [],
+            "open_blocking": 0,
+            "buckets": {"mechanical": 0, "semantic": 0},
+        }
+
+    sections = list(
+        db.execute(
+            select(DraftSection)
+            .where(DraftSection.draft_id == draft.id)
+            .order_by(DraftSection.sort_order, DraftSection.id)
+        ).scalars()
+    )
+
+    findings = list(
+        db.execute(
+            select(ComplianceFinding).where(ComplianceFinding.draft_id == draft.id)
+        ).scalars()
+    )
+    # Blocking first, then oldest first — the attorney dispositions blockers before advisories.
+    findings.sort(
+        key=lambda f: (
+            0 if f.severity == "blocking" else 1,
+            f.created_at or datetime.min,
+            str(f.id),
+        )
+    )
+    finding_views = [
+        ComplianceFindingView.model_validate(f).model_dump(mode="json") for f in findings
+    ]
+
+    open_findings = [f for f in findings if f.status == FindingStatus.OPEN.value]
+    buckets = {
+        "mechanical": sum(1 for f in open_findings if f.bucket == FindingBucket.MECHANICAL.value),
+        "semantic": sum(1 for f in open_findings if f.bucket == FindingBucket.SEMANTIC.value),
+    }
+
+    return {
+        "draft": {
+            "id": str(draft.id),
+            "version": draft.version,
+            "registry_version": draft.registry_version,
+            "status": draft.status,
+            "memo": draft.memo,
+        },
+        "sections": [_draft_section_compliance_view(s) for s in sections],
+        "findings": finding_views,
+        "open_blocking": open_blocking_count(db, matter=matter, draft=draft),
+        "buckets": buckets,
+    }
+
+
+def _artifact_download_url(matter: Matter, artifact_set: ArtifactSet, kind: str) -> str:
+    """The tenant-scoped download URL for one artifact of a set (kind keyed, not object_key)."""
+    return f"/api/matters/{matter.id}/artifacts/{artifact_set.id}/{kind}"
+
+
+def artifact_sets_view(db: Session, matter: Matter) -> list[dict]:
+    """Serialize the matter's :class:`~app.models.orm.ArtifactSet` rows, latest first.
+
+    Each set carries its ``draft_version`` / ``registry_version`` / ``created_at`` and its artifacts
+    as ``{kind, sha256, byte_count, url}`` — the ``object_key`` is INTERNAL (a storage path) and is
+    NOT surfaced; the wire exposes only the kind-keyed download ``url`` the artifact route serves.
+    """
+    sets = list(
+        db.execute(
+            select(ArtifactSet)
+            .where(ArtifactSet.matter_id == matter.id)
+            .order_by(ArtifactSet.created_at.desc(), ArtifactSet.id.desc())
+        ).scalars()
+    )
+    out: list[dict] = []
+    for s in sets:
+        artifacts = [
+            {
+                "kind": a["kind"],
+                "sha256": a["sha256"],
+                "byte_count": a["byte_count"],
+                "url": _artifact_download_url(matter, s, a["kind"]),
+            }
+            for a in (s.artifacts or [])
+        ]
+        out.append(
+            {
+                "id": str(s.id),
+                "draft_version": s.draft_version,
+                "registry_version": s.registry_version,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "artifacts": artifacts,
+            }
+        )
+    return out
+
+
+def package_vm(db: Session, matter: Matter) -> dict:
+    """The package_assembly / package_ready view-model — the artifact sets + a buildable flag.
+
+    Shared across both states. ``artifact_sets`` is the serializer above (latest first).
+    ``buildable`` is only meaningful at ``package_assembly`` — ``True`` when the latest draft is
+    approved
+    (status ``approved``), i.e. G3 is behind us and a build is warranted; at ``package_ready`` it is
+    ``False`` (the package is built + immutable — nothing left to build).
+    """
+    from app.engine.compliance.engine import latest_draft
+
+    state = GateState(matter.gate_state)
+    buildable = False
+    if state is GateState.PACKAGE_ASSEMBLY:
+        draft = latest_draft(db, matter=matter)
+        buildable = draft is not None and draft.status == DraftStatus.APPROVED.value
+    return {"artifact_sets": artifact_sets_view(db, matter), "buildable": buildable}

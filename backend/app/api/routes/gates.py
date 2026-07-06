@@ -17,6 +17,7 @@ Typed error mapping (the service raises, this module translates):
 | OverrideRequired           | 409  | ``override_required``        |
 | IllegalGateAction          | 409  | ``illegal_gate_action``      |
 | UnknownDeadlineRule        | 422  | ``unknown_deadline_rule``    |
+| UnknownPlanSection         | 422  | ``unknown_plan_section``     |
 | EditsNotSupported          | 422  | ``edits_not_supported_at_gate`` |
 | InvalidEdits               | 422  | ``invalid_edits``            |
 | OverrideReasonRequired     | 422  | ``override_reason_required`` |
@@ -34,10 +35,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_tenant_session
 from app.api.view_models import (
+    compliance_review_vm,
     evidence_review_vm,
     facts_review_vm,
     matter_to_view,
     minimal_gate_vm,
+    package_vm,
+    plan_review_vm,
     strategy_intake_vm,
 )
 from app.api.wire_guard import scan_wire_payload
@@ -100,6 +104,12 @@ def _view_model_for(session: Session, matter: Matter) -> dict:
         return strategy_intake_vm(matter, inputs)
     if state is GateState.EVIDENCE_REVIEW:
         return evidence_review_vm(session, matter)
+    if state is GateState.PLAN_REVIEW:
+        return plan_review_vm(session, matter)
+    if state is GateState.COMPLIANCE_REVIEW:
+        return compliance_review_vm(session, matter)
+    if state in (GateState.PACKAGE_ASSEMBLY, GateState.PACKAGE_READY):
+        return package_vm(session, matter)
     return minimal_gate_vm(state)
 
 
@@ -191,6 +201,11 @@ def _submit_error_response(exc: Exception) -> JSONResponse | None:
     if isinstance(exc, service.UnknownDeadlineRule):
         return JSONResponse(
             status_code=422, content={"error": "unknown_deadline_rule", "rule_id": exc.rule_id}
+        )
+    if isinstance(exc, service.UnknownPlanSection):
+        return JSONResponse(
+            status_code=422,
+            content={"error": "unknown_plan_section", "section_id": exc.section_id},
         )
     if isinstance(exc, service.EditsNotSupported):
         return JSONResponse(
