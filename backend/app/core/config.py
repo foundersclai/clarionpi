@@ -58,6 +58,12 @@ class Settings:
     extraction_window_pages: int = 8
     extraction_window_overlap: int = 2
     llm_max_output_tokens: int = 4096
+    # Auth (M3 Wave A). ``auth_mode`` selects the M0 dev-attorney stub ("stub", the dev/test
+    # default) or real server-side session login ("session"). TTL bounds a session's lifetime; the
+    # cookie name is constant-like but kept in Settings so tests can reference it without a literal.
+    auth_mode: str = "stub"
+    session_ttl_minutes: int = 720
+    session_cookie_name: str = "clarionpi_session"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -128,4 +134,7 @@ def get_settings() -> Settings:
         extraction_window_pages=_env_int("EXTRACTION_WINDOW_PAGES", 8),
         extraction_window_overlap=_env_int("EXTRACTION_WINDOW_OVERLAP", 2),
         llm_max_output_tokens=_env_int("LLM_MAX_OUTPUT_TOKENS", 4096),
+        auth_mode=os.environ.get("AUTH_MODE", "stub"),
+        session_ttl_minutes=_env_int("SESSION_TTL_MINUTES", 720),
+        session_cookie_name=os.environ.get("SESSION_COOKIE_NAME", "clarionpi_session"),
     )

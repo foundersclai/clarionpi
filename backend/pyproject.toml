@@ -17,6 +17,7 @@ dependencies = [
     "pypdfium2",
     "pytesseract",
     "pillow",
+    "argon2-cffi",
 ]
 
 [dependency-groups]
