@@ -7,8 +7,8 @@
  *       corpus_processing or facts_review and has any deadline candidates;
  *   (c) the documents panel (list + upload + run-ingest SSE + dedup queue);
  *   (d) the active gate screen, dispatched off the gates envelope: FactsReviewCard at
- *       facts_review, StrategyIntakeCard at strategy_intake, an honest "analysis pending"
- *       card at analysis_running, and a neutral state card otherwise.
+ *       facts_review, StrategyIntakeCard at strategy_intake, the EvidenceWorkbench (G2a) at
+ *       analysis_running (run-button mode) and evidence_review, and a neutral state card otherwise.
  *
  * Gate honesty: the stepper reflects `matter.gate_state` from the fetched view; the gate
  * card reflects the `GateEnvelope`. When the ingest stream emits `gate_ready`, we invalidate
@@ -23,6 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet } from "@/lib/api";
 import { gateKey, useGate } from "@/lib/gates";
 import type {
+  EvidenceReviewVM,
   FactsVM,
   GateEnvelope,
   MatterView,
@@ -30,6 +31,7 @@ import type {
 } from "@/lib/types";
 import { DeadlineBanner } from "@/components/deadline-banner";
 import { DocumentsPanel } from "@/components/documents-panel";
+import { EvidenceWorkbench } from "@/components/evidence-workbench";
 import { FactsReviewCard } from "@/components/facts-review-card";
 import { GateStepper } from "@/components/gate-stepper";
 import { StrategyIntakeCard } from "@/components/strategy-intake-card";
@@ -131,7 +133,7 @@ export default function MatterDashboardPage({
       <DocumentsPanel matterId={matter.id} onGateReady={handleGateReady} />
 
       {/* (d) Active gate screen — dispatched off the gates envelope. */}
-      <GatePanel matterId={matter.id} query={gateQuery} />
+      <GatePanel matterId={matter.id} query={gateQuery} onGateReady={handleGateReady} />
     </div>
   );
 }
@@ -142,9 +144,11 @@ export default function MatterDashboardPage({
 function GatePanel({
   matterId,
   query,
+  onGateReady,
 }: {
   matterId: string;
   query: ReturnType<typeof useGate>;
+  onGateReady: (gate: string) => void;
 }) {
   if (query.isLoading) {
     return (
@@ -199,22 +203,46 @@ function GatePanel({
   }
 
   if (envelope.gate === "analysis_running") {
+    // The matter parks here until someone runs the analysis. The workbench renders the run button
+    // (analysisRunning mode); only a real gate_ready advances the view. The evidence VM does not
+    // exist yet at this state, so a minimal shell is passed — the workbench ignores it while running.
     return (
-      <Card data-testid="analysis-pending-card">
-        <CardHeader>
-          <CardTitle>Analysis running</CardTitle>
-          <CardDescription>
-            The strategy analysis is underway. The evidence &amp; plan review screens land with
-            M4.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <EvidenceWorkbench
+        matterId={matterId}
+        vm={EMPTY_EVIDENCE_VM}
+        payloadVersion={envelope.payload_version}
+        roleAffordances={envelope.role_affordances}
+        analysisRunning
+        onGateReady={onGateReady}
+      />
+    );
+  }
+
+  if (envelope.gate === "evidence_review") {
+    return (
+      <EvidenceWorkbench
+        matterId={matterId}
+        vm={envelope.view_model as EvidenceReviewVM}
+        payloadVersion={envelope.payload_version}
+        roleAffordances={envelope.role_affordances}
+        analysisRunning={false}
+        onGateReady={onGateReady}
+      />
     );
   }
 
   // Every other state: the honest minimal card from the envelope's placeholder VM.
   return <NeutralGateCard gate={envelope.gate} />;
 }
+
+/** An empty evidence VM shell for the analysis_running state (the workbench shows only the run banner). */
+const EMPTY_EVIDENCE_VM: EvidenceReviewVM = {
+  chronology: { rows: [], conflicts: 0, parked: 0 },
+  ledger: null,
+  risk_flags: [],
+  exhibits: { entries: [], blocking: [] },
+  dedup_pending: 0,
+};
 
 /** A neutral state card for gates whose dedicated UI hasn't landed — no fake affordances. */
 function NeutralGateCard({ gate }: { gate: GateEnvelope["gate"] }) {

@@ -105,6 +105,50 @@ export type TextSource = "text_layer" | "ocr" | "none";
 export type UserRole = "paralegal" | "attorney" | "admin";
 
 // ---------------------------------------------------------------------------------------
+// G2a (evidence_review) enum unions — mirror StrEnum values in enums.py, read at M4-D build.
+// ---------------------------------------------------------------------------------------
+
+/** OverlayStatus — how a rebuilt chronology row's overlay reapplied (`null` when untouched). */
+export type OverlayStatus = "applied" | "parked_orphaned" | "conflict";
+
+/** FlagKind — the risk-flag taxonomy. */
+export type FlagKind =
+  | "treatment_gap"
+  | "preexisting_condition"
+  | "prior_claim"
+  | "degenerative_finding"
+  | "causation_ambiguity"
+  | "liability_weakness"
+  | "low_property_damage"
+  | "third_party_phi";
+
+/** FlagSeverity — high gates the G2a confirm. */
+export type FlagSeverity = "low" | "medium" | "high";
+
+/** FlagDetector — provenance of a risk flag (deterministic math vs LLM label vs heuristic). */
+export type FlagDetector = "date_math" | "label" | "heuristic_llm";
+
+/** FlagDisposition — the closed set of attorney dispositions on a risk flag at G2a. */
+export type FlagDisposition =
+  | "address_in_letter"
+  | "omit_with_rationale"
+  | "need_more_records";
+
+/** PhiDisposition — third-party-PHI disposition on an exhibit (`pending` blocks the binder). */
+export type PhiDisposition = "pending" | "cleared" | "excluded";
+
+/** LedgerCategory — the fixed v1 specials-ledger category taxonomy. */
+export type LedgerCategory =
+  | "er"
+  | "ambulance"
+  | "imaging"
+  | "pt_chiro"
+  | "ortho"
+  | "surgery"
+  | "pharmacy"
+  | "other";
+
+// ---------------------------------------------------------------------------------------
 // View-models (mirror backend/app/api/view_models.py)
 // ---------------------------------------------------------------------------------------
 
@@ -285,6 +329,97 @@ export interface StrategyIntakeVM {
   deadlines_confirmed: boolean;
 }
 
+// ---------------------------------------------------------------------------------------
+// G2a (evidence_review) view-model — mirror view_models.py::evidence_review_vm. Every money
+// value is integer cents (the FE renders via centsToDollars; it NEVER computes a total).
+// Nothing token-shaped arrives: `exhibit_token_id` is the BARE id ("EX_1"), chronology
+// narratives are already resolved to display forms.
+// ---------------------------------------------------------------------------------------
+
+/** One chronology row, wire-rendered (narrative already token-resolved). `overlay_status` null = untouched. */
+export interface ChronologyRow {
+  row_id: string;
+  /** ISO date string (YYYY-MM-DD). */
+  date_of_service: string;
+  provider_display: string;
+  facility_display: string;
+  encounter_type: string;
+  narrative: string;
+  anchors: unknown[];
+  overlay_status: OverlayStatus | null;
+}
+
+/** The chronology block: derived rows + the overlay-quarantine counts. */
+export interface ChronologyVM {
+  rows: ChronologyRow[];
+  conflicts: number;
+  parked: number;
+}
+
+/** One ledger column-set — integer cents only (billed / adjusted / paid / outstanding). */
+export interface LedgerColumns {
+  billed_cents: number;
+  adjusted_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+}
+
+/**
+ * The specials ledger — category rows + a grand total, plus the demand-basis and the two
+ * visibility lists (a gap is shown, never swallowed). Money is cents; the FE renders, never sums.
+ */
+export interface LedgerVM {
+  by_category: Record<string, LedgerColumns>;
+  grand_total: LedgerColumns;
+  demand_basis_total_cents: number;
+  basis: string;
+  line_set_hash: string;
+  missing_paid_line_ids: string[];
+  excluded_line_ids: string[];
+}
+
+/** One risk flag as the G2a wire projects it (incl. detector + disposition_role for the audit view). */
+export interface RiskFlagVM {
+  id: string;
+  kind: FlagKind | string;
+  severity: FlagSeverity;
+  detail: string;
+  anchors: unknown[];
+  disposition: FlagDisposition | null;
+  disposition_role: UserRole | null;
+  detector: FlagDetector | string;
+  disposition_rationale?: string | null;
+}
+
+/** One draft-binder exhibit entry (bare `exhibit_token_id`; `null` until minted). */
+export interface ExhibitEntry {
+  exhibit_token_id: string | null;
+  document_id: string;
+  filename: string;
+  included_pages: number[];
+  excluded_pages: number[];
+  phi_disposition: PhiDisposition;
+  sort_order: number;
+  page_count: number;
+  integrity: string;
+}
+
+/** The exhibits block: the manifest entries + the M5-binder `blocking` reasons. */
+export interface ExhibitsVM {
+  entries: ExhibitEntry[];
+  blocking: string[];
+}
+
+/** The G2a (evidence_review) view-model — chronology + ledger + risk flags + exhibits. */
+export interface EvidenceReviewVM {
+  chronology: ChronologyVM;
+  /** `null` when the jurisdiction pack is unsupported (defensive; creation already gates it). */
+  ledger: LedgerVM | null;
+  risk_flags: RiskFlagVM[];
+  exhibits: ExhibitsVM;
+  dedup_pending: number;
+}
+
 /** The honest placeholder VM for gates whose UI lands in a later milestone (minimal_gate_vm). */
 export interface MinimalGateVM {
   state: string;
@@ -313,7 +448,7 @@ export interface RoleAffordances {
 export interface GateEnvelope {
   gate: GateState;
   payload_version: number;
-  view_model: FactsVM | StrategyIntakeVM | MinimalGateVM;
+  view_model: FactsVM | StrategyIntakeVM | EvidenceReviewVM | MinimalGateVM;
   role_affordances: RoleAffordances;
 }
 
@@ -380,4 +515,110 @@ export interface MeView extends UserView {
 /** POST /api/auth/login success body — the user is nested under `user`. */
 export interface LoginResponse {
   user: UserView;
+}
+
+// ---------------------------------------------------------------------------------------
+// G2a (evidence_review) action bodies + response envelopes (mirror routes/evidence.py,
+// routes/analysis.py, and the two PINNED sibling contracts). Money crosses the wire as
+// dollar STRINGS on the way IN (empty string clears); cents on the way back out.
+// ---------------------------------------------------------------------------------------
+
+/** PUT /api/flags/{flag_id}/disposition — rationale REQUIRED (non-blank) for omit_with_rationale. */
+export interface FlagDispositionBody {
+  disposition: FlagDisposition;
+  rationale?: string;
+}
+
+/** PUT /api/matters/{id}/exhibits — a per-document exhibit pick (1-based page lists + order). */
+export interface ExhibitPickBody {
+  document_id: string;
+  include_pages: number[];
+  excluded_pages: number[];
+  sort_order: number;
+}
+
+/** POST /api/exhibits/{id}/phi — only cleared / excluded travel this path (pending is not a target). */
+export interface PhiDispositionBody {
+  disposition: Exclude<PhiDisposition, "pending">;
+}
+
+/** GET /api/matters/{id}/manifest?mint=true → the binder manifest (entries + blocking). */
+export interface ManifestResponse {
+  matter_id: string;
+  entries: ExhibitEntry[];
+  blocking: string[];
+}
+
+/**
+ * One source-row billing edit. Money fields are dollar STRINGS as-typed (parsed to cents at the
+ * service); an empty string CLEARS that field; a field left `undefined` is untouched.
+ */
+export interface BillingLineEdit {
+  billing_line_id: string;
+  category?: LedgerCategory;
+  billed?: string;
+  adjusted?: string;
+  paid?: string;
+  outstanding?: string;
+}
+
+/** POST /api/matters/{id}/billing/edits body — a non-empty batch of source-row edits. */
+export interface BillingEditBatch {
+  edits: BillingLineEdit[];
+}
+
+/**
+ * POST /api/matters/{id}/billing/edits success — the edit counts + the recomputed ledger. The FE
+ * REPLACES its ledger display from `ledger` (server-authoritative; the FE never sums).
+ */
+export interface BillingEditResponse {
+  outcome: {
+    edited: number;
+    recategorized: number;
+    reparsed_money_fields: number;
+  };
+  ledger: LedgerVM;
+}
+
+/** One source billing line — GET /api/matters/{id}/billing/lines (PINNED sibling contract). */
+export interface BillingLine {
+  id: string;
+  provider: string;
+  /** ISO date string (YYYY-MM-DD). */
+  date_of_service: string;
+  code: string | null;
+  billed_cents: number;
+  adjusted_cents: number | null;
+  paid_cents: number | null;
+  outstanding_cents: number | null;
+  category: string;
+  document_id: string | null;
+}
+
+/** GET /api/matters/{id}/billing/lines → { lines: [...] } (PINNED sibling contract). */
+export interface BillingLinesResponse {
+  lines: BillingLine[];
+}
+
+/**
+ * PUT /api/matters/{id}/chronology/{encounter_id}/overlay body (PINNED sibling contract). The
+ * `edited_fields` object is a CLOSED vocabulary — exactly these four optional keys, nothing else.
+ */
+export interface ChronologyOverlayBody {
+  edited_fields: {
+    narrative_override?: string;
+    provider_display?: string;
+    facility_display?: string;
+    encounter_type?: string;
+  };
+}
+
+/** The inline exhibit view returned by the pick + PHI endpoints (plain scalars, no tokens). */
+export interface ExhibitView {
+  id: string;
+  document_id: string;
+  include_pages: number[];
+  excluded_pages: number[];
+  phi_disposition: PhiDisposition;
+  sort_order: number;
 }
