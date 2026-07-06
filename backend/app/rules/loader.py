@@ -14,12 +14,18 @@ shape.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.models.enums import DeadlineKind, RuleVerifyStatus
 from app.rules.errors import RulePackInvalid, UnsupportedJurisdiction
+
+# The conservative-for-v1 basis when a pack omits the block: AZ v1 is billed-basis, and billed is
+# the safe default (it never silently understates a demand by substituting paid where paid is
+# absent). A typed default — surfaced through the accessor, logged nowhere.
+_DEFAULT_BILLED_VS_PAID_BASIS = "billed"
 
 _PACKS_DIR = Path(__file__).parent / "packs"
 
@@ -54,6 +60,22 @@ class RuleRow(BaseModel):
         return self
 
 
+class BilledVsPaidRule(BaseModel):
+    """The jurisdiction's specials-ledger demand basis (money_engine consumes this).
+
+    ``basis`` is ``"billed"`` or ``"paid"`` — whether the demand leads with the billed charges or
+    the amounts actually paid (a substantive state-law question, e.g. AZ's collateral-source /
+    *Lopez* line). Carries a ``source`` cite and a ``verify_status`` like every other pack row —
+    unaudited law is surfaced, never hidden.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    basis: Literal["billed", "paid"]
+    source: str
+    verify_status: RuleVerifyStatus
+
+
 class RulePack(BaseModel):
     """A jurisdiction's validated rule pack.
 
@@ -68,6 +90,21 @@ class RulePack(BaseModel):
     version: str
     audited: bool = False
     deadline_rules: list[RuleRow] = []
+    # Optional: a pack without this block falls back to the documented conservative basis via the
+    # accessor below (money_engine reads the basis, never the raw block).
+    billed_vs_paid: BilledVsPaidRule | None = None
+
+    @property
+    def billed_vs_paid_basis(self) -> str:
+        """The specials-ledger demand basis for this jurisdiction.
+
+        The pack row's ``basis`` when present, else :data:`_DEFAULT_BILLED_VS_PAID_BASIS` — the
+        conservative-for-v1 default (AZ v1 is billed). This is the value :mod:`app.money.assemble`
+        passes into ``build_specials_ledger``.
+        """
+        if self.billed_vs_paid is None:
+            return _DEFAULT_BILLED_VS_PAID_BASIS
+        return self.billed_vs_paid.basis
 
 
 def _pack_path(jurisdiction: str) -> Path:

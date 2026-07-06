@@ -26,3 +26,11 @@ deadline_rules:
     assumptions:
       - "public-entity defendant — confirm at G1"
     verify_status: unverified
+
+# Specials-ledger demand basis (money_engine): whether the demand leads with billed charges or
+# amounts actually paid. AZ v1 = billed; the source is a computation candidate for counsel audit,
+# not confirmed law (the "(verify — counsel)" marker and unverified status say so).
+billed_vs_paid:
+  basis: billed
+  source: "Lopez v. Safeway Stores, Inc., 212 Ariz. 198, 129 P.3d 487 (App. 2006) (verify — counsel)"
+  verify_status: unverified
