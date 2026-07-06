@@ -11,20 +11,25 @@ file wins.
 
 | Task | Command |
 |---|---|
-| Install deps | `cd backend && python3 -m venv .venv && .venv/bin/pip install -e . --group dev` |
-| Run locally | `make dev` (`cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400`) |
+| Install deps (backend) | `cd backend && python3 -m venv .venv && .venv/bin/pip install -e . --group dev` |
+| Run locally (backend) | `make dev` (`cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400`) |
 | Test (fast) | `make test` — run after every change |
 | Test (full) | `make verify` — run before claiming done |
 | Lint + format | `make lint` |
 | Typecheck | `make typecheck` |
-| Build | n/a (no build step at M0) |
+| Build (backend) | n/a (no build step) |
+| Install deps (frontend) | `cd frontend && npm install --cache "$(mktemp -d)"` |
+| Run locally (frontend) | `cd frontend && npm run dev` (Next.js dev server on port 3400) |
+| Test (frontend) | `cd frontend && npm run test` (Vitest) |
+| Lint (frontend) | `cd frontend && npm run lint` |
+| Build (frontend) | `cd frontend && npm run build` |
 
 If any of these fail on a clean checkout, fixing that is the first task.
 
 ## Repo Map
 
 ```
-backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic
+backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic (+ auth/session login, role guards, gates envelope + gate-action submit at M3)
 backend/app/core/       config, db session, tenancy, audit, telemetry, budget
 backend/app/models/     enums + pydantic schemas + ORM; every firm-scoped table carries firm_id
 backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer registry (fact spine, live M2)
@@ -33,6 +38,7 @@ backend/app/money/      ALL currency arithmetic — integer cents, floats banned
 backend/app/corpus/     document ingest (live M1: sessions, classify, OCR fallback, dedup, phase0 SSE) + extraction (live M2: windows, extractors, anchor-validation, merge)
 backend/app/package/    demand package builder (M1+ stub at M0)
 backend/tests/          pytest suite, mirrors backend/app/
+frontend/               Next.js 15 workbench (M3): login, matter dashboard, G1/G1.5 gate screens (app/, components/, lib/; Vitest tests in __tests__/)
 docs/adr/               architecture decisions — read before changing architecture
 docs/module_contracts/  per-module boundary contracts — read before changing a module's surface
 scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual repo tree
@@ -103,3 +109,11 @@ scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual
   payloads (grand billed + demand basis over the — possibly empty — billing set). To see facts
   actually extracted end-to-end, wire `LLM_PROVIDER=anthropic` (needs `ANTHROPIC_API_KEY`) or use
   a `ScriptedProvider` in tests.
+- `AUTH_MODE` defaults to `stub` (the M0 dev-attorney: `make dev` and the pre-M3 tests need no
+  login). Real login is `AUTH_MODE=session`; the seeded dev users (attorney/paralegal/admin, one
+  per role) share the `dev-password` and are **non-prod only** (`seed_dev_users` refuses under
+  `APP_ENV=prod`). In stub mode a valid session cookie still wins, so the FE can develop real logins
+  against a stub backend. Session details live in [ADR-0004](docs/adr/0004-m3-auth-decisions.md).
+- Frontend `npm install` writes to a shared global cache that can wedge on this machine — always
+  install with a throwaway cache dir: `npm install --cache "$(mktemp -d)"` (as in the Commands
+  table). The frontend uses plain npm; there is no pnpm/yarn lockfile.

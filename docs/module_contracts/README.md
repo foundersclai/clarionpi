@@ -21,6 +21,7 @@ module has real code today or lands at a later milestone.
 | `backend/app/engine/brain2` | [app.engine.brain2](app.engine.brain2.md) | `backlog/pi/components/brain2_drafting.md` |
 | `backend/app/engine/compliance` | [app.engine.compliance](app.engine.compliance.md) | `backlog/pi/components/compliance_engine.md` |
 | `backend/app/engine/tokenizer` | [app.engine.tokenizer](app.engine.tokenizer.md) | `backlog/pi/components/fact_registry.md` |
+| `backend/app/engine/brain1` | [app.engine.brain1.chronology](app.engine.brain1.chronology.md) | `backlog/pi/components/chronology_builder.md` |
 | `backend/app/rules` | [app.rules.jurisdiction](app.rules.jurisdiction.md) | `backlog/pi/components/jurisdiction_rules.md` |
 | `backend/app/money` | [app.money.ledger](app.money.ledger.md) | `backlog/pi/components/money_engine.md` |
 | `backend/app/package` | [app.package.builder](app.package.builder.md) | `backlog/pi/components/package_builder.md` |

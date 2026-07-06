@@ -6,11 +6,22 @@ Design source: [`backlog/pi/components/api_and_wire.md`](../../backlog/pi/compon
 
 ## Status
 
-**Implemented @ M0 (partial).** The package exists with a `routes/` subpackage.
-The SSE event vocabulary (`SseEvent`) and the input/view schemas
-(`MatterCreate`, the entity views) are in `app/models`. The view-model builder,
-the serializer token-scanner, the role middleware, and SSE journal replay land
-**M3**.
+**Live @ M3.** The wire surface is real: the gate envelope
+(`routes/gates.py::get_current_gate` → `{gate, payload_version, view_model,
+role_affordances}`) + the gate-action submit, the per-gate view-model builders
+(`view_models.py::facts_review_vm` / `strategy_intake_vm` / `minimal_gate_vm`),
+`role_affordances` (a side-effect-free dry-run guard preview), the wire
+token-scanner (`wire_guard.scan_wire_payload`, dev/test-raise / prod-scrub),
+closed submit schemas (`extra="forbid"`), 404-not-403 tenancy, and the matters
+list endpoint. Auth + `require_role` (Wave A) are in `deps.py` (see
+[ADR-0004](../adr/0004-m3-auth-decisions.md)).
+
+**Deferred:** SSE journal / `Last-Event-ID` replay lands with the analysis/demand
+streams (**M4/M5**) — the gates wire is request/response, so no journal ships this
+wave. The G2a view-model lands **M4**; the G2.5/G3 view-models land **M5** (today
+they are the honest `minimal_gate_vm` placeholder). The scanner is applied
+**explicitly** per response envelope at M3; promoting it to a response middleware
+is planned **M4+**.
 
 ## Responsibility
 
@@ -39,14 +50,19 @@ minting or resolving tokens (`app.engine.tokenizer`).
 
 ## Invariants enforced
 
-- **[8]** Gate-action authorization is **server-side**; a required role maps to
-  each gate action and the check precedes the handler — the frontend's
-  `role_affordances` are a hint, the server is the authority.
-- **[11]** Overlays are response-only; a serializer scanner (dev/test: 500 + loud
-  log; prod: sentinel + log) guarantees **no token-shaped string escapes**;
-  submit schemas are closed (`extra="forbid"`) so an overlay field in a request
-  body is a `422`. Rendered previews carry a **span map (span_id → fact_id),
-  never tokens**.
+- **[8]** Gate-action authorization is **server-side** (M3): `require_role`
+  (`deps.py`) guards the door and the service re-derives the actor role onto
+  `GateRecord.actor_role`; a cross-firm matter **404s, never 403s** (existence must
+  not leak). The frontend's `role_affordances` (`can_edit`, `can_approve`,
+  `approve_blockers` — a side-effect-free guard dry-run) are a hint; the server is
+  the authority. A role refusal is a typed `403 role_forbidden`.
+- **[11]** Overlays are response-only; the wire token-scanner
+  (`wire_guard.scan_wire_payload` — dev/test: raise `TokenLeak` → 500 + loud log;
+  prod: registry `SENTINEL` + `clarionpi.wire` ERROR log) guarantees **no
+  token-shaped string escapes**, applied explicitly on every gate envelope; submit
+  schemas are closed (`extra="forbid"`) so an overlay field echoed in a request
+  body is a `422`. Rendered previews (M5) will carry a **span map (span_id →
+  fact_id), never tokens**.
 - **[12]** `budget_warning` at 80% rides the SSE vocabulary; the cap decision is
   surfaced from `app.core.matter_budget`, not re-derived here.
 - **[14]** Every request logs into per-matter run logs (with `app/core`), so
@@ -54,18 +70,28 @@ minting or resolving tokens (`app.engine.tokenizer`).
 
 ## Vocabulary
 
-`GateEnvelope` (`gate` discriminant, `payload_version`, `view_model`,
-`role_affordances`) · `RenderedLetterView` (`sections`, `span_map`) · `SseEvent`
-(monotonic `id` for `Last-Event-ID` replay; the 7-event closed vocabulary) ·
-`payload_version` skew → `409` → refetch · **import rule: nothing imports `api/`
-except `main.py`** (the wire boundary is a leaf).
+Gate envelope `{gate, payload_version, view_model, role_affordances}` (M3, a
+JSON-safe dict — heterogeneous per gate, so the scanner walks it before it leaves)
+· view-model builders `facts_review_vm` (deadline candidates + `rule_id`
+[=`statute_cite`] + intake facts + `documents_summary`) / `strategy_intake_vm`
+(`StrategyInputs` values incl. the M4 pull-forward `mmi_date` /
+`property_damage_estimate_cents`) / `minimal_gate_vm` (honest placeholder) ·
+`role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
+`scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
+(`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:
+nothing imports `api/` except `main.py`** (the wire boundary is a leaf). `SseEvent`
+(the closed, no-internal-reasoning vocabulary) exists in `app/models`; its
+monotonic-`id` `Last-Event-ID` **replay is deferred to the analysis/demand streams
+(M4/M5)** · `RenderedLetterView` (`sections`, `span_map`) lands **M5**.
 
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing a REST route or
-SSE event; changing a request/response shape or status code; changing the
-serializer-scanner policy, the submit-schema closure, or the span-map contract;
-changing the role→gate-action map or the tenancy-scoping injection. Adding
-an `agent_reasoning`/`agent_thinking`-style event is **forbidden** by §11/§14.
-Update this file **and** [`system_contract.md`](../system_contract.md) §8/11/12/14
-in the same PR.
+SSE event; changing a request/response shape or status code (incl. the gate
+envelope or a per-gate view-model builder's shape); changing the wire-scanner
+policy (raise/scrub, or where it is applied), the submit-schema closure, the
+`role_affordances` contract, or the span-map contract; changing the
+role→gate-action map or the tenancy-scoping injection (incl. the 404-not-403
+rule). Adding an `agent_reasoning`/`agent_thinking`-style event is **forbidden**
+by §11/§14. Update this file **and** [`system_contract.md`](../system_contract.md)
+§8/11/12/14 in the same PR.

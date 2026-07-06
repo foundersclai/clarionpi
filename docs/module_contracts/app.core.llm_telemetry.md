@@ -58,11 +58,15 @@ per-matter cost accumulator (read by the budget gate).
 substrate every component stands on. Every firm-scoped table carries `firm_id`;
 a `scoped_session(firm_id)` helper injects the tenancy predicate so no handler
 issues an unscoped query (invariant **7** — PHI/BAA envelope, and the tenancy
-basis for invariant **8**). Gate/PHI-access/artifact/export actions write an
-append-only `AuditEvent` transactionally with the action — an audit-write failure
-**fails the action** (invariant **9**). The BAA egress inventory and per-matter
-run-log sink (invariant **14**) also live here. These surfaces are shared with
-[app.core.matter_budget](app.core.matter_budget.md).
+basis for invariant **8**). Auth is now **real** (M3): `auth.py` is in-house
+session auth (argon2 + opaque server-side sessions) behind the single
+`deps.get_current_user` door, with the M0 dev-attorney **stub retained** behind
+`AUTH_MODE` (`stub` = dev/test default, prod-guarded seeds; `session` = the real
+path) — see [ADR-0004](../adr/0004-m3-auth-decisions.md). Gate/PHI-access/artifact/
+export actions write an append-only `AuditEvent` transactionally with the action —
+an audit-write failure **fails the action** (invariant **9**). The BAA egress
+inventory and per-matter run-log sink (invariant **14**) also live here. These
+surfaces are shared with [app.core.matter_budget](app.core.matter_budget.md).
 
 ## Change rule
 

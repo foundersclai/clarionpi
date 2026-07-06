@@ -19,6 +19,17 @@ make dev
 
 Verify it worked: `curl localhost:8400/healthz` → `{"status":"ok"}`.
 
+The Next.js workbench (login, matter dashboard, G1/G1.5 gate screens) lives in `frontend/`:
+
+```bash
+cd frontend && npm install --cache "$(mktemp -d)"   # shared npm cache can wedge — use a temp one
+npm run dev                                          # workbench on http://localhost:3400
+```
+
+Auth defaults to `AUTH_MODE=stub` (a dev attorney, no login). Set `AUTH_MODE=session` for real
+login; the seeded dev users share `dev-password` and are non-prod only. See
+[docs/adr/0004-m3-auth-decisions.md](docs/adr/0004-m3-auth-decisions.md).
+
 ## Commands
 
 All build/test/lint commands live in [AGENTS.md](AGENTS.md) — single source of truth

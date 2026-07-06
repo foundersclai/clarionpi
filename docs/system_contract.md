@@ -131,6 +131,15 @@ attorney confirms at G1; the deadline warning is non-dismissible until confirmed
   boundary is `backend/app/rules` (see
   [app.rules.jurisdiction](module_contracts/app.rules.jurisdiction.md)); the
   G1 confirm guard is asserted by the orchestrator transition table.
+- **Enforced (M3):** the confirm is live and **per-candidate** —
+  `service.deadlines_all_confirmed` requires EVERY `matter.sol_candidates` entry
+  `confirmed=True` (an empty list is not confirmed: a matter with no computed
+  deadlines cannot slide through G1), and the G1 approve guard evaluates it
+  server-side. `confirmed` is the attorney's G1 act; the candidate's
+  `verify_status` is the orthogonal lawyer-audit status of the rule text
+  (**ADR-0005** decision 1). A confirmation matches its candidate by
+  `rule_id == statute_cite` — a documented M3 limitation (two candidates sharing a
+  cite cannot be confirmed independently; ADR-0005 decision 5).
 - **Deferred:** the AZ YAML packs, the fail-loud loader, and the
   `HybridEngine` lookup land **M1–M2**; `app/rules` is a stub with a `packs/`
   data directory today.
@@ -201,9 +210,15 @@ UI state.
   guards are declared in the orchestrator transition table and are the
   orchestrator's responsibility (see
   [app.engine.orchestrator](module_contracts/app.engine.orchestrator.md)).
-- **Deferred:** the server-side role middleware at the wire boundary
-  (`api.view_models`) and the authenticated `AuthContext` (`app/core` auth
-  workstream) land **M3**.
+- **Enforced (M3):** the guard is live and server-side — `deps.require_role`
+  admits only the listed roles at the wire (typed `403 role_forbidden` +
+  `required` + `actual`, rendered inline, no gray-out), the gate-action service
+  re-derives the actor role from the authenticated user onto `GateRecord.actor_role`
+  (never client-asserted), and the attorney-only approve guards refuse a paralegal
+  `POST` regardless of UI state. Auth is in-house session auth behind one
+  `get_current_user` door (**ADR-0004**).
+- **Deferred:** the analysis/demand run authorization at those streams lands **M4**;
+  TOTP (second factor) is restated for **R2** (ADR-0004 decision 2).
 
 ### 9. Attorney Final + Auditable
 
@@ -214,9 +229,16 @@ Overrides are `requires_override` (allowed, logged with a reason) vs `unavailabl
   `payload_hash`, `override_reason`, `idempotency_key`) and the `GateAction` enum
   are in `schemas.py`/`enums.py`; server-derived actor identity is the
   orchestrator's contract.
-- **Deferred:** the append-only `AuditEvent` sink, the write-fails-the-action
-  transactionality, and override-mode enforcement land with the `app/core` audit
-  workstream and the orchestrator body (**M3**).
+- **Enforced (M3) for gate actions:** `service.apply_gate_action` writes exactly
+  one `GateRecord` per action (actor + server-derived role + `payload_hash`) **and**
+  a synchronous append-only `AuditEvent` mirror in the **same transaction** — an
+  audit-write failure fails the action, and a refused action rolls back whole (no
+  partial edits). An `override` requires a non-blank reason (`422`
+  `override_reason_required`), recorded on the record (allowed-but-logged);
+  `high_severity_open` surfaces as `409 override_required` vs a hard-stop
+  `guard_failed` (**ADR-0005** decisions; ADR-0004 for the audit substrate).
+- **Deferred:** the demand-**package** completeness / G3 sign-off (the whole-letter
+  auditable-final block) lands **M5** with the compliance panel.
 
 ### 10. Extracted Facts, Human Elections, And Derived State Stay Separate
 
@@ -242,9 +264,18 @@ state, never a fabricated default. Nothing token-shaped reaches the frontend.
   **nothing imports `api/` except `main.py`** (see
   [app.api.view_models](module_contracts/app.api.view_models.md)); the SSE
   vocabulary (`SseEvent`) forbids internal-reasoning events by construction.
-- **Deferred:** the view-model layer, the serializer token-scanner, the
-  closed submit schemas (`extra="forbid"`), and the sentinel-substitution
-  backstop land **M3**.
+- **Enforced (M3) at the gates wire:** responses are **view-models only**
+  (`facts_review_vm` / `strategy_intake_vm` / `minimal_gate_vm` build JSON-safe
+  dicts; a missing upstream value stays visible as missing/empty, never a
+  fabricated default), submit schemas are **closed** (`extra="forbid"`, so an
+  overlay field echoed on a submit is a `422`), and the token-scanner
+  (`wire_guard.scan_wire_payload`) runs on every gate envelope — dev/test raise
+  `TokenLeak` (500 + loud log), prod scrubs to the registry `SENTINEL` + logs
+  `clarionpi.wire`. The prod sentinel backstop is deliberately not token-shaped.
+- **Deferred:** promoting the scanner from explicit per-route calls to a response
+  middleware (**M4+**), and the rendered-letter span map (span_id → fact_id) land
+  with the demand streams (**M4/M5**); SSE `Last-Event-ID` replay is deferred to
+  those streams too.
 
 ### 12. Per-Matter AI Cost Is Metered And Capped
 

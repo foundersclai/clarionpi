@@ -58,11 +58,15 @@ typed refusal (→ 402).
 `app/core` is also the home of **tenancy, append-only audit, and auth**. Every
 firm-scoped table carries `firm_id`; a `scoped_session(firm_id)` helper injects
 the tenancy predicate so cross-firm reads are prevented by construction
-(invariant **7**, and the basis for role-gated sign-off, invariant **8**). Gate/
-PHI-access/artifact/export actions write an append-only `AuditEvent`
-transactionally — an audit-write failure **fails the action** (invariant **9**).
-The BAA egress inventory and per-matter run-log sink (invariant **14**) live here
-too. These surfaces are shared with
+(invariant **7**, and the basis for role-gated sign-off, invariant **8**). Auth is
+now **real** (M3): `auth.py` is in-house session auth (argon2 + opaque server-side
+sessions) behind the single `deps.get_current_user` door, `AUTH_MODE=session` is
+the real path, and the M0 dev-attorney **stub is retained** behind `AUTH_MODE`
+(`stub` is the dev/test default, prod-guarded seeds) — see
+[ADR-0004](../adr/0004-m3-auth-decisions.md). Gate/PHI-access/artifact/export
+actions write an append-only `AuditEvent` transactionally — an audit-write failure
+**fails the action** (invariant **9**). The BAA egress inventory and per-matter
+run-log sink (invariant **14**) live here too. These surfaces are shared with
 [app.core.llm_telemetry](app.core.llm_telemetry.md).
 
 ## Change rule
