@@ -17,10 +17,14 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from app.models.enums import DeadlineKind, RuleVerifyStatus
-from app.rules.errors import RulePackInvalid, UnsupportedJurisdiction
+from app.models.enums import DeadlineKind, RuleVerifyStatus, TokenKind
+from app.rules.errors import (
+    LetterStructureMissing,
+    RulePackInvalid,
+    UnsupportedJurisdiction,
+)
 
 # The conservative-for-v1 basis when a pack omits the block: AZ v1 is billed-basis, and billed is
 # the safe default (it never silently understates a demand by substituting paid where paid is
@@ -76,6 +80,37 @@ class BilledVsPaidRule(BaseModel):
     verify_status: RuleVerifyStatus
 
 
+class LetterSectionRule(BaseModel):
+    """One section of the demand-letter skeleton (Brain-2 drafting consumes these).
+
+    ``max_words`` is the section's soft word ceiling; ``required_token_kinds`` are the fact-token
+    kinds the section must carry (validated into :class:`~app.models.enums.TokenKind` — a YAML
+    string like ``fact`` coerces to the enum, an unknown kind fails the pack load).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    section_id: str
+    purpose: str
+    max_words: int
+    required_token_kinds: list[TokenKind] = []
+
+
+class LetterStructureRule(BaseModel):
+    """The jurisdiction's demand-letter section skeleton (house drafting standard).
+
+    The SECTION LIST is a legal-drafting judgment, so the block carries a ``source`` cite and a
+    ``verify_status`` like every other pack row — an unaudited skeleton is surfaced, never hidden.
+    ``sections`` is non-empty (a zero-section skeleton cannot drive drafting).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    verify_status: RuleVerifyStatus
+    sections: list[LetterSectionRule] = Field(min_length=1)
+
+
 class RulePack(BaseModel):
     """A jurisdiction's validated rule pack.
 
@@ -93,6 +128,22 @@ class RulePack(BaseModel):
     # Optional: a pack without this block falls back to the documented conservative basis via the
     # accessor below (money_engine reads the basis, never the raw block).
     billed_vs_paid: BilledVsPaidRule | None = None
+    # Optional in the parsed model (an arbitrary pack may not carry it), but drafting REQUIRES it:
+    # the ``letter_sections`` accessor raises ``LetterStructureMissing`` when absent rather than
+    # substituting a default skeleton (Brain-2 fails loud, never drafts against invented sections).
+    letter_structure: LetterStructureRule | None = None
+
+    @property
+    def letter_sections(self) -> list[LetterSectionRule]:
+        """The demand-letter section skeleton for Brain-2 drafting.
+
+        Raises :class:`~app.rules.errors.LetterStructureMissing` when the pack has no
+        ``letter_structure`` block — drafting has no code-side default section set (an invented
+        skeleton would be unaudited law). Returns the ordered section list when present.
+        """
+        if self.letter_structure is None:
+            raise LetterStructureMissing(self.pack)
+        return self.letter_structure.sections
 
     @property
     def billed_vs_paid_basis(self) -> str:

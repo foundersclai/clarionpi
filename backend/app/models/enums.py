@@ -267,10 +267,97 @@ class FindingBucket(StrEnum):
 
 
 class FindingGating(StrEnum):
-    """Whether a compliance finding blocks G3 or is advisory."""
+    """Whether a compliance finding blocks G3 or is advisory.
+
+    Also the vocabulary of ``ComplianceFinding.severity`` (compliance §Vocabulary: ``severity`` ∈
+    {``blocking``, ``advisory``}) — the ORM column is named ``severity`` per the contract, but its
+    values are this enum's members.
+    """
 
     BLOCKING = "blocking"
     ADVISORY = "advisory"
+
+
+class SectionValidation(StrEnum):
+    """Deterministic validation state of a ``DraftSection`` (brain2 §Vocabulary).
+
+    A section either passes deterministic validation (``PASSED``), is mid-retry after a first
+    failure (``RETRY_PENDING`` — the default at mint), or has failed validation twice and
+    **surfaced** rather than looping to satisfy a proxy (``SURFACED_FAILED``; brain2 inv 1/5).
+    """
+
+    PASSED = "passed"
+    RETRY_PENDING = "retry_pending"
+    SURFACED_FAILED = "surfaced_failed"
+
+
+class FindingStatus(StrEnum):
+    """The G3 compliance-finding lifecycle (compliance §Vocabulary).
+
+    A finding opens (``OPEN``), is fixed by a mechanical span-patch (``PATCHED``) or a
+    single-section regen (``REGENERATED``), is then **always** re-verified (``RE_VERIFIED`` — the
+    mandatory re-verify-after-fix step that catches a fix introducing a new orphan), and finally
+    is dispositioned by the attorney (``DISPOSITIONED``). Re-verify ALWAYS follows a patch/regen.
+    """
+
+    OPEN = "open"
+    PATCHED = "patched"
+    REGENERATED = "regenerated"
+    RE_VERIFIED = "re_verified"
+    DISPOSITIONED = "dispositioned"
+
+
+class FindingDisposition(StrEnum):
+    """Attorney disposition of a compliance finding at G3.
+
+    ``ACCEPT`` takes the finding's fix as-is; ``OVERRIDE`` proceeds past an advisory finding with
+    a recorded reason. Hard-block check kinds (compliance §Vocabulary) are never overridable to
+    ship — the disposition set does not let a blocking orphan/AMT-mismatch/dead-anchor through.
+    """
+
+    ACCEPT = "accept"
+    OVERRIDE = "override"
+
+
+class CheckKind(StrEnum):
+    """The G3 compliance-check taxonomy (compliance §Responsibility / §Vocabulary).
+
+    The first SEVEN are **deterministic / mechanical-eligible** (pure-code predicates —
+    span-patch-routable for the enumerated set): ``ORPHAN_TOKEN``, ``AMT_LEDGER_MISMATCH``,
+    ``DEAD_ANCHOR``, ``MISSING_EXHIBIT``, ``MISSING_STATUTORY_TERM``, ``UNDISPOSED_ADVERSE``,
+    ``PROSE_TOTAL_MISMATCH``. The last THREE are **semantic** (the Sonnet judge, never a
+    code-side normalizer): ``UNSUPPORTED_CAUSATION``, ``STRATEGY_DRIFT``, ``TONE``. The hard
+    blocks (never overridable to ship) are ``orphan_token``, ``amt_ledger_mismatch``,
+    ``dead_anchor``, ``missing_exhibit``, ``undisposed_adverse`` (+ a registry-version mismatch),
+    per the compliance contract.
+    """
+
+    ORPHAN_TOKEN = "orphan_token"
+    AMT_LEDGER_MISMATCH = "amt_ledger_mismatch"
+    DEAD_ANCHOR = "dead_anchor"
+    MISSING_EXHIBIT = "missing_exhibit"
+    MISSING_STATUTORY_TERM = "missing_statutory_term"
+    UNDISPOSED_ADVERSE = "undisposed_adverse"
+    PROSE_TOTAL_MISMATCH = "prose_total_mismatch"
+    UNSUPPORTED_CAUSATION = "unsupported_causation"
+    STRATEGY_DRIFT = "strategy_drift"
+    TONE = "tone"
+
+
+class DraftStatus(StrEnum):
+    """Lifecycle of a ``DemandDraft`` (brain2 → compliance → package).
+
+    A draft is ``DRAFTING`` while Brain-2 emits sections, ``VALIDATED`` once every section passes
+    deterministic validation, ``IN_COMPLIANCE`` while the G3 panel runs, ``APPROVED`` at G3
+    approve (zero open blocking findings), and ``SUPERSEDED`` when a newer draft version replaces
+    it (a re-draft after drift is a new version, never an overwrite).
+    """
+
+    DRAFTING = "drafting"
+    VALIDATED = "validated"
+    IN_COMPLIANCE = "in_compliance"
+    APPROVED = "approved"
+    SUPERSEDED = "superseded"
 
 
 class RunKind(StrEnum):

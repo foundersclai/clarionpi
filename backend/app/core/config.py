@@ -75,6 +75,15 @@ class Settings:
     risk_flag_per_kind_cap: int = 12
     # Model for the LLM risk-labeling pass (risk_flag_engine).
     risk_label_model: str = "claude-sonnet-5"
+    # Brain-2 / G3 model tiering (M5): the drafter (per-section prose) and the strategy memo run on
+    # Opus (the intelligence/synthesis tier); the compliance judge runs on Sonnet (the semantic-
+    # verdict grader). Per the design model-assignment tiering.
+    drafter_model: str = "claude-opus-4-8"
+    judge_model: str = "claude-sonnet-5"
+    memo_model: str = "claude-opus-4-8"
+    # Package build (M5 Wave B2): the Bates prefix stamped on binder pages (e.g. "CP00001"). A
+    # short firm-scoped label, not money; deterministic input to the binder bytes.
+    bates_prefix: str = "CP"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -152,4 +161,8 @@ def get_settings() -> Settings:
         low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
         risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),
         risk_label_model=os.environ.get("RISK_LABEL_MODEL", "claude-sonnet-5"),
+        drafter_model=os.environ.get("DRAFTER_MODEL", "claude-opus-4-8"),
+        judge_model=os.environ.get("JUDGE_MODEL", "claude-sonnet-5"),
+        memo_model=os.environ.get("MEMO_MODEL", "claude-opus-4-8"),
+        bates_prefix=os.environ.get("BATES_PREFIX", "CP"),
     )

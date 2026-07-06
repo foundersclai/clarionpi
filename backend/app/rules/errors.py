@@ -35,3 +35,21 @@ class RulePackInvalid(RulesError):
     """
 
     diagnostic_kind = "rule_pack_invalid"
+
+
+class LetterStructureMissing(RulesError):
+    """Raised when a pack lacks the ``letter_structure`` block Brain-2 drafting requires.
+
+    Drafting needs the demand-letter section skeleton (the ordered section list); a pack without
+    it cannot drive Brain-2. Fail loud — there is deliberately NO code-side default section set
+    (a made-up skeleton would be unaudited law masquerading as a default).
+    """
+
+    diagnostic_kind = "letter_structure_missing"
+
+    def __init__(self, jurisdiction_or_pack: str) -> None:
+        self.pack = jurisdiction_or_pack
+        super().__init__(
+            f"rule pack {jurisdiction_or_pack!r} has no letter_structure block "
+            "(Brain-2 drafting requires the demand-letter section skeleton)"
+        )

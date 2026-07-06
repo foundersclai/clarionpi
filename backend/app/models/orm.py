@@ -574,6 +574,13 @@ class StrategyPlan(Base, FirmScoped):
     sections: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     emphasis_directives: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     approved: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # G2.5-approve audit denormalization: who approved this plan and when. The GateRecord
+    # (actor_id + actor_role + created_at) remains the authoritative approval trail; these are a
+    # fast-display denorm on the plan row. Both nullable — set only at approve.
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -594,13 +601,32 @@ class DemandDraft(Base, FirmScoped):
     )
     version: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     registry_version: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-    status: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    # Binds this draft to the StrategyPlan version it was drafted from (04 §2 inv 3: a draft is
+    # keyed to the exact approved plan). server_default "0" so the not-null ADD backfills any
+    # placeholder rows (there are none pre-M5).
+    strategy_plan_version: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
+    # DraftStatus vocabulary; server_default "drafting" so the ADD/existing-row path has a value.
+    status: Mapped[str] = mapped_column(
+        sa.String(32), nullable=False, server_default="drafting"
+    )  # DraftStatus
+    # The strategy memo (Opus) for this draft — an attorney-visible matter artifact shown at
+    # G2.5/G3, never sent to the carrier (brain2 §Decisions). server_default "" backfills the
+    # not-null ADD; "" means the memo degraded (provider down) or has not been generated yet.
+    memo: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="")
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
 
 class DraftSection(Base, FirmScoped):
-    """A section of a demand draft; reaches the matter via its parent draft FK."""
+    """A section of a demand draft; reaches the matter via its parent draft FK.
+
+    ``body_tokenized`` is the tokens-only section prose (brain2 inv 5 — zero raw names/amounts/
+    citations); ``rendered_preview`` is the registry-resolved preview (brain2 inv 11). ``spans``
+    are the rendered char-offset spans minted at render time that feed M6 provenance
+    click-through.
+    """
 
     __tablename__ = "draft_sections"
 
@@ -610,13 +636,40 @@ class DraftSection(Base, FirmScoped):
     )
     section_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
     purpose: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
-    content_tokenized: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    # Renamed from ``content_tokenized`` — the brain2 contract vocabulary field name.
+    body_tokenized: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     rendered_preview: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # The registry version this section's tokens were minted/validated against (brain2 §Vocabulary
+    # — a section carries its registry_version). server_default "0" backfills the not-null ADD.
+    registry_version: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    # SectionValidation; server_default "retry_pending" (a freshly-minted section has not yet
+    # passed deterministic validation).
+    validation: Mapped[str] = mapped_column(
+        sa.String(24), nullable=False, server_default="retry_pending"
+    )  # SectionValidation
+    # Rendered char-offset spans [{span_id, start, end, token_id (bare)}], minted at render time —
+    # feeds M6 provenance click-through. Empty until the section is rendered.
+    spans: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Letter collation order for this section within its draft.
+    sort_order: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    # The DrafterPromptSnapshot the section was drafted under — {input_hash, rules_blocks,
+    # matter_directives, final_hard_constraints}. This is the judge-symmetry lock (brain2 §4): the
+    # compliance judge re-hashes this so it grades the exact snapshot the drafter saw.
+    # server_default "{}" backfills the not-null ADD (an empty snapshot = a not-yet-drafted row).
+    prompt_snapshot: Mapped[dict] = mapped_column(
+        sa.JSON, nullable=False, default=dict, server_default="{}"
+    )
     created_at: Mapped[datetime] = _created_at()
 
 
 class ComplianceFinding(Base, FirmScoped):
-    """A G3-panel finding; reaches the matter via its parent draft FK."""
+    """A G3-panel finding; reaches the matter via its parent draft FK.
+
+    Carries the section it anchors to (``section_id``), the pinned ``registry_version``, its
+    ``severity`` (blocking vs advisory) + ``bucket`` (mechanical vs semantic), the anchors the
+    attorney sees (compliance inv 11), an optional rendered-text ``span`` for a mechanical splice,
+    and the finding ``status``/``disposition`` lifecycle.
+    """
 
     __tablename__ = "compliance_findings"
 
@@ -624,11 +677,36 @@ class ComplianceFinding(Base, FirmScoped):
     draft_id: Mapped[uuid.UUID] = mapped_column(
         sa.Uuid, ForeignKey("demand_drafts.id"), index=True, nullable=False
     )
-    check_kind: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    # The section this finding anchors to. server_default "" backfills the not-null ADD; a
+    # draft-level finding (no single section) carries the empty string.
+    section_id: Mapped[str] = mapped_column(sa.String(64), nullable=False, server_default="")
+    # The pinned registry version the finding was raised against (compliance: a registry-version
+    # mismatch is itself a hard block). server_default "0" backfills the not-null ADD.
+    registry_version: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    check_kind: Mapped[str] = mapped_column(sa.String(64), nullable=False)  # CheckKind
     bucket: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # FindingBucket
-    gating: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # FindingGating
+    # Renamed from ``gating`` — the compliance-contract field name is ``severity``. The enum CLASS
+    # stays ``FindingGating``; its VALUES ({blocking, advisory}) are this column's vocabulary.
+    severity: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, server_default="blocking"
+    )  # FindingGating values
     detail: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
-    dispositioned: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # Anchors the attorney sees (compliance inv 11 — what the attorney sees, not a paraphrase).
+    anchors: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # {start, end} into the section's rendered text for a mechanical span-patch splice; nullable
+    # (a semantic/regen finding has no splice span).
+    span: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    # FindingStatus lifecycle: open -> (patched | regenerated) -> re_verified -> dispositioned.
+    status: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, server_default="open"
+    )  # FindingStatus
+    # FindingDisposition ({accept, override}); nullable until dispositioned.
+    disposition: Mapped[str | None] = mapped_column(  # FindingDisposition
+        sa.String(16), nullable=True
+    )
+    disposition_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), nullable=True
+    )
     override_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
@@ -723,6 +801,46 @@ class Exhibit(Base, FirmScoped):
     )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
+
+
+class ArtifactSet(Base, FirmScoped):
+    """One immutable build of the demand package, keyed by (draft, registry) version —
+    a rebuild after drift is a NEW set, never an overwrite (package_builder §3).
+
+    ``artifacts`` is the manifest of what was built and stored — a list of
+    ``{kind, object_key, sha256, byte_count}`` dicts (``kind`` is an ``ArtifactKind`` value). The
+    unique ``(matter_id, draft_version, registry_version)`` triple makes a re-request for the same
+    approved state resolve to the existing set (idempotent build): the bytes are derivable purely
+    from the approved state (inv 10), so the same versions always describe the same package.
+    ``created_at`` uses the DB default — it is NOT part of the artifact bytes (those pin their own
+    metadata timestamps for byte determinism), so a wall-clock row timestamp is fine here.
+    """
+
+    __tablename__ = "artifact_sets"
+    __table_args__ = (
+        UniqueConstraint(
+            "matter_id",
+            "draft_version",
+            "registry_version",
+            name="uq_artifact_set_matter_versions",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    draft_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("demand_drafts.id"), index=True, nullable=False
+    )
+    draft_version: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    registry_version: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    # [{kind, object_key, sha256, byte_count}] — one entry per built artifact (ArtifactKind value).
+    artifacts: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    built_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
 
 
 class LlmCall(Base, FirmScoped):

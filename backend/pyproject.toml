@@ -18,6 +18,11 @@ dependencies = [
     "pytesseract",
     "pillow",
     "argon2-cffi",
+    # M5 package builder — runtime artifact engines (letter.docx / binder.pdf / chronology.xlsx).
+    "python-docx",       # letter.docx authoring
+    "pypdf",             # binder collation / page ops
+    "openpyxl",          # chronology.xlsx authoring
+    "reportlab",         # runtime Bates-overlay engine (moved from dev: it renders the binder overlay)
 ]
 
 [dependency-groups]
@@ -27,7 +32,6 @@ dev = [
     "mypy",
     "types-PyYAML",
     "hypothesis",
-    "reportlab",
 ]
 
 [tool.pytest.ini_options]

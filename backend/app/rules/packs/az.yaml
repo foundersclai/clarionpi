@@ -34,3 +34,34 @@ billed_vs_paid:
   basis: billed
   source: "Lopez v. Safeway Stores, Inc., 212 Ariz. 198, 129 P.3d 487 (App. 2006) (verify — counsel)"
   verify_status: unverified
+
+# Demand-letter section skeleton (Brain-2 drafting): the ordered sections of the demand letter,
+# each with a purpose, a soft word ceiling, and the fact-token kinds it must carry. The SECTION
+# LIST is a legal-drafting judgment (the shape of a persuasive PI demand), so the whole block is
+# UNVERIFIED — a legal cofounder confirms the section set, order, and word ceilings before it is
+# authoritative. Drafting REQUIRES this skeleton; there is no code-side default (the loader raises
+# LetterStructureMissing when a pack omits it).
+letter_structure:
+  source: "ClarionPI drafting standard v1 (verify — legal cofounder)"
+  verify_status: unverified
+  sections:
+    - section_id: intro_and_representation
+      purpose: "Introduce representation, the claim, and the demand posture."
+      max_words: 250
+      required_token_kinds: []
+    - section_id: liability
+      purpose: "Establish fault from the incident facts."
+      max_words: 450
+      required_token_kinds: [fact]
+    - section_id: injuries_and_treatment
+      purpose: "Narrate injuries and the treatment chronology."
+      max_words: 700
+      required_token_kinds: [fact]
+    - section_id: damages_and_specials
+      purpose: "Present special damages from the ledger."
+      max_words: 450
+      required_token_kinds: [amount]
+    - section_id: demand_and_deadline
+      purpose: "State the demand amount and response terms."
+      max_words: 300
+      required_token_kinds: [amount]

@@ -18,12 +18,17 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import (
+    CheckKind,
     ClaimType,
     DeadlineKind,
     DedupResolution,
     DedupStatus,
     DocStatus,
     DocType,
+    FindingBucket,
+    FindingDisposition,
+    FindingGating,
+    FindingStatus,
     FlagDetector,
     FlagDisposition,
     FlagKind,
@@ -32,6 +37,7 @@ from app.models.enums import (
     GateState,
     LedgerCategory,
     RuleVerifyStatus,
+    SectionValidation,
     TextSource,
     TokenKind,
     TokenSource,
@@ -99,6 +105,32 @@ class PlannedSection(BaseModel):
     allowed_tokens: list[str] = Field(default_factory=list)
     required_tokens: list[str] = Field(default_factory=list)
     max_words: int
+
+
+class SpanRef(BaseModel):
+    """A ``{start, end}`` char-offset range into a section's rendered text.
+
+    The mechanical-splice target a compliance finding carries (``ComplianceFinding.span``). ``end``
+    is exclusive and strictly positive; ``start`` is a non-negative offset.
+    """
+
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+
+
+class RenderedSpan(BaseModel):
+    """One rendered char-offset span minted at render time (``DraftSection.spans`` element).
+
+    Feeds M6 provenance click-through: ``[start, end)`` into the section's rendered text is the
+    resolved text for ``token_id``. ``token_id`` is the **BARE** registry id (e.g. ``"FACT_3"``,
+    ``"AMT_1"``, ``"EX_2"``) — never the bracketed ``[[FACT_3]]`` token-shaped string on this
+    shape (inv 11: nothing token-shaped on the wire; this carries the bare id).
+    """
+
+    span_id: str
+    start: int
+    end: int
+    token_id: str
 
 
 # --------------------------------------------------------------------------------------
@@ -354,6 +386,9 @@ class StrategyPlan(_ORMModel):
     sections: list[PlannedSection] = Field(default_factory=list)
     emphasis_directives: list[str] = Field(default_factory=list)
     approved: bool
+    # G2.5-approve audit denorm (the GateRecord stays authoritative).
+    approved_by: uuid.UUID | None = None
+    approved_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -474,6 +509,46 @@ class StrategyIntakeEdits(BaseModel):
     property_damage_estimate_cents: Cents | None = None
 
 
+class PlannedSectionEdit(BaseModel):
+    """One G2.5 per-section plan edit — a partial override of a :class:`PlannedSection` slot.
+
+    ``section_id`` names the existing planned section (matched against the latest plan; an unknown
+    id is a typed 422 in the service — a plan edit must not invent a section). Every other field is
+    optional and applied only when non-``None``: a ``None`` leaves the emitted allocation as-is.
+    Token lists carry **bare** ids (``"FACT_3"``, ``"AMT_1"``) — never the bracketed token-shaped
+    string (inv 11; the wire never sees token shape). "Edits re-emit the plan, not prose" (C5): this
+    refines the drafting contract the deterministic emit produced, it does not touch section bodies.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    section_id: str
+    max_words: int | None = None
+    allowed_tokens: list[str] | None = None
+    required_tokens: list[str] | None = None
+
+
+class PlanReviewEdits(BaseModel):
+    """G2.5 (plan_review) edit payload — a partial override that RE-EMITS a new plan version.
+
+    Applying these creates a NEW :class:`~app.models.orm.StrategyPlan` version (a copy of the
+    latest, with the non-``None`` fields applied and each :class:`PlannedSectionEdit` merged onto
+    its
+    section by ``section_id``), ``approved=False`` and re-pinned to the matter's current
+    ``registry_version`` — the attorney refines the drafting contract, then approves that version at
+    G2.5. ``demand_type`` is the closed set: only ``"open"`` at v1 (a ``time_limited`` demand is a
+    later version — the seam is here, the value is not yet accepted). "Edits re-emit the plan, not
+    prose" (C5): no section body is authored here; Brain-2 drafts off the approved plan.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    demand_amount_cents: Cents | None = None
+    demand_type: Literal["open"] | None = None  # time_limited seam (a later version)
+    emphasis_directives: list[str] | None = None
+    sections: list[PlannedSectionEdit] | None = None
+
+
 class GateSubmit(BaseModel):
     """A gate action submission (POST /api/matters/{id}/gates/{gate}/submit).
 
@@ -491,7 +566,7 @@ class GateSubmit(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=64)
     payload_version: int
     override_reason: str | None = None
-    edits: FactsReviewEdits | StrategyIntakeEdits | dict | None = None
+    edits: FactsReviewEdits | StrategyIntakeEdits | PlanReviewEdits | dict | None = None
 
 
 # --------------------------------------------------------------------------------------
@@ -659,3 +734,140 @@ class RiskLabelBatch(BaseModel):
     """A labeling pass's worth of risk-flag outputs."""
 
     flags: list[RiskLabelOutput] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------------------
+# Brain-2 (drafting) + compliance (G3) I/O schemas (M5) — the cross-wave contracts.
+# LLM structured outputs are OPEN (a model returns exactly the declared field); the attorney
+# action request is CLOSED (extra="forbid", the anti-echo discipline).
+# --------------------------------------------------------------------------------------
+
+
+class SectionDraftOutput(BaseModel):
+    """The per-section drafter's structured output (Opus).
+
+    ``body_tokenized`` is tokens-only section prose (brain2 inv 5 — zero raw provider names,
+    amounts, or citations; dollar figures are ``[[AMT_n]]`` references). Non-empty: an empty
+    section is a validator reject.
+    """
+
+    body_tokenized: str = Field(min_length=1)
+
+
+class MemoOutput(BaseModel):
+    """The strategy-memo generator's structured output (Opus)."""
+
+    memo: str = Field(min_length=1)
+
+
+class PlanEmphasisOutput(BaseModel):
+    """The Opus emphasis-synthesis output — the emphasis directives distilled for the plan."""
+
+    emphasis_directives: list[str] = Field(default_factory=list)
+
+
+# The three semantic check kinds the Sonnet judge may return. Deterministic verdicts are the
+# code predicates' to make (brain2/compliance inv 13) — the judge may not claim a mechanical
+# finding, so a JudgeFinding is validated against exactly this set.
+_SEMANTIC_CHECK_KINDS: frozenset[CheckKind] = frozenset(
+    {CheckKind.UNSUPPORTED_CAUSATION, CheckKind.STRATEGY_DRIFT, CheckKind.TONE}
+)
+
+
+class JudgeFinding(BaseModel):
+    """One semantic finding from the Sonnet judge.
+
+    ``check_kind`` is validated to be one of the THREE semantic kinds
+    (``unsupported_causation`` / ``strategy_drift`` / ``tone``); a mechanical kind is rejected —
+    the judge grades semantics, deterministic code owns mechanical verdicts (inv 13).
+    """
+
+    check_kind: CheckKind
+    section_id: str
+    detail: str = Field(min_length=1)
+    severity: FindingGating = FindingGating.BLOCKING
+
+    @model_validator(mode="after")
+    def _only_semantic_kinds(self) -> JudgeFinding:
+        if self.check_kind not in _SEMANTIC_CHECK_KINDS:
+            allowed = sorted(k.value for k in _SEMANTIC_CHECK_KINDS)
+            raise ValueError(
+                f"judge may only return a semantic check_kind {allowed}; "
+                f"got mechanical kind {self.check_kind.value!r}"
+            )
+        return self
+
+
+class JudgeFindingBatch(BaseModel):
+    """A judge pass's worth of semantic findings."""
+
+    findings: list[JudgeFinding] = Field(default_factory=list)
+
+
+class FindingActionRequest(BaseModel):
+    """An attorney action on a single G3 compliance finding (CLOSED, anti-echo).
+
+    ``action`` is the closed set ``{patch, regen, accept, override}``. ``override`` REQUIRES a
+    non-blank ``override_reason`` — proceeding past a finding must record why (the audit trail).
+    ``patch`` = a mechanical span-patch, ``regen`` = a single-section regen, ``accept`` = take the
+    fix as-is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["patch", "regen", "accept", "override"]
+    override_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _override_requires_reason(self) -> FindingActionRequest:
+        has_reason = bool(self.override_reason and self.override_reason.strip())
+        if self.action == "override" and not has_reason:
+            raise ValueError("override requires a non-blank override_reason")
+        return self
+
+
+# --------------------------------------------------------------------------------------
+# Reshaped-row views (M5) — pydantic mirrors of the reshaped ORM rows.
+# --------------------------------------------------------------------------------------
+
+
+class DraftSectionView(_ORMModel):
+    """Draft-section view — the reshaped ``DraftSection`` row (tokens-only body + render spans)."""
+
+    id: uuid.UUID
+    firm_id: uuid.UUID
+    draft_id: uuid.UUID
+    section_id: str
+    purpose: str
+    body_tokenized: str
+    rendered_preview: str | None = None
+    registry_version: int
+    validation: SectionValidation
+    spans: list[RenderedSpan] = Field(default_factory=list)
+    sort_order: int
+    created_at: datetime | None = None
+
+
+class ComplianceFindingView(_ORMModel):
+    """Compliance-finding view — the reshaped ``ComplianceFinding`` row (severity/status/span).
+
+    ``severity`` uses the :class:`FindingGating` vocabulary (the ORM column is named ``severity``
+    per the compliance contract; the enum class name is ``FindingGating``).
+    """
+
+    id: uuid.UUID
+    firm_id: uuid.UUID
+    draft_id: uuid.UUID
+    section_id: str
+    registry_version: int
+    check_kind: CheckKind
+    bucket: FindingBucket
+    severity: FindingGating
+    detail: str
+    anchors: list[PageAnchor] = Field(default_factory=list)
+    span: SpanRef | None = None
+    status: FindingStatus
+    disposition: FindingDisposition | None = None
+    disposition_by: uuid.UUID | None = None
+    override_reason: str | None = None
+    created_at: datetime | None = None
