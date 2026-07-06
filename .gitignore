@@ -19,3 +19,7 @@ dist/
 
 # local databases
 *.db
+
+# Per-matter run logs (runtime artifacts, never committed)
+logs/
+backend/logs/
