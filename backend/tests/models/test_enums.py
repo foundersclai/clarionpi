@@ -67,7 +67,9 @@ def test_gate_event_has_exactly_fourteen_values() -> None:
         ),
         (enums.DocStatus, {"uploaded", "classified", "ocr_done", "extracted", "failed"}),
         (enums.DedupStatus, {"unique", "duplicate_of", "partial_overlap"}),
-        (enums.TextSource, {"text_layer", "ocr"}),
+        (enums.TextSource, {"text_layer", "ocr", "none"}),
+        (enums.UploadSessionStatus, {"open", "committed", "expired"}),
+        (enums.DedupResolution, {"pending", "kept", "superseded"}),
         (
             enums.FlagKind,
             {

@@ -10,8 +10,14 @@ import sqlalchemy as sa
 
 from app.models.orm import Base
 
-# The one legitimate non-integer numeric column: an OCR confidence score, not currency.
-_ALLOWED_FLOAT_COLUMNS = {("document_pages", "ocr_confidence")}
+# The legitimate non-integer numeric columns: confidence / similarity scores, not currency.
+# Each carries a justification comment in orm.py at its column definition.
+_ALLOWED_FLOAT_COLUMNS = {
+    ("document_pages", "ocr_confidence"),
+    ("page_texts", "ocr_confidence"),
+    ("case_documents", "classification_confidence"),
+    ("dedup_decisions", "shingle_overlap"),
+}
 
 
 def test_every_table_except_firms_is_firm_scoped() -> None:

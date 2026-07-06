@@ -123,16 +123,31 @@ class CaseDocument(Base, FirmScoped):
     )
     doc_type: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # DocType
     source_label: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(sa.String(512), nullable=False, default="")
+    # Nullable: a failed/expired ingest path may never actually store a blob.
+    storage_key: Mapped[str | None] = mapped_column(sa.String(1024), nullable=True)
     page_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     dedup_status: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # DedupStatus
     status: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # DocStatus
+    # Float is acceptable HERE ONLY: this is a classifier confidence score, not currency.
+    classification_confidence: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    failure_reason: Mapped[str | None] = mapped_column(sa.String(512), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 
 class DocumentPage(Base, FirmScoped):
-    """One page of a case document; reaches the matter via its parent document FK."""
+    """One page of a case document; reaches the matter via its parent document FK.
+
+    The ``(document_id, page_no)`` anchor is unique: a page's provenance identity never
+    changes (inv 2). A re-OCR does not mutate this row — it appends a :class:`PageText` and
+    moves ``active_text_id``.
+    """
 
     __tablename__ = "document_pages"
+    __table_args__ = (
+        UniqueConstraint("document_id", "page_no", name="uq_document_page_doc_page_no"),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     document_id: Mapped[uuid.UUID] = mapped_column(
@@ -144,6 +159,106 @@ class DocumentPage(Base, FirmScoped):
     # Float is acceptable HERE ONLY: this is an OCR confidence score, not currency.
     ocr_confidence: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     image_ref: Mapped[str | None] = mapped_column(sa.String(1024), nullable=True)
+    zero_text: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # Plain Uuid, deliberately NOT a ForeignKey: it points at page_texts.id, which itself FKs
+    # back to this table. A DB-level circular FK can't be created via SQLite ALTER and buys
+    # nothing here — the app moves this pointer when it appends a new PageText version (inv 2).
+    active_text_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True, index=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+# --------------------------------------------------------------------------------------
+# Upload sessions (M1 batch upload)
+# --------------------------------------------------------------------------------------
+
+
+class UploadSession(Base, FirmScoped):
+    """A resumable batch-upload session; commit turns received slots into ``CaseDocument``s."""
+
+    __tablename__ = "upload_sessions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # UploadSessionStatus
+    # Abandoned-session sweep deadline: sessions past this without a commit are expired.
+    ttl_expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UploadSlot(Base, FirmScoped):
+    """One file slot in an upload session; carries the storage key + received flag."""
+
+    __tablename__ = "upload_slots"
+
+    id: Mapped[uuid.UUID] = _pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("upload_sessions.id"), index=True, nullable=False
+    )
+    filename: Mapped[str] = mapped_column(sa.String(512), nullable=False)  # client name, display
+    size_bytes: Mapped[int] = mapped_column(sa.Integer, nullable=False)  # bytes, not money
+    storage_key: Mapped[str] = mapped_column(sa.String(1024), nullable=False)
+    received: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("case_documents.id"), nullable=True
+    )  # set at commit
+    created_at: Mapped[datetime] = _created_at()
+
+
+# --------------------------------------------------------------------------------------
+# Page text history + dedup quarantine
+# --------------------------------------------------------------------------------------
+
+
+class PageText(Base, FirmScoped):
+    """Append-only text-version history for a :class:`DocumentPage`.
+
+    Page identity never mutates: a re-OCR appends a row here and moves
+    ``DocumentPage.active_text_id`` (inv 2), so prior text versions stay auditable.
+    """
+
+    __tablename__ = "page_texts"
+
+    id: Mapped[uuid.UUID] = _pk()
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("document_pages.id"), index=True, nullable=False
+    )
+    text: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    text_source: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # TextSource
+    # Float is acceptable HERE ONLY: this is an OCR confidence score, not currency.
+    ocr_confidence: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    engine: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)  # OCR engine id
+    created_at: Mapped[datetime] = _created_at()
+
+
+class DedupDecision(Base, FirmScoped):
+    """A quarantined dedup verdict. NEVER auto-merged: a human resolves kept vs superseded."""
+
+    __tablename__ = "dedup_decisions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    # The NEW doc under suspicion.
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("case_documents.id"), index=True, nullable=False
+    )
+    # The earlier doc it collides with (nullable: a decision may await pairing).
+    against_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("case_documents.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # DedupStatus
+    # [[this_page_no, other_page_no], ...] — the colliding page pairs.
+    page_hash_matches: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Float is acceptable HERE ONLY: this is a shingle-similarity score, not currency.
+    shingle_overlap: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    resolution: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # DedupResolution
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 

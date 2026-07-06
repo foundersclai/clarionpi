@@ -117,10 +117,40 @@ class DedupStatus(StrEnum):
 
 
 class TextSource(StrEnum):
-    """Where a page's text came from."""
+    """Where a page's text came from.
+
+    ``NONE`` is an image-only page with no text layer and no OCR result yet (a
+    ``zero_text`` page): OCR was skipped or has not run, so there is no text version to
+    attribute a source to.
+    """
 
     TEXT_LAYER = "text_layer"
     OCR = "ocr"
+    NONE = "none"
+
+
+class UploadSessionStatus(StrEnum):
+    """Lifecycle of a resumable batch-upload session.
+
+    (An async-commit ``completing`` state from the design doc is deliberately omitted: M1
+    commit is synchronous. The Wave C contract doc records the omission.)
+    """
+
+    OPEN = "open"
+    COMMITTED = "committed"
+    EXPIRED = "expired"
+
+
+class DedupResolution(StrEnum):
+    """Human resolution of a quarantined dedup decision — never auto-resolved.
+
+    A decision starts ``PENDING``; an attorney resolves it to ``KEPT`` (the new doc stands)
+    or ``SUPERSEDED`` (the new doc is a duplicate/subset and drops out of the ledger).
+    """
+
+    PENDING = "pending"
+    KEPT = "kept"
+    SUPERSEDED = "superseded"
 
 
 class FlagKind(StrEnum):

@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import (
     ClaimType,
     DeadlineKind,
+    DedupResolution,
     DedupStatus,
     DocStatus,
     DocType,
@@ -291,3 +292,41 @@ class MatterCreate(BaseModel):
     incident_date: date
     jurisdiction: str
     venue_county: str | None = None
+
+
+# --------------------------------------------------------------------------------------
+# Corpus-ingest input schemas (M1)
+# --------------------------------------------------------------------------------------
+
+
+class UploadFileDecl(BaseModel):
+    """One client-declared file in an upload-session registration."""
+
+    filename: str = Field(min_length=1, max_length=512)
+    size_bytes: int = Field(ge=0)
+
+
+class UploadRegister(BaseModel):
+    """Register a batch of files, opening an upload session with one slot per file."""
+
+    files: list[UploadFileDecl] = Field(min_length=1)
+
+
+class ReclassifyRequest(BaseModel):
+    """Attorney override of a document's classification."""
+
+    doc_type: DocType
+
+
+class DedupResolveRequest(BaseModel):
+    """Human resolution of a quarantined dedup decision. ``pending`` is not a valid action."""
+
+    resolution: Literal[DedupResolution.KEPT, DedupResolution.SUPERSEDED]
+
+
+class ClassifierOutput(BaseModel):
+    """The classifier's structured output — parsed from the model's JSON reply."""
+
+    doc_type: DocType
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = ""

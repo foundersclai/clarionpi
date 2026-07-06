@@ -13,6 +13,10 @@ dependencies = [
     "python-dateutil",
     "procrastinate",
     "httpx",
+    "pdfplumber",
+    "pypdfium2",
+    "pytesseract",
+    "pillow",
 ]
 
 [dependency-groups]
@@ -22,6 +26,14 @@ dev = [
     "mypy",
     "types-PyYAML",
     "hypothesis",
+    "reportlab",
+]
+
+[tool.pytest.ini_options]
+# `make test` runs `-m "not integration"`; register the marker so an unmarked-vs-marked split is
+# explicit (no PytestUnknownMarkWarning) and the fast suite stays deterministic and service-free.
+markers = [
+    "integration: needs long-running local resources; excluded from the fast suite",
 ]
 
 [tool.ruff]
