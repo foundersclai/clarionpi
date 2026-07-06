@@ -1,0 +1,28 @@
+# Arizona rule pack (v1 = AZ only).
+#
+# STATUS: UNAUDITED STUB. `audited: false` and every rule's `verify_status: unverified` —
+# the statute cites carry an explicit "(verify — counsel)" marker and the assumptions are
+# surfaced, never hidden. These are computation *candidates* for attorney confirmation at G1
+# (invariant 4); nothing here is a confirmed deadline. A legal cofounder audit replaces the
+# markers and flips the flags before this pack is treated as authoritative.
+pack: AZ
+version: 0.1.0
+audited: false
+
+deadline_rules:
+  - kind: sol
+    claim_type: mva
+    years: 2
+    statute_cite: "A.R.S. § 12-542 (verify — counsel)"
+    assumptions:
+      - "adult plaintiff — no tolling"
+      - "date of accrual = incident date"
+    verify_status: unverified
+
+  - kind: notice_of_claim
+    applies_when: "defendant may be a public entity"
+    days: 180
+    statute_cite: "A.R.S. § 12-821.01 (verify — counsel)"
+    assumptions:
+      - "public-entity defendant — confirm at G1"
+    verify_status: unverified
