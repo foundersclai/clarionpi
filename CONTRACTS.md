@@ -16,7 +16,7 @@ status truthfully (`implemented`/`stub`). `corpus` and `core` each back two cont
 
 | module path | contract doc | notes |
 |---|---|---|
-| backend/app/corpus | docs/module_contracts/app.corpus.ingest.md | status: stub (lands M1) — raw uploads to page store |
+| backend/app/corpus | docs/module_contracts/app.corpus.ingest.md | status: live (M1) — raw uploads to page store (sessions, classify, OCR fallback, dedup, phase0 SSE) |
 | backend/app/corpus | docs/module_contracts/app.corpus.extraction.md | status: stub (lands M2) — pages to anchored typed facts |
 | backend/app/engine/orchestrator | docs/module_contracts/app.engine.orchestrator.md | status: implemented (partial) — gate machine + audit |
 | backend/app/engine/brain2 | docs/module_contracts/app.engine.brain2.md | status: stub (lands M5) — approved structure to tokenized prose |

@@ -30,7 +30,7 @@ backend/app/models/     enums + pydantic schemas + ORM; every firm-scoped table 
 backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer
 backend/app/rules/      lawyer-audited YAML packs + deadline math (backend/app/rules/packs/ is data, not code)
 backend/app/money/      ALL currency arithmetic — integer cents, floats banned
-backend/app/corpus/     document ingest + extraction (M1+ stub at M0)
+backend/app/corpus/     document ingest (live M1: sessions, classify, OCR fallback, dedup, phase0 SSE) + extraction (M2 stub)
 backend/app/package/    demand package builder (M1+ stub at M0)
 backend/tests/          pytest suite, mirrors backend/app/
 docs/adr/               architecture decisions — read before changing architecture
@@ -92,3 +92,7 @@ scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual
 - `pip install -e . --group dev` (PEP 735 dependency groups) requires a reasonably
   recent pip (25.1+); this repo's venv has pip 26.1.2 and it works directly — no
   `pip install .[dev]`-style extras needed.
+- Ingest defaults are fail-visible, not silent: `OCR_ENGINE` defaults to `none`, so
+  image-only pages flag `zero_text` (set `OCR_ENGINE=tesseract` only if the binary is
+  installed); and `LLM_PROVIDER=null` (the default) means document classification degrades
+  to the review queue by design rather than blocking the pipeline.

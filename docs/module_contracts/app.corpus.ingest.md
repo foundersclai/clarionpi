@@ -6,10 +6,42 @@ Design source: [`backlog/pi/components/corpus_ingest.md`](../../backlog/pi/compo
 
 ## Status
 
-**Stub @ M0, lands M1.** `app/corpus` is a package stub (empty `__init__.py`).
-The `CaseDocument` / `DocumentPage` models and the `DocType`/`DocStatus`/
-`DedupStatus`/`TextSource` enums are in `app/models`. No ingest, classify, OCR,
-page-store, or dedup logic exists yet.
+**Live @ M1 (2026-07-06).** The ingest pipeline is implemented and tested under
+`backend/app/corpus/ingest/`:
+
+- `sessions.py` — resumable batch upload (register → PUT-per-slot → commit).
+- `classify.py` — Haiku document classification (metered; degrade-to-review).
+- `pages.py` — the per-page text pipeline (text-layer fast path → OCR fallback;
+  immutable page identity + append-only `PageText` history).
+- `dedup.py` — two-stage (exact page-hash + shingle) dedup, quarantined never merged.
+- `phase0.py` — the re-entrant `run_phase0` orchestration, streamed over SSE, wired at
+  `POST /api/matters/{id}/ingest/run`.
+
+The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-store door is
+`app/core/storage.py`. Extraction (`app.corpus.extraction`) remains an M2 stub.
+
+### M1 boundaries
+
+- **Local-disk storage door.** `presign_put` returns `None` on the local backend, so the
+  upload target is the slot-addressed `PUT /api/uploads/slots/{id}` (the dev "presign").
+  S3/MinIO lands with the prod account (S4/R2).
+- **OCR default `none`.** Engine selection is `OCR_ENGINE` (`none`/`fake`/`tesseract`); the
+  vendor choice is spike S1. A tesseract adapter is shipped but its binary is absent on the
+  bootstrap machine, so image-only pages flag `zero_text` by default rather than pretending
+  to OCR.
+- **Commit refuses incomplete sessions** (`UploadIncomplete`, naming the missing files) —
+  fail-loud, synchronous. There is no `completing` state; commit is not async at M1 (the
+  `UploadSessionStatus` omission is deliberate).
+- **Late-document runs leave the gate untouched.** `run_phase0` processes newly-`uploaded`
+  documents for a matter already past `corpus_processing`, but does not move the gate; the
+  consequence of late records (re-running analysis so the new pages reach the demand) lands
+  with the analysis re-run wave (M2/M3).
+- **TTL sweep is callable-not-scheduled.** `expire_stale_sessions` runs on an unscoped session
+  and is invoked directly by callers/tests; there is no scheduler at M1.
+- **`doc_state` payload vocabulary** (per the `run_phase0` stream):
+  `classifying` `{document_id}` · `classified` `{document_id, doc_type, needs_review}` ·
+  `ocr_done` `{document_id, pages_done}` · `failed` `{document_id, reason}` ·
+  `dedup_quarantined` `{document_id, dedup_status, against_document_id}`.
 
 ## Responsibility
 

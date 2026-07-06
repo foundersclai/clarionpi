@@ -77,14 +77,21 @@ Every factual assertion in any output resolves to one or more `(document, page)`
 anchors. Orphaned facts fail G3 — they render as a sentinel and log loudly, and
 never reach the wire.
 
-- **Enforced (M0):** the anchor type (`PageAnchor`) and the
+- **Enforced (M1):** corpus ingest is the provenance floor and is live —
+  `backend/app/corpus/ingest/pages.py` is the sole author of `DocumentPage`, and page
+  immutability is enforced in code and tests: the `(document_id, page_no)` anchor is a
+  unique constraint (`orm.py`), a re-OCR appends a new `PageText` version and only moves
+  `active_text_id` (`append_text_version`, never touching `page.id`/`page_no`/`image_ref`),
+  and the invariant is locked by a hypothesis property test
+  (`tests/corpus/test_pages.py`) plus the M1-exit scale run
+  (`tests/corpus/test_phase0_integration.py`). The anchor type (`PageAnchor`) and the
   non-empty-anchor discipline are modeled in `backend/app/models/schemas.py`
   (`MedicalEncounter.anchors`, `BillingLine.anchor`, `FactToken.anchors`); the
   token registry lives in `backend/app/engine/tokenizer` (see
   [app.engine.tokenizer](module_contracts/app.engine.tokenizer.md)).
 - **Deferred:** anchor-window validation at extraction, orphan→sentinel
   resolution, and the G3 hard block land **M2** (registry) → **M5** (compliance
-  panel). Corpus ingest is the provenance floor and lands **M1**.
+  panel).
 
 ### 3. The LLM Never Does Arithmetic
 
@@ -150,15 +157,18 @@ Every external egress (LLM, OCR, storage, email, error tracking) is on a
 maintained BAA inventory. No PHI to non-BAA endpoints, including any client-side
 analytics on matter pages.
 
-- **Enforced (M0):** the tenancy substrate lives in `backend/app/core` —
+- **Enforced (M1):** the tenancy substrate lives in `backend/app/core` —
   every firm-scoped table carries `firm_id` (`schemas.py`, the ORM), which is the
-  isolation primitive the envelope is built on. Cross-cutting home is `app/core`
-  (see [app.core.llm_telemetry](module_contracts/app.core.llm_telemetry.md) and
+  isolation primitive the envelope is built on. The object store is now inside the local
+  envelope: `app/core/storage.py` is the single sanctioned path to case blobs (traversal-safe
+  relative keys; `local` backend only at M1), and OCR egress defaults to `none` — no PHI
+  leaves the box for OCR until the S1 vendor (with its BAA) is wired. Cross-cutting home is
+  `app/core` (see [app.core.llm_telemetry](module_contracts/app.core.llm_telemetry.md) and
   [app.core.matter_budget](module_contracts/app.core.matter_budget.md), which
   both point at the shared substrate).
-- **Deferred:** the checked-in BAA egress inventory, the object-store adapter,
-  PHI-access audit logging, and the OCR-vendor wiring land **M1** (ingest) with
-  the `app/core` auth/audit workstream.
+- **Deferred:** the checked-in BAA egress inventory is still the gating document for **R2**;
+  the S3/MinIO object-store backend (prod account), PHI-access audit logging, and the
+  live OCR-vendor + LLM-provider wiring land with that BAA/vendor decision (**S1/S4**).
 
 ### 8. Role-Gated Sign-Off
 
@@ -257,11 +267,14 @@ context (matter id, document/page, registry version, gate, token ids, ledger
 hash). Per-matter run logs (ingest / extraction / rules / drafting) are written
 for every phase; debugging starts from logs.
 
-- **Enforced (M0):** this is a standing engineering discipline (see
-  [`docs/debugging-policy.md`](debugging-policy.md)); the per-matter
-  run-log sink is an `app/core` responsibility.
-- **Deferred:** the `AgentRunLogger`-analog dual-emit (root logger + per-matter
-  files) lands with the `app/core` telemetry/logging workstream (**M1**).
+- **Enforced (M1):** the per-matter run-log sink is live —
+  `app/core/matter_logs.py::MatterRunLogger` dual-emits each JSON line to a
+  `<logs_dir>/<matter_id>/<phase>.log` file **and** the root logger, and the ingest phase
+  writes one (`run_started` → per-doc `doc_classified`/`doc_pages_built`/`doc_dedup` →
+  `gate_advanced`/`late_documents_processed` → `run_completed`, plus `run_error` on an
+  unexpected failure). Debugging a silent corpus problem starts from that file. This remains a
+  standing engineering discipline (see [`docs/debugging-policy.md`](debugging-policy.md)).
+- **Deferred:** the analysis / rules / drafting phase run logs land with those phases (**M2+**).
 
 ## Contract Change Workflow
 
