@@ -16,7 +16,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.deps import seed_dev_firm_and_user
+from app.api.routes.documents import router as documents_router
+from app.api.routes.ingest import router as ingest_router
 from app.api.routes.matters import router as matters_router
+from app.api.routes.uploads import router as uploads_router
 from app.core.config import get_settings
 from app.core.db import create_all_for_tests, get_engine, get_session_factory
 
@@ -42,6 +45,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="ClarionPI", lifespan=lifespan)
 app.include_router(matters_router)
+app.include_router(uploads_router)
+app.include_router(documents_router)
+app.include_router(ingest_router)
 
 
 @app.get("/healthz")
