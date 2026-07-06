@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -74,6 +74,7 @@ _LOG = logging.getLogger("clarionpi.registry")
 _REASON_EXTRACTION = "extraction_sync"
 _REASON_LEDGER = "ledger_sync"
 _REASON_ATTORNEY = "attorney_fact"
+_REASON_EXHIBIT = "exhibit_sync"
 
 
 def token_str(kind: TokenKind, ordinal: int) -> str:
@@ -488,6 +489,41 @@ def mint_amounts(
         for a in amounts
     ]
     return _apply_desired(db, matter=matter, desired=desired, reason=_REASON_LEDGER)
+
+
+def mint_exhibits(
+    db: Session, *, matter: Matter, entries: Sequence[Mapping[str, object]]
+) -> RegistrySyncOutcome:
+    """Register ``[[EX]]`` exhibit tokens for a matter's collated picks — mint, never resolve order.
+
+    Each ``entry`` is a mapping with ``key`` (the source document id as a string), ``display_form``
+    (e.g. ``"Exhibit 1 — bill.pdf"``), and ``anchors`` (a list of :class:`PageAnchor` dicts, one per
+    included page). A token is keyed by ``exhibit:<key>`` so re-minting the same document's exhibit
+    resolves to the same slot (idempotent). Kind ``EXHIBIT``, source ``ATTORNEY`` (a pick is a human
+    election), status ``VERIFIED`` — the caller (``app.package.manifest.build_draft_manifest``) only
+    hands over entries whose integrity already passed, so the token is verified on arrival. Value is
+    ``{"document_id": <key>, "included_pages": [...]}`` (the pages pulled off the anchors), so a
+    content change (added/removed page) supersedes the slot. Bumps once (``exhibit_sync``) iff
+    anything changed; commits at the end — same idempotency/versioning machinery as
+    :func:`mint_amounts`.
+    """
+    desired: list[_Desired] = []
+    for entry in entries:
+        key = str(entry["key"])
+        anchors = _anchor_dicts(entry.get("anchors"))
+        included_pages = [a["page"] for a in anchors if "page" in a]
+        desired.append(
+            _Desired(
+                source_ref=f"exhibit:{key}",
+                kind=TokenKind.EXHIBIT,
+                source=TokenSource.ATTORNEY,
+                display_form=str(entry["display_form"]),
+                value={"document_id": key, "included_pages": included_pages},
+                anchors=anchors,
+                status=TokenStatus.VERIFIED,
+            )
+        )
+    return _apply_desired(db, matter=matter, desired=desired, reason=_REASON_EXHIBIT)
 
 
 def mint_attorney_fact(
