@@ -1,0 +1,74 @@
+# app.engine.tokenizer
+
+Backs [`system_contract.md`](../system_contract.md) invariants **2, 5, 10, 11**.
+Module path: `backend/app/engine/tokenizer`.
+Design source: [`backlog/pi/components/fact_registry.md`](../../backlog/pi/components/fact_registry.md).
+
+## Status
+
+**Stub @ M0, lands M2.** The package exists (empty `__init__.py`). The `FactToken`
+model + `TokenKind`/`TokenStatus`/`TokenSource` enums are in `app/models`. No
+mint, resolve, versioning, or orphan-handling logic exists yet.
+
+## Responsibility
+
+**The spine.** One **per-matter namespace** of typed facts — `[[FACT_n]]`,
+`[[AMT_n]]`, `[[CITE_n]]`, `[[EX_n]]` — each carrying `value`, `display_form`,
+anchors, verification status, and source (`extractor | attorney | rules`). This is
+the **only minter of tokens** and the single resolution authority: it answers
+*token → display form* for Brain-2 prompts (fabrication-safe) and *token → value +
+anchors* for the renderer, provenance viewer, and compliance panel. It is
+**versioned** (`registry_version` bumps on any post-freeze fact change; G2.5/G3
+approvals bind to a version) and **freezes at G2a confirm**.
+
+**Not responsible for:** *computing* values (`app.money.ledger` owns arithmetic;
+the registry only *stores* the `[[AMT]]` result + `ledger_hash`); deciding what
+enters the letter (attorney gates); extracting facts (`app.corpus.extraction`).
+
+## Owns / Consumes / Produces
+
+| Direction | Item | Counterpart |
+|---|---|---|
+| Owns | `FactToken` (the versioned registry) + `RegistryVersion` | — |
+| Consumes | anchored `MedicalEncounter` / `IncidentFacts` to tokenize | app.corpus.extraction |
+| Consumes | `[[AMT]]` facts (value + `ledger_hash`) | app.money.ledger |
+| Consumes | attorney-added facts + dispositions (`source=attorney`) | app.engine.orchestrator (G1/G2a) |
+| Consumes | rules-derived facts (deadlines, required terms; `source=rules`) | app.rules.jurisdiction |
+| Produces | token → display form (prompt-safe) | app.engine.brain2 |
+| Produces | token → resolution (verify + value) | app.engine.compliance |
+| Produces | token → value + anchors (render) | app.package.builder |
+| Produces | token → anchors (click-through) | app.api.view_models → frontend |
+
+## Invariants enforced
+
+- **[2]** Every token carries anchors; render resolution runs anchor integrity;
+  unanchored/broken → block, not wire.
+- **[5]** Prompt resolution exposes only `display_form` (Brain-2 never sees raw
+  names/cites/amounts); adverse facts are tokens with stance metadata, **one
+  namespace** (the deliberate TM doctrine-fit carry-over — not segregated
+  legends).
+- **[10]** The registry is derived state — rebuildable from extractor rows +
+  attorney elections + rules; versioning makes rebuilds addressable. Token ids are
+  **stable and never reused across versions** (`FACT_12` is the same fact-slot
+  forever).
+- **[11]** An orphan (a token nothing resolves) renders as a **sentinel** + loud
+  log + a **hard G3 block** — never the raw token, never a guessed value.
+
+## Vocabulary
+
+`FactToken` (`token_id`, `kind`, `value`, `display_form`, `anchors`, `status`,
+`source`; AMT-only `ledger_ref`/`snapshot_value`/`ledger_hash`) · `RegistryVersion`
+(`frozen` from G2a; `parent_version`, `change_reason`) · `ResolutionResult.outcome`
+∈ {`ok`, `orphan`, `integrity_fail`, `amt_mismatch`, `unverified_block`} · two
+resolution modes (**prompt** = display_form only; **render** = value + anchors +
+integrity).
+
+## Change rule
+
+A boundary change requiring a contract update: adding a token kind or changing the
+single-namespace rule; changing the `FactToken` shape, the versioning/freeze
+semantics, or token-id stability; changing the `[[AMT]]` re-verification
+(`ledger_hash`) contract with `app.money.ledger`; changing the orphan/sentinel
+policy. **Only `app.engine.tokenizer` mints tokens** — a mint anywhere else is a
+boundary breach. Update this file **and**
+[`system_contract.md`](../system_contract.md) §2/5/10/11 in the same PR.
