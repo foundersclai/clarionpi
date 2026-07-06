@@ -23,12 +23,20 @@ read + EX-mint, source-row ledger read/edits, chronology overlays; `routes/analy
 — the analysis SSE run + the risk-flag disposition). The analysis + late-docs runs
 are the first SSE streams over the wire.
 
-**Deferred:** SSE journal / `Last-Event-ID` replay still lands with the demand streams
-(**M5**) — the gates wire is request/response, and the analysis/ingest streams are
-fire-and-forward (no journal). The G2.5/G3 view-models land **M5** (today they are the
-honest `minimal_gate_vm` placeholder). The scanner is applied **explicitly** per
-response at M4 (every gate envelope AND every evidence/analysis JSON response);
-promoting it to a response middleware is still planned **M4+**.
+**Extended @ M5.** The drafting/compliance/package surface is live: the G2.5/G3/package
+view-models (`view_models.py::plan_review_vm` / `compliance_review_vm` / `package_vm` +
+`artifact_sets_view`) and the drafting routes (`routes/drafting.py` — plan emit, the demand
+generate SSE run, the finding-action route, the package build SSE run, artifact list +
+byte download). The demand + package runs are SSE (a `post_draft` compliance pre-check runs
+INSIDE the demand stream); the compliance panel exposes each section's RENDERED preview,
+never the tokenized body.
+
+**Deferred:** SSE journal / `Last-Event-ID` replay is still deferred — the gates wire is
+request/response, and the analysis/ingest/demand/package streams are fire-and-forward (no
+journal). The scanner is applied **explicitly** per response (every gate envelope AND every
+evidence/analysis/drafting JSON response); promoting it to a response middleware is still
+planned. The rendered-letter span map (span_id → fact_id) reaches the FE viewer at **M6**
+(the render spans persist on `DraftSection.spans` now).
 
 ## Responsibility
 
@@ -89,6 +97,27 @@ are minted; ledger serialization is integer cents only and surfaces
 `missing_paid_line_ids` / `excluded_line_ids` — a gap is shown, never swallowed;
 tokens resolved to display forms so nothing token-shaped survives; `None` ledger when
 the jurisdiction pack is unsupported) / `minimal_gate_vm` (honest placeholder) ·
+**M5 gate view-models** (all budget-free; nothing token-shaped survives):
+`plan_review_vm` (`{plan, plan_missing, registry_version_current}` — the latest
+`StrategyPlan` view or `None`; the FE compares the plan's `registry_version` to
+`registry_version_current` to surface plan-level drift) / `compliance_review_vm`
+(`{draft, sections, findings, open_blocking, buckets}` — `draft` is
+id/version/registry_version/status/memo; `sections` carry the RENDERED preview + BARE-id
+spans, **never** the tokenized body (inv 11); `findings` are `ComplianceFindingView`s
+ordered blocking-first then oldest; `open_blocking` is the exact G3-guard count;
+`buckets` = `{mechanical, semantic}` over the OPEN findings) / `package_vm`
+(`{artifact_sets, buildable}` — `buildable` true only at `package_assembly` when the
+latest draft is `approved`) · `artifact_sets_view` (latest first; each artifact is
+`{kind, sha256, byte_count, url}` — the `object_key` is INTERNAL and never on the wire,
+only the kind-keyed download `url`) · **drafting-route error vocabulary**:
+`matter_not_found`/`finding_not_found`/`artifact_not_found` → `404`,
+`gate_state_mismatch` → `409`, `letter_structure_missing` → `422`,
+`hard_block_not_disposable` → `409`, `role_forbidden` → `403`,
+`disposition_reason_required`/`disposition_action_not_supported` → `422`; the demand SSE
+converts a structural `post_draft` escape (`compliance_snapshot_drift` /
+`draft_registry_drift`) into a trailing `error` frame, and the package SSE surfaces
+`binder_blocked` / `artifact_token_leak` / `binder_page_missing` / `no_draft` as `error`
+frames with NO advance (the state unchanged) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:
@@ -100,11 +129,14 @@ monotonic-`id` `Last-Event-ID` **replay is deferred to the analysis/demand strea
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing a REST route or
-SSE event (incl. the M4 evidence/analysis routes — picks, PHI, manifest, billing
-read/edits, chronology overlay, analysis run, flag disposition — and their typed
-error shapes); changing a request/response shape or status code (incl. the gate
-envelope, a per-gate view-model builder's shape, or the `evidence_review_vm` key set /
-its GET-never-spends-LLM + ledger-serialization rules); changing the wire-scanner
+SSE event (incl. the M4 evidence/analysis routes and the M5 drafting routes — plan
+emit, demand generate, finding action, package build, artifact list/download — and
+their typed error shapes); changing a request/response shape or status code (incl. the
+gate envelope, a per-gate view-model builder's shape, the `evidence_review_vm` key set /
+its GET-never-spends-LLM + ledger-serialization rules, the M5 `plan_review_vm` /
+`compliance_review_vm` / `package_vm` key sets, the `artifact_sets_view`
+object_key-never-on-wire rule, or the drafting-route error vocabulary); changing the
+wire-scanner
 policy (raise/scrub, or where it is applied), the submit-schema closure, the
 `role_affordances` contract, or the span-map contract; changing the
 role→gate-action map or the tenancy-scoping injection (incl. the 404-not-403

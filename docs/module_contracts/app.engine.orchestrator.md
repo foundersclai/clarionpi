@@ -16,9 +16,21 @@ writes one `GateRecord` + the audit mirror — all in **one transaction** (a ref
 action rolls back whole). The five pinned service decisions are recorded in
 [ADR-0005](../adr/0005-m3-gate-service-decisions.md).
 
-**Still lands M4/M5:** the analysis/demand run coordination + SSE channel and the
-Procrastinate (background-job) decision (M4); the G2.5 plan-version pin and the G3
-package-kick side-effects (M5 — registered now as documented no-ops).
+**Extended @ M5:** the G2.5 side effect is real — `_approve_plan_version` pins + stamps
+the matter's latest `StrategyPlan` (`approved`/`approved_by`/`approved_at`) in the action
+transaction, refusing with a `GuardRefused`-shaped `plan_missing` (no plan emitted) /
+`plan_registry_drift` (the plan-level bind — the latest plan's `registry_version` != the
+matter's; distinct from the transition's matter-level `registry_version_match` guard,
+which pins the matter to its frozen version). The G2.5 EDIT surface re-emits a new
+unapproved plan version ("edits re-emit the plan, not prose"): `_apply_plan_review_edits`
+copies the latest plan, applies top-level + per-section overrides (an unknown `section_id`
+→ `UnknownPlanSection` `422` — the pack skeleton is the source of truth, an edit never
+invents a section), and audits `strategy_plan_edited`. The G3 `no_blocking_findings` guard
+is now fed by `build_guard_context` reading `compliance.open_blocking_count` over the
+matter's latest draft. The package `ARTIFACTS_BUILT` advance is driven by the drafting
+route (`machine.advance`), not a service side effect.
+
+**Still deferred:** the Procrastinate (background-job) decision for the run coordination.
 
 ## Responsibility
 
@@ -75,20 +87,27 @@ fence, no schema change) · client-minted `idempotency_key` (unique per matter;
 duplicate **replays** the first outcome with the current state) ·
 `dry_run_approve_blockers` (side-effect-free guard preview for the wire) ·
 `_SIDE_EFFECTS` (per-`(state, event)` in-transaction callables; G2a freezes the
-`RegistryVersion`, G2.5/G3 reserved for M5). **Typed refusals → HTTP:**
+`RegistryVersion` (`_freeze_registry_version`), G2.5 pins the plan
+(`_approve_plan_version`); the G3→package advance is the drafting route's, not a service
+side effect) · `_EDITABLE_GATES` (`facts_review`, `strategy_intake`, and `plan_review` —
+the M5 plan-edit re-emits a new `StrategyPlan` version). **Typed refusals → HTTP:**
 `GateStateMismatch`/`StalePayloadVersion`/`IllegalGateAction`/`OverrideRequired`
-→ `409`; `GuardRefused` → `409` (except `role_attorney` → `403 role_forbidden`);
-`OverrideReasonRequired`/`UnknownDeadlineRule`/`EditsNotSupported`/`InvalidEdits`/
-`InvalidIdempotencyKey` → `422`.
+→ `409`; `GuardRefused` → `409` (except `role_attorney` → `403 role_forbidden`) — its
+subclasses `PlanMissing` (`plan_missing`) / `PlanRegistryDrift` (`plan_registry_drift`)
+surface as `409 guard_failed` `{guard: "strategy_plan", code: ...}` with zero new mapping;
+`OverrideReasonRequired`/`UnknownDeadlineRule`/`UnknownPlanSection`/`EditsNotSupported`/
+`InvalidEdits`/`InvalidIdempotencyKey` → `422`.
 
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing a `GateState` or
 `GateEvent`; changing a transition guard, the role required at an edge, or the
-invalidation-matrix routing; changing what pins or checks `registry_version`;
-changing the SSE vocabulary the channel emits; adding a new run kind; changing the
-service surface (the `apply_gate_action` step order, `GATE_EVENT_BY_APPROVE`, the
-`payload_version` formula, the idempotency/replay semantics, the typed-refusal →
-HTTP mapping, or the side-effect registry). A change to any of these lands with a
-new ADR (cf. [ADR-0005](../adr/0005-m3-gate-service-decisions.md)). Update this
-file **and** [`system_contract.md`](../system_contract.md) §1/4/8/9/12 in the same PR.
+invalidation-matrix routing; changing what pins or checks `registry_version` (incl. the G2.5 plan-level bind vs the
+matter-level `registry_version_match`); changing the SSE vocabulary the channel emits;
+adding a new run kind; changing the service surface (the `apply_gate_action` step order,
+`GATE_EVENT_BY_APPROVE`, `_EDITABLE_GATES` / the plan-edit re-emit path, the
+`payload_version` formula, the idempotency/replay semantics, the typed-refusal → HTTP
+mapping, or the side-effect registry). A change to any of these lands with a new ADR (cf.
+[ADR-0005](../adr/0005-m3-gate-service-decisions.md),
+[ADR-0007](../adr/0007-m5-drafting-decisions.md)). Update this file **and**
+[`system_contract.md`](../system_contract.md) §1/4/8/9/12 in the same PR.

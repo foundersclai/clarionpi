@@ -67,9 +67,13 @@ decide strategy, skip a gate, or retry until a proxy judge is satisfied.
   [app.engine.orchestrator](module_contracts/app.engine.orchestrator.md)); the
   ten states are `backend/app/models/enums.py::GateState`. Illegal `(state,
   event)` pairs are refused, never transitioned.
-- **Deferred:** the drafting/compliance loop bodies (`engine.brain2`,
-  `engine.compliance`) are package stubs — the section-regen and G3 approval
-  guards land **M5**.
+- **Enforced (M5):** the drafting/compliance loop bodies are live and gated —
+  `backend/app/engine/brain2` drafts only after the G2.5 plan approve (the
+  `_approve_plan_version` side effect pins the plan), a section that fails deterministic
+  validation twice **surfaces** (`surfaced_failed`) rather than looping, and the G3 approve
+  guard (`no_blocking_findings`, fed by `compliance.open_blocking_count`) refuses a draft
+  with any open blocking finding. Bounded correction (span-patch / single-section regen) is
+  narrow structural repair with a mandatory re-verify, never a strategy decision.
 
 ### 2. Provenance Or It Doesn't Ship
 
@@ -97,8 +101,14 @@ never reach the wire.
   window_id)` anchor. `resolve_for_render` runs anchor integrity — a token anchored
   only on a dedup-superseded document resolves `unverified`, and an orphan resolves
   to the `SENTINEL` with a loud log.
-- **Deferred:** the orphan/`unverified` **hard G3 block** (the resolver reports the
-  outcome; the gate that blocks on it) lands **M5** (compliance panel).
+- **Enforced (M5):** the orphan/dead-anchor **hard G3 block** is live — the compliance
+  panel's `orphan_token` and `dead_anchor` deterministic checks
+  (`backend/app/engine/compliance/checks.py`) are in `HARD_BLOCK_KINDS` (never overridable
+  to ship), and the package builder's provenance report is the per-demand proof that every
+  rendered fact resolves to a live `(doc, page)` anchor (Part 1's completeness property).
+  `dead_anchor` adds the page-bounds probe the registry mint-time check lacks (an anchor page
+  beyond `page_count`). A missing/superseded exhibit page fails the binder build
+  (`BinderPageMissing`), not a silent gap at delivery.
 
 ### 3. The LLM Never Does Arithmetic
 
@@ -120,6 +130,15 @@ it computed.
   mints `[[AMT]]` tokens from `amounts_for_registry`, storing the value + `ledger_hash`
   snapshot, and drift is caught by re-hashing at render (`resolve_for_render`
   `amt_mismatch`), never by mutating a stored value.
+- **Enforced (M5):** the G3 panel re-verifies every `[[AMT_n]]` against the LIVE ledger
+  hash — `compliance/checks.py::_check_amt_ledger_mismatch` re-hashes the current ledger and
+  flags any token whose stored `ledger_hash` no longer matches (a billing edit that landed
+  after render), an `amt_ledger_mismatch` hard block; a ledger it cannot load flags every AMT
+  (fail-visible). Drafting stays arithmetic-free: the drafter writes `[[AMT_n]]` tokens only,
+  the deterministic validator rejects any literal `$…` figure, and `prose_total_mismatch`
+  catches a rendered dollar literal that matches no AMT display form. The letter renders each
+  amount from its token's display form (`cents_to_display`) — asserted ledger-exact in the
+  M5-exit E2E.
 
 ### 4. Deadlines Are Deterministic And Attorney-Confirmed
 
@@ -164,8 +183,14 @@ kinds (`FACT/AMT/CITE/EX`).
   `display_form` (Brain-2 never sees raw names/cites/amounts), `resolve_text_for_wire`
   asserts nothing token-shaped survives onto a wire, and a missing token resolves to
   the `SENTINEL` (`"[UNRESOLVED FACT]"`, deliberately not token-shaped).
-- **Deferred:** the G2a version freeze and the drafter that consumes display forms
-  (`engine.brain2`) land **M5**.
+- **Enforced (M5):** the drafter consumes display forms and emits tokens only —
+  `backend/app/engine/brain2/drafter.py` builds the section contract with each allowed
+  token's `resolve_for_prompt` display form (never a raw name/amount/cite), the deterministic
+  validator (`validator.py`) rejects an unregistered/disallowed token and any literal `$…`
+  figure, and `renderer.py` resolves the tokenized body to a preview with a per-token span
+  and asserts NOTHING token-shaped survives. The four artifacts re-scan every string
+  (`ArtifactTokenLeak`) so no token reaches a deliverable. The G2a version freeze landed at
+  **M4** (`_freeze_registry_version`); the plan + draft bind to that frozen `registry_version`.
 
 ### 6. Adverse Facts: Surface Always, Volunteer Never
 
@@ -189,10 +214,13 @@ without disposition = `address_in_letter`, and are never silently dropped.
   open (`409 override_required`) unless proceeded over via an audited override (the
   `requires_override` path); `open_high_severity_count` is the single named predicate
   the guard reads.
-- **Deferred:** the **no-volunteer** drafter constraint (a flag reaches the letter
-  only when dispositioned `address_in_letter`) is Brain-2's hard-constraint handoff at
-  **M5**, and the `undisposed_adverse` G3 block lands with the compliance panel
-  (**M5**).
+- **Enforced (M5):** the **no-volunteer** drafter constraint is live —
+  `backend/app/engine/brain2/constraints.py::build_hard_constraints` buckets each flag by
+  disposition into the late-bound hard-constraint block: `address_in_letter` → "Address in the
+  letter", while `omit_with_rationale` / `need_more_records` / an UNDISPOSITIONED adverse flag →
+  "Never mention or allude to" (an undispositioned adverse is no-volunteer by the conservative
+  default). The `undisposed_adverse` G3 block is live (`compliance/checks.py`,
+  `HARD_BLOCK_KINDS`): any undispositioned adverse flag is one hard-block finding.
 
 ### 7. PHI Stays Inside The BAA Envelope
 
@@ -240,8 +268,15 @@ UI state.
   **derived computation** over already-approved inputs (any authenticated firm member
   may trigger it — the G1.5 approval that authorized it already crossed the gate), not
   a human gate act.
-- **Deferred:** the demand-run stream authorization lands **M5**; TOTP (second factor)
-  is restated for **R2** (ADR-0004 decision 2).
+- **Enforced (M5) for the demand/package runs:** the drafting routes
+  (`routes/drafting.py`) are behind `get_current_user` + a firm-scoped `get_tenant_session`
+  (a cross-firm matter `404`s, never `403`), and each SSE run is fenced to its gate
+  (`demand/generate` → `drafting`, `package/build` → `package_assembly`, else `409
+  gate_state_mismatch`). Plan emit + demand generate authorize as derived computations over
+  the approved plan (any firm member); the attorney-only acts are the G3 approve guard and
+  the finding **disposition** (`FindingDispositionForbidden -> 403`). The `ARTIFACTS_BUILT`
+  advance moves only through `machine.advance` in the run.
+- **Deferred:** TOTP (second factor) is restated for **R2** (ADR-0004 decision 2).
 
 ### 9. Attorney Final + Auditable
 
@@ -260,8 +295,14 @@ Overrides are `requires_override` (allowed, logged with a reason) vs `unavailabl
   `override_reason_required`), recorded on the record (allowed-but-logged);
   `high_severity_open` surfaces as `409 override_required` vs a hard-stop
   `guard_failed` (**ADR-0005** decisions; ADR-0004 for the audit substrate).
-- **Deferred:** the demand-**package** completeness / G3 sign-off (the whole-letter
-  auditable-final block) lands **M5** with the compliance panel.
+- **Enforced (M5) for G2.5/G3 sign-off:** the G2.5 plan approve and the G3 compliance
+  approve are in the audited-gate set — each writes a `GateRecord` + `AuditEvent` through
+  `apply_gate_action`, the G2.5 side effect stamps `approved`/`approved_by`/`approved_at`
+  on the plan, and a finding disposition writes its own `compliance_finding_dispositioned`
+  audit (an OVERRIDE recorded with a reason, surfaced in the provenance report's judgment-call
+  log). The G3 approve refuses a draft with any open blocking finding (`no_blocking_findings`);
+  the package build writes an `artifact_set_built` + `package_ready` audit, and each artifact
+  download is audited (`artifact_downloaded`).
 
 ### 10. Extracted Facts, Human Elections, And Derived State Stay Separate
 
@@ -295,10 +336,17 @@ state, never a fabricated default. Nothing token-shaped reaches the frontend.
   (`wire_guard.scan_wire_payload`) runs on every gate envelope — dev/test raise
   `TokenLeak` (500 + loud log), prod scrubs to the registry `SENTINEL` + logs
   `clarionpi.wire`. The prod sentinel backstop is deliberately not token-shaped.
-- **Deferred:** promoting the scanner from explicit per-route calls to a response
-  middleware (**M4+**), and the rendered-letter span map (span_id → fact_id) land
-  with the demand streams (**M4/M5**); SSE `Last-Event-ID` replay is deferred to
-  those streams too.
+- **Enforced (M5) at the drafting/package wire:** the M5 view-models
+  (`plan_review_vm` / `compliance_review_vm` / `package_vm`) are wire-scanned like the
+  rest — the compliance panel exposes each section's RENDERED preview + BARE-id spans,
+  NEVER the tokenized `body_tokenized` (a `[[FACT_n]]` string would trip the scanner). The
+  artifact serializer (`artifact_sets_view`) surfaces only `{kind, sha256, byte_count, url}`
+  — the internal `object_key` never reaches the wire — and every artifact builder re-scans
+  its strings before finalizing (`ArtifactTokenLeak` on a survivor), so no token reaches a
+  deliverable (asserted in the M5-exit E2E: `letter.docx` has zero token matches).
+- **Deferred:** promoting the scanner to a response middleware, and the rendered-letter span
+  map (span_id → fact_id) at the FE viewer (**M6** — the render spans persist on
+  `DraftSection.spans` now); SSE `Last-Event-ID` replay is deferred too.
 
 ### 12. Per-Matter AI Cost Is Metered And Capped
 
@@ -337,8 +385,16 @@ checks (token membership, ledger-hash equality, anchor existence) are pure code.
   the `merge_tiebreak` model; a pair the model can't reach is left **unmerged and
   counted**, never guessed in code. Ledger-hash equality and anchor existence
   (`app.money.specials`, `app.engine.tokenizer`) are pure-code mechanical checks.
-- **Deferred:** the compliance panel that runs both families (`engine.compliance`)
-  is a stub; it lands **M5**.
+- **Enforced (M5):** the compliance panel runs both families — `checks.py` owns the seven
+  deterministic code predicates (token membership, live ledger-hash equality, anchor existence,
+  page bounds), `judge.py` owns the three semantic verdicts (Sonnet). Neither side post-filters
+  the other: a semantic finding is never regex-patched (a fix is a snapshot-neutral regen or an
+  audited disposition), and a judge claiming a mechanical `check_kind` fails the
+  `JudgeFindingBatch` schema. Drafter↔judge **snapshot symmetry** is load-bearing — the judge
+  rebuilds the drafter's `DrafterPromptSnapshot` and re-hashes its `input_hash`; a mismatch
+  fails the run loudly (`SnapshotDrift`), so it grades the drafted world, not a drifted one. A
+  judge that cannot return a valid verdict emits a fail-visible BLOCKING marker, never a silent
+  clean.
 
 ### 14. Silent Wrong Output Requires Diagnostics Before Fixes
 
@@ -360,7 +416,13 @@ for every phase; debugging starts from logs.
   (`run_started` → `registry_synced` / `chronology_built` / `ledger_amounts_minted` /
   `risk_flags_generated` → `gate_advanced` → `run_completed`, plus `run_error`), so a
   silent analysis problem starts from that file.
-- **Deferred:** the rules / drafting phase run logs land with those phases (**M5**).
+- **Enforced (M5):** the drafting phase writes its own per-matter run log —
+  `engine/brain2/generate.py` runs under `MatterRunLogger(matter.id, "demand")`
+  (`run_started` → `draft_created` / `memo_generated` → per-section
+  `section_retry` / `section_passed` / `section_surfaced_failed` → `gate_advanced` /
+  `draft_incomplete` → `run_completed`, plus the typed refusals), so a silent drafting
+  problem starts from that file.
+- **Deferred:** the rules phase run log lands with the `HybridEngine` lookup.
 
 ## Contract Change Workflow
 

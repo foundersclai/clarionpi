@@ -6,8 +6,61 @@ Design source: [`backlog/pi/components/package_builder.md`](../../backlog/pi/com
 
 ## Status
 
-**Manifest read-model live @ M4; artifact builds land M5.** `app/package/manifest.py` is
-implemented and tested — the *preview* of the M5 exhibit binder:
+**Live @ M5 (all four artifacts build).** `app/package/manifest.py` (the M4 read-model
+below) plus the M5 builders: `artifacts.py` (`letter.docx` + `chronology.xlsx`),
+`binder.py` (the exhibit `binder.pdf` — collation + continuous Bates + index + bookmarks),
+`provenance.py` (the `provenance_report.pdf` audit trail), and `build.py` (the `ArtifactSet`
+orchestration — build all four, gate, store, record, immutably). Wired on the wire by
+`app/api/routes/drafting.py` (the `package/build` SSE run + the list + the byte download).
+The M5-exit E2E (`tests/api/test_m5_exit_flow.py`) builds + downloads all four over HTTP.
+Decisions recorded in [ADR-0007](../adr/0007-m5-drafting-decisions.md).
+
+### M5 build (the four artifacts)
+
+- **`build_artifact_set` is atomic + immutable, keyed by `(matter, draft_version,
+  registry_version)`.** An existing set for that triple is returned `reused=True` (a rebuild
+  after drift is a NEW set under new versions, never an overwrite); otherwise all four
+  artifacts build (and the binder gate passes) BEFORE any row is written — a `BinderBlocked`
+  / `ArtifactTokenLeak` / `BinderPageMissing` propagates with nothing persisted. It does NOT
+  transition the gate (the route owns the `ARTIFACTS_BUILT` advance). Each artifact stores
+  under `matters/{id}/artifacts/v{draft_version}.{registry_version}/{filename}`; the row's
+  `artifacts` JSON is `[{kind, object_key, sha256, byte_count}]`.
+- **Byte-determinism (inv 10) — sha-stable across builds, asserted.** No wall-clock enters the
+  bytes: docx/xlsx pin their core/workbook properties to a fixed timestamp; the binder + the
+  provenance report draw with reportlab `invariant=1` (no wall-clock CreationDate, no random
+  id) and the binder pins the pypdf metadata dates + a fixed 16-byte file `/ID`. The
+  `ArtifactSet.created_at` is a separate DB default, deliberately NOT in the bytes.
+- **The binder: continuous Bates + blocking gate + integrity double-check.** A non-empty
+  manifest `blocking` list raises `BinderBlocked` (the M5 build gate — pending PHI / non-`ok`
+  integrity never ships). Bates are continuous `f"{prefix}{n:05d}"` starting `00001` AFTER the
+  unstamped index page, in manifest order, deterministically; the prefix is
+  `settings.bates_prefix` (`"CP"`). An included page beyond the SOURCE PDF's real page count (a
+  re-ingest/corruption mismatch the stored `page_count` missed) raises `BinderPageMissing`. One
+  bookmark per exhibit at its first collated page; the index page lists each exhibit's bare
+  token id + filename + Bates range.
+- **The letter: rendered previews only; the memo is excluded.** `build_letter_docx` writes a
+  generated letterhead (firm-name heading + rule — template ingestion is a recorded open
+  question) + a `Re:` line + one heading-and-body per PASSED section (the `rendered_preview`,
+  never the tokenized body). Every paragraph is token-scanned (`ArtifactTokenLeak` on a
+  survivor). The `memo` is accepted for a stable signature but NEVER written into the letter (an
+  attorney artifact, never sent to the carrier — ADR-0007).
+- **The provenance report (inv 2) is re-runnable + complete.** `build_provenance_report` reads
+  the DB but writes no rows (the M6 export seam): Part 1 walks each section's spans and resolves
+  each token live (display form + outcome + source doc/page anchors) — the **completeness
+  property**: exactly one fact entry per rendered span across the sections (asserted in the
+  E2E); Part 2 is the `omit_with_rationale` adverse trail + `need_more_records` open items; Part
+  3 is the OVERRIDE-dispositioned findings (the judgment-call log). Every rendered string is
+  token-scanned.
+- **The download route surfaces the kind-keyed url, never the `object_key`, and audits.** The
+  list (`artifact_sets_view`) and the byte download (`get_artifact_download`) expose
+  `{kind, sha256, byte_count, url}` — the `object_key` is INTERNAL. The download serves the bytes
+  with the per-kind media type + a `Content-Disposition` filename, writes an `artifact_downloaded`
+  audit, and is NOT wire-scanned (binary bytes are not a token surface; the build already scanned
+  them). A cross-firm matter / an unknown kind → `404 artifact_not_found`.
+
+Below is the M4 manifest read-model this build consumes.
+
+`app/package/manifest.py` is implemented and tested — the *preview* of the M5 exhibit binder:
 
 - `upsert_exhibit_pick` — the per-document page pick (tri-state `include_pages` / `excluded_pages`;
   both sorted + deduped; typed `InvalidPick` 422 for a foreign doc / include-exclude overlap /
@@ -100,12 +153,18 @@ bytes** (same inputs → hash-matching artifacts; the golden-artifact test bar) 
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing an artifact kind or
-changing the `ArtifactSet` keying; changing the no-token-survives build invariant,
-the Bates-pinning rule, or the deterministic-bytes contract; changing the
-provenance-report completeness property or the redaction-disposition gate;
-changing the binder-manifest shape the G3 check consumes; changing the M4 manifest
-read-model — the `ManifestEntry` / `DraftBinderManifest` shape, the pick-validation
-rules, the integrity-verdict order, the `blocking` preview semantics, the EX-minting
-key/ordinal rule, or the bare-`exhibit_token_id` (never token-shaped) + `exhibit_id`
-wire serialization. Update this file **and**
+changing the `ArtifactSet` keying / storage-key scheme / immutable-reuse rule;
+changing the no-token-survives build scan (`ArtifactTokenLeak`), the deterministic-bytes
+contract (the pinned-metadata + `invariant=1` + fixed file-`/ID` recipe), or the
+continuous-Bates scheme / `bates_prefix`; changing the binder build gate (`BinderBlocked`)
+or the source-page integrity double-check (`BinderPageMissing`); changing the
+letter's rendered-previews-only + memo-excluded rule; changing the provenance-report
+completeness property, its three parts, or its re-runnable-module boundary; changing the
+redaction-disposition gate; changing the artifact download route (the kind-keyed url /
+object_key-never-on-wire / audit) or the binder-manifest shape the G3 check consumes;
+changing the M4 manifest read-model — the `ManifestEntry` / `DraftBinderManifest` shape, the
+pick-validation rules, the integrity-verdict order, the `blocking` preview semantics, the
+EX-minting key/ordinal rule, or the bare-`exhibit_token_id` (never token-shaped) +
+`exhibit_id` wire serialization. A change to any of these lands with a new ADR (cf.
+[ADR-0007](../adr/0007-m5-drafting-decisions.md)). Update this file **and**
 [`system_contract.md`](../system_contract.md) §2/10/11 in the same PR.
