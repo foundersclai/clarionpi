@@ -32,11 +32,15 @@ The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-stor
 - **Commit refuses incomplete sessions** (`UploadIncomplete`, naming the missing files) —
   fail-loud, synchronous. There is no `completing` state; commit is not async at M1 (the
   `UploadSessionStatus` omission is deliberate).
-- **Late-document runs leave the gate untouched.** `run_phase0` processes newly-`uploaded`
-  documents for a matter already past `corpus_processing` — and, at M2, now also **extracts**
-  them and **re-syncs** the fact registry + specials ledger — but still does not move the gate.
-  The remaining consequence of late records (re-running *analysis* so the new facts reach the
-  demand) lands with the analysis re-run wave (M3).
+- **Late-document runs (M4): the `evidence_review` rework edge is live; other states still leave
+  the gate untouched.** `run_phase0` processes newly-`uploaded` documents for a matter already past
+  `corpus_processing` — extracting them and re-syncing the fact registry + specials ledger. At
+  `evidence_review` a late run now **fires the guardless `EVIDENCE_REVIEW -> ANALYSIS_RUNNING`
+  rework edge** (`advance` on `DOCUMENTS_UPLOADED`, audited `late_documents_rework`, SSE state
+  `late_documents_rework`) so the new facts flow into the demand when the attorney re-runs analysis.
+  A late run at ANY OTHER mid-flow state still just processes + re-syncs and **leaves the gate**
+  (audited `phase0_late_documents_processed`) — the fuller invalidation of a plan/draft in progress
+  is flow_04 work, deferred.
 - **TTL sweep is callable-not-scheduled.** `expire_stale_sessions` runs on an unscoped session
   and is invoked directly by callers/tests; there is no scheduler at M1.
 - **`doc_state` payload vocabulary** (per the `run_phase0` stream):
@@ -103,6 +107,7 @@ lifecycle `uploaded → classified → ocr_done → extracted → failed` (the
 A boundary change requiring a contract update: changing the `DocumentPage`
 identity/versioning model or the anchor contract; changing the dedup verdict set
 or the never-silent-merge rule; changing the `doc_state` SSE shape; changing the
-OCR-vendor egress path. **`corpus/` importing `engine/` is a boundary breach.**
-Update this file **and** [`system_contract.md`](../system_contract.md) §2/7/14
-in the same PR.
+late-document gate behavior (the `evidence_review` rework edge vs the leave-the-gate
+default for other states); changing the OCR-vendor egress path.
+**`corpus/` importing `engine/` is a boundary breach.** Update this file **and**
+[`system_contract.md`](../system_contract.md) §2/7/14 in the same PR.

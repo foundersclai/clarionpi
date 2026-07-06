@@ -20,8 +20,30 @@ Design source: [`backlog/pi/components/chronology_builder.md`](../../backlog/pi/
   registry so nothing token-shaped reaches the wire.
 
 Narrative generation composes `app.core.llm_telemetry.MeteredLLMClient` (the single metered
-door) and `app.engine.tokenizer.registry` (resolution). The G2a overlay-editing UI lands M4;
-this wave ships the store + build semantics it will drive.
+door) and `app.engine.tokenizer.registry` (resolution).
+
+**Overlay wire (M4).** The paralegal's overlay edit is now live over HTTP:
+`PUT /api/matters/{matter_id}/chronology/{encounter_id}/overlay`
+(`app/api/routes/evidence.py::put_chronology_overlay`) calls `upsert_overlay` with these rules:
+
+- **Gate-fenced to `evidence_review`** — the same prep fence as picks/billing edits; any other state
+  is a `409 gate_state_mismatch{current}`.
+- **The encounter must belong to the matter** — else `404 encounter_not_found` (an id from another
+  matter is not editable through this path).
+- **Closed edited-fields vocabulary** (`schemas.py::ChronologyOverlayRequest`, validated by a
+  `model_validator`): exactly `{narrative_override, provider_display, facility_display,
+  encounter_type}`, all values **strings**. The date of service is the chronology **spine** (it
+  orders every row and feeds the treatment-gap detector) and is deliberately **not** overridable — a
+  wrong DOS is fixed by re-extraction, not a display overlay. An unknown key, a non-string value, or
+  an **empty** dict (clearing is out of scope at M4) is a `422 invalid_edits` (the route takes the
+  body as a raw dict and validates inside so the refusal is the typed shape, mirroring the gates
+  route's `InvalidEdits` mapping).
+
+**Conflict is warn-only at G2a (decided, ADR-0006 decision 1).** A `CONFLICT` (or `PARKED_ORPHANED`)
+overlay does **not** block the G2a confirm — the counts surface in the evidence-review view-model
+(`chronology.conflicts` / `chronology.parked`) for the attorney to see, but there is **no guard** on
+them. Any future decision to block on an unresolved conflict is the orchestrator's to own, not this
+module's.
 
 ### M2 boundaries
 
@@ -105,8 +127,13 @@ deciding *what enters the letter* (attorney gates); the demand prose itself (`ap
 `overlays_applied`/`_conflict`/`_parked`, `unregistered_claims`) · `base_hash_for` (SHA-256 over
 `(dos iso, provider, facility, encounter_type, complaints, findings, diagnoses, procedures,
 work_status, narrative_tokenized)`) · `OverlayStatus` ∈ {`applied`, `parked_orphaned`,
-`conflict`} — **never auto-resolved** · narrative stage id `chronology.narrative` · audit kind
-`chronology_overlay_upserted` · **single regeneration** per narrative.
+`conflict`} — **never auto-resolved**, and **warn-only at G2a** (no guard) ·
+`ChronologyOverlayRequest` (closed `edited_fields` vocabulary `{narrative_override, provider_display,
+facility_display, encounter_type}`, all strings; DOS is the non-overridable spine; empty dict /
+unknown key / non-string → `422 invalid_edits`) · overlay route
+`PUT /matters/{id}/chronology/{encounter_id}/overlay` (gate-fenced `evidence_review`;
+encounter-not-on-matter → `404 encounter_not_found`) · narrative stage id `chronology.narrative` ·
+audit kind `chronology_overlay_upserted` · **single regeneration** per narrative.
 
 ## Change rule
 
@@ -116,6 +143,8 @@ A boundary change requiring a contract update: changing the `ChronologyRow` /
 apply/conflict/park semantics or the never-auto-resolve rule; changing the narrative validation
 gates, the tokens-only rule, or the single-regeneration budget; changing the **single-writer
 exception** on `MedicalEncounter.narrative_tokenized` (chronology is the one writer — a write
-elsewhere is a boundary breach); changing the `chronology.narrative` stage id or the
+elsewhere is a boundary breach); changing the `ChronologyOverlayRequest` closed edited-fields
+vocabulary, the overlay route's gate fence / `encounter_not_found` mapping, or the conflict
+warn-only-at-G2a decision (ADR-0006 decision 1); changing the `chronology.narrative` stage id or the
 `chronology_overlay_upserted` audit kind. Update this file **and**
 [`system_contract.md`](../system_contract.md) §2/5/10 in the same PR.

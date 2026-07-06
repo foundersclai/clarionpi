@@ -21,6 +21,19 @@ model layer (`Cents` alias, integer-cents `*_cents` fields,
 Phase 0's sync stage calls `compute_matter_ledger` → `amounts_for_registry` →
 `registry.mint_amounts`. Nothing here writes a total; the ledger is a derived view.
 
+**G2a edit path + lines read (M4).** `edits.py::apply_billing_edits` is the source-row edit service
+the G2a ledger grid drives (`POST /api/matters/{id}/billing/edits`): it writes ONLY `BillingLine`
+SOURCE rows (never the derived ledger), the whole batch is **atomic** (an unknown line or a
+`MoneyParseError` anywhere rolls the entire batch back — a half-applied batch is impossible), the
+recategorization taxonomy is the **closed** `LedgerCategory` (already an enum at the schema), an
+**empty string** on a money field clears the column to `None` (a bill legitimately loses a recorded
+value — distinct from `None` = "no change"), and it returns a freshly recomputed `SpecialsLedger`
+(cents ints only) so the grid re-renders off one round trip and never sums itself. The read side is
+`GET /api/matters/{id}/billing/lines` (`app/api/routes/evidence.py::get_billing_lines`): the matter's
+source rows ordered `(date_of_service, id)`, each with its `document_id` **parsed from the anchor**
+(`None` when malformed — a **display** concern here, deliberately NOT the fatal `MalformedAnchor` the
+assemble layer raises for money inclusion; the asymmetry is documented at both call sites).
+
 ## Responsibility
 
 **All arithmetic on `Money`.** The specials ledger (a derived view over
@@ -111,6 +124,9 @@ A boundary change requiring a contract update: changing the `Money`
 representation or the rounding policy; changing the `LedgerCategory` taxonomy;
 changing the `line_set_hash` definition or the `LedgerRef` shape handed to the
 tokenizer; changing the billed-vs-paid basis contract; adding a demand-math input
-(e.g. wage loss). **Only `app/money` performs arithmetic on `Money`** — a total
-computed anywhere else is a boundary breach. Update this file **and**
+(e.g. wage loss); changing the `apply_billing_edits` contract (source-rows-only,
+atomic-batch, closed taxonomy, empty-string-clears, server-ledger-returned) or the
+`billing/lines` read shape / its ordering / its display-only `document_id` parse.
+**Only `app/money` performs arithmetic on `Money`** — a total computed anywhere else
+is a boundary breach. Update this file **and**
 [`system_contract.md`](../system_contract.md) §3/10 in the same PR.

@@ -16,12 +16,19 @@ closed submit schemas (`extra="forbid"`), 404-not-403 tenancy, and the matters
 list endpoint. Auth + `require_role` (Wave A) are in `deps.py` (see
 [ADR-0004](../adr/0004-m3-auth-decisions.md)).
 
-**Deferred:** SSE journal / `Last-Event-ID` replay lands with the analysis/demand
-streams (**M4/M5**) — the gates wire is request/response, so no journal ships this
-wave. The G2a view-model lands **M4**; the G2.5/G3 view-models land **M5** (today
-they are the honest `minimal_gate_vm` placeholder). The scanner is applied
-**explicitly** per response envelope at M3; promoting it to a response middleware
-is planned **M4+**.
+**Extended @ M4.** The evidence-workbench (G2a) surface is live: the
+`evidence_review` gate view-model (`view_models.py::evidence_review_vm`) and the
+evidence routes (`routes/evidence.py` — exhibit picks, PHI disposition, manifest
+read + EX-mint, source-row ledger read/edits, chronology overlays; `routes/analysis.py`
+— the analysis SSE run + the risk-flag disposition). The analysis + late-docs runs
+are the first SSE streams over the wire.
+
+**Deferred:** SSE journal / `Last-Event-ID` replay still lands with the demand streams
+(**M5**) — the gates wire is request/response, and the analysis/ingest streams are
+fire-and-forward (no journal). The G2.5/G3 view-models land **M5** (today they are the
+honest `minimal_gate_vm` placeholder). The scanner is applied **explicitly** per
+response at M4 (every gate envelope AND every evidence/analysis JSON response);
+promoting it to a response middleware is still planned **M4+**.
 
 ## Responsibility
 
@@ -75,7 +82,13 @@ JSON-safe dict — heterogeneous per gate, so the scanner walks it before it lea
 · view-model builders `facts_review_vm` (deadline candidates + `rule_id`
 [=`statute_cite`] + intake facts + `documents_summary`) / `strategy_intake_vm`
 (`StrategyInputs` values incl. the M4 pull-forward `mmi_date` /
-`property_damage_estimate_cents`) / `minimal_gate_vm` (honest placeholder) ·
+`property_damage_estimate_cents`) / `evidence_review_vm` (M4 — the G2a payload
+`{chronology, ledger, risk_flags, exhibits, dedup_pending}`; **GET never spends LLM
+budget** — chronology is rebuilt `generate_narratives=False` and no manifest tokens
+are minted; ledger serialization is integer cents only and surfaces
+`missing_paid_line_ids` / `excluded_line_ids` — a gap is shown, never swallowed;
+tokens resolved to display forms so nothing token-shaped survives; `None` ledger when
+the jurisdiction pack is unsupported) / `minimal_gate_vm` (honest placeholder) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:
@@ -87,8 +100,11 @@ monotonic-`id` `Last-Event-ID` **replay is deferred to the analysis/demand strea
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing a REST route or
-SSE event; changing a request/response shape or status code (incl. the gate
-envelope or a per-gate view-model builder's shape); changing the wire-scanner
+SSE event (incl. the M4 evidence/analysis routes — picks, PHI, manifest, billing
+read/edits, chronology overlay, analysis run, flag disposition — and their typed
+error shapes); changing a request/response shape or status code (incl. the gate
+envelope, a per-gate view-model builder's shape, or the `evidence_review_vm` key set /
+its GET-never-spends-LLM + ledger-serialization rules); changing the wire-scanner
 policy (raise/scrub, or where it is applied), the submit-schema closure, the
 `role_affordances` contract, or the span-map contract; changing the
 role→gate-action map or the tenancy-scoping injection (incl. the 404-not-403

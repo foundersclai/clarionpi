@@ -177,8 +177,22 @@ without disposition = `address_in_letter`, and are never silently dropped.
 - **Enforced (M0):** the risk-flag model (`RiskFlag` with `FlagKind`,
   `FlagSeverity`, `FlagDisposition`) is in `schemas.py`/`enums.py`; the
   high-severity-blocks-G2a guard is named in the orchestrator transition table.
-- **Deferred:** risk-flag detection (`engine/brain1/risk`) and the
-  no-volunteer drafter constraint + `undisposed_adverse` G3 block land **M4–M5**.
+- **Enforced (M4):** risk-flag detection is live — `engine/brain1/risk.py`
+  `run_risk_detectors` (composed at the `analysis_running -> evidence_review` build,
+  `engine/brain1/analysis.py`) **always surfaces** every derived flag and never
+  suppresses: the per-kind cap is a UI display bound, not applied in the engine, and
+  a deterministic detector's finding is persisted regardless. High-severity
+  disposition is **attorney-only, server-enforced** — `disposition_flag` refuses a
+  non-attorney HIGH disposition (`HighSeverityDispositionForbidden`), which
+  `PUT /api/flags/{id}/disposition` maps to a typed `403`. The G2a-confirm guard
+  `high_severity_dispositioned_or_override` blocks the approve while a HIGH flag is
+  open (`409 override_required`) unless proceeded over via an audited override (the
+  `requires_override` path); `open_high_severity_count` is the single named predicate
+  the guard reads.
+- **Deferred:** the **no-volunteer** drafter constraint (a flag reaches the letter
+  only when dispositioned `address_in_letter`) is Brain-2's hard-constraint handoff at
+  **M5**, and the `undisposed_adverse` G3 block lands with the compliance panel
+  (**M5**).
 
 ### 7. PHI Stays Inside The BAA Envelope
 
@@ -217,8 +231,17 @@ UI state.
   (never client-asserted), and the attorney-only approve guards refuse a paralegal
   `POST` regardless of UI state. Auth is in-house session auth behind one
   `get_current_user` door (**ADR-0004**).
-- **Deferred:** the analysis/demand run authorization at those streams lands **M4**;
-  TOTP (second factor) is restated for **R2** (ADR-0004 decision 2).
+- **Enforced (M4) for G2a prep/confirm:** paralegals prep G2a — exhibit **picks**,
+  **chronology overlays**, and **billing edits** are open to any firm member at
+  `evidence_review`, and a paralegal may disposition **low/medium** risk flags. The
+  **attorney-only** acts are server-enforced: a HIGH-flag disposition
+  (`HighSeverityDispositionForbidden -> 403`) and the third-party-PHI disposition
+  (`PhiDispositionForbidden -> 403`). The analysis run itself is authorized as a
+  **derived computation** over already-approved inputs (any authenticated firm member
+  may trigger it — the G1.5 approval that authorized it already crossed the gate), not
+  a human gate act.
+- **Deferred:** the demand-run stream authorization lands **M5**; TOTP (second factor)
+  is restated for **R2** (ADR-0004 decision 2).
 
 ### 9. Attorney Final + Auditable
 
@@ -332,7 +355,12 @@ for every phase; debugging starts from logs.
   `gate_advanced`/`late_documents_processed` → `run_completed`, plus `run_error` on an
   unexpected failure). Debugging a silent corpus problem starts from that file. This remains a
   standing engineering discipline (see [`docs/debugging-policy.md`](debugging-policy.md)).
-- **Deferred:** the analysis / rules / drafting phase run logs land with those phases (**M2+**).
+- **Enforced (M4):** the analysis phase writes its own per-matter run log —
+  `engine/brain1/analysis.py` runs under `MatterRunLogger(matter.id, "analysis")`
+  (`run_started` → `registry_synced` / `chronology_built` / `ledger_amounts_minted` /
+  `risk_flags_generated` → `gate_advanced` → `run_completed`, plus `run_error`), so a
+  silent analysis problem starts from that file.
+- **Deferred:** the rules / drafting phase run logs land with those phases (**M5**).
 
 ## Contract Change Workflow
 

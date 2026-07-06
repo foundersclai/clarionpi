@@ -23,9 +23,10 @@ status truthfully (`implemented`/`stub`). `corpus` and `core` each back two cont
 | backend/app/engine/compliance | docs/module_contracts/app.engine.compliance.md | status: stub (lands M5) — G3 deterministic + semantic panel |
 | backend/app/engine/tokenizer | docs/module_contracts/app.engine.tokenizer.md | status: live (M2) — the fact registry / token spine (mint + versioning + prompt/render resolution) |
 | backend/app/engine/brain1 | docs/module_contracts/app.engine.brain1.chronology.md | status: live (M2) — derived chronology rows + overlays + tokens-only narratives |
+| backend/app/engine/brain1 | docs/module_contracts/app.engine.brain1.risk.md | status: live (M4) — risk detectors + disposition workflow |
 | backend/app/rules | docs/module_contracts/app.rules.jurisdiction.md | status: live partial (M1-M2) — lawyer-audited YAML to decisions (loader + AZ pack + billed-vs-paid basis; HybridEngine lookup later) |
 | backend/app/money | docs/module_contracts/app.money.ledger.md | status: extended (M2) — all Money arithmetic (integer cents); specials ledger + dedup exclusion + [[AMT]] emission |
-| backend/app/package | docs/module_contracts/app.package.builder.md | status: stub (lands M5) — docx letter + Bates binder |
+| backend/app/package | docs/module_contracts/app.package.builder.md | status: partial (M4) — manifest read-model (picks + PHI disposition + EX-mint + blocking preview); docx/pdf/xlsx builds + Bates land M5 |
 | backend/app/api | docs/module_contracts/app.api.view_models.md | status: implemented (M3) — the only wire surface; auth/roles + gate envelope + per-gate VMs + wire token-scanner + closed submit schemas; SSE replay deferred M4/M5 |
 | backend/app/core | docs/module_contracts/app.core.llm_telemetry.md | status: implemented (partial) — metered single door + ledger |
 | backend/app/core | docs/module_contracts/app.core.matter_budget.md | status: implemented (partial) — per-matter cap gate + warnings |

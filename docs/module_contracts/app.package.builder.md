@@ -6,9 +6,39 @@ Design source: [`backlog/pi/components/package_builder.md`](../../backlog/pi/com
 
 ## Status
 
-**Stub @ M0, lands M5.** `app/package` is a package stub (empty `__init__.py`).
-The `ArtifactKind` enum is in `app/models`. No docx/pdf/xlsx build, Bates, manifest,
-or provenance-report logic exists yet.
+**Manifest read-model live @ M4; artifact builds land M5.** `app/package/manifest.py` is
+implemented and tested — the *preview* of the M5 exhibit binder:
+
+- `upsert_exhibit_pick` — the per-document page pick (tri-state `include_pages` / `excluded_pages`;
+  both sorted + deduped; typed `InvalidPick` 422 for a foreign doc / include-exclude overlap /
+  out-of-range page). An undispositioned `third_party_phi` flag on the doc forces/keeps `pending`.
+- `set_phi_disposition` — the **attorney-only** third-party-PHI disposition (typed
+  `PhiDispositionForbidden` → 403 for a non-attorney).
+- `build_draft_manifest` — the ordered `(sort_order, filename, document_id)` integrity-checked
+  manifest read-model; `mint_tokens=True` mints the `[[EX_n]]` tokens through the registry (the only
+  minter), idempotently.
+
+The docx/pdf/xlsx build, Bates, and provenance-report logic still do **not** exist (M5). The
+`ArtifactKind` enum is in `app/models`.
+
+### M4 boundaries (manifest read-model)
+
+- **Picks are tri-state; PHI is dispositioned explicitly.** `include_pages` collate, `excluded_pages`
+  are dropped, a page in neither is "not yet decided". `phi_disposition` defaults `pending` and moves
+  only through `set_phi_disposition` (attorney-only); resolving the third-party-PHI **flag** does NOT
+  auto-clear the exhibit (defense in depth — ADR-0006 decision 5).
+- **Integrity is per-entry; blocking is matter-level (the M5-build-gate preview).** An entry is `ok`
+  unless its include list is empty, a page is out of `1..page_count`, or its document was
+  dedup-superseded (order: superseded > empty > out-of-range). `blocking` collects every non-`ok`
+  verdict **plus** a `pending` PHI on any entry that HAS includes (an entry with nothing to collate
+  isn't PHI-blocked). This is a *preview* — nothing here builds a PDF; the M5 build gate reads it.
+- **EX minting is registry-only; the wire carries the BARE id, never a token.** `mint_tokens=True`
+  mints `[[EX_n]]` for the `ok` entries in manifest order (1-based ordinal in the display form) in the
+  ONE shared per-matter ordinal namespace — so an EX ordinal is **not** `EX_1` when facts/amounts
+  minted first (it interleaves; inv 5). The route (`app/api/routes/evidence.py`) exposes the token as
+  a bare id (`exhibit_token_id: "EX_1"`), never the token-shaped `[[EX_1]]` string (inv 11), and the
+  entry also carries the Exhibit row id as `exhibit_id` so the workbench can drive the PHI endpoint
+  (which is keyed by exhibit id) straight from the manifest view.
 
 ## Responsibility
 
@@ -73,5 +103,9 @@ A boundary change requiring a contract update: adding/removing an artifact kind 
 changing the `ArtifactSet` keying; changing the no-token-survives build invariant,
 the Bates-pinning rule, or the deterministic-bytes contract; changing the
 provenance-report completeness property or the redaction-disposition gate;
-changing the binder-manifest shape the G3 check consumes. Update this file **and**
+changing the binder-manifest shape the G3 check consumes; changing the M4 manifest
+read-model — the `ManifestEntry` / `DraftBinderManifest` shape, the pick-validation
+rules, the integrity-verdict order, the `blocking` preview semantics, the EX-minting
+key/ordinal rule, or the bare-`exhibit_token_id` (never token-shaped) + `exhibit_id`
+wire serialization. Update this file **and**
 [`system_contract.md`](../system_contract.md) §2/10/11 in the same PR.

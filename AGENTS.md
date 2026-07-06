@@ -29,14 +29,14 @@ If any of these fail on a clean checkout, fixing that is the first task.
 ## Repo Map
 
 ```
-backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic (+ auth/session login, role guards, gates envelope + gate-action submit at M3)
+backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic (+ auth/session login, role guards, gates envelope + submit at M3; G2a evidence VM + evidence/analysis routes at M4)
 backend/app/core/       config, db session, tenancy, audit, telemetry, budget
 backend/app/models/     enums + pydantic schemas + ORM; every firm-scoped table carries firm_id
-backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer registry (fact spine, live M2)
+backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer registry (fact spine, M2) + brain1 (chronology + risk detectors/disposition, M4) + analysis composition (analysis_running→evidence_review, M4)
 backend/app/rules/      lawyer-audited YAML packs + deadline math (backend/app/rules/packs/ is data, not code)
-backend/app/money/      ALL currency arithmetic — integer cents, floats banned
+backend/app/money/      ALL currency arithmetic — integer cents, floats banned (+ specials ledger M2 + G2a source-row edits M4)
 backend/app/corpus/     document ingest (live M1: sessions, classify, OCR fallback, dedup, phase0 SSE) + extraction (live M2: windows, extractors, anchor-validation, merge)
-backend/app/package/    demand package builder (M1+ stub at M0)
+backend/app/package/    demand package builder — manifest read-model (picks + PHI + EX-mint + blocking preview) live M4; docx/pdf/xlsx builds land M5
 backend/tests/          pytest suite, mirrors backend/app/
 frontend/               Next.js 15 workbench (M3): login, matter dashboard, G1/G1.5 gate screens (app/, components/, lib/; Vitest tests in __tests__/)
 docs/adr/               architecture decisions — read before changing architecture
