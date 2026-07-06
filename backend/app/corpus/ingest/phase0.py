@@ -28,9 +28,12 @@ Gate consequence:
   gate machine (:func:`~app.engine.orchestrator.machine.advance` — the guardless
   ``CORPUS_PROCESSING -> FACTS_REVIEW`` edge is the only sanctioned way ``gate_state`` moves).
 * A **late-document** run (matter already past ``corpus_processing``) processes the new documents
-  — now including their extraction + a registry re-sync — but leaves the gate untouched. The gate
-  consequence of late records — re-running analysis so the new facts flow into the demand — belongs
-  to the analysis re-run wave (M3); it is recorded here as an explicit boundary, not an oversight.
+  — now including their extraction + a registry re-sync. Its gate consequence depends on the
+  current state: at ``evidence_review`` the run fires the ``EVIDENCE_REVIEW -> ANALYSIS_RUNNING``
+  rework edge (``advance`` on ``DOCUMENTS_UPLOADED``) so the new facts flow into the demand on the
+  attorney's analysis re-run — this is the partial closure of the earlier M2/M3 deferral. At any
+  OTHER mid-flow state the run still leaves the gate untouched: invalidating a plan/draft already in
+  progress is flow_04's fuller work, deferred by design, not an oversight.
 
 The per-stage functions each commit their own work and never raise for a bad document (a corrupt
 PDF is marked ``FAILED`` in place; a bad extractor window is recorded ``FAILED`` and the doc stays
@@ -458,9 +461,41 @@ def run_phase0(
                 {"gate": "facts_review", "matter_id": str(matter.id)},
             )
             gate_advanced = True
+        elif matter.gate_state == GateState.EVIDENCE_REVIEW.value:
+            # Late documents WHILE reviewing evidence route to an analysis re-run: fire the
+            # guardless EVIDENCE_REVIEW -> ANALYSIS_RUNNING rework edge so the new facts flow into
+            # the demand when the attorney re-runs analysis. This partially closes the M2/M3
+            # boundary note below — only for the evidence_review case; other mid-flow states keep
+            # the plain late-docs behavior in the branch above until flow_04's fuller invalidation.
+            transition = advance(GateState.EVIDENCE_REVIEW, GateEvent.DOCUMENTS_UPLOADED)
+            matter.gate_state = transition.to.value
+            record_event(
+                db,
+                firm_id=matter.firm_id,
+                actor_id=user.id,
+                event_kind="late_documents_rework",
+                payload={
+                    "matter_id": str(matter.id),
+                    "documents_processed": documents_processed,
+                    "documents_extracted": documents_extracted,
+                    "registry_version": registry_version,
+                    "gate_state": matter.gate_state,
+                },
+            )
+            db.commit()
+            logger.log("late_documents_rework", gate_state=matter.gate_state)
+            yield format_sse(
+                SseEvent.STATUS,
+                {
+                    "phase": "phase0",
+                    "state": "late_documents_rework",
+                    "gate_state": matter.gate_state,
+                },
+            )
         else:
-            # Late-document run: process + extract + re-sync the new docs, leave the gate. The
-            # re-run of analysis that folds these facts into the demand is the M3 wave's job here.
+            # Late-document run at any other mid-flow state: process + extract + re-sync the new
+            # docs, leave the gate. The fuller invalidation of a plan/draft in progress is flow_04
+            # work, deferred; only the evidence_review case routes to an analysis re-run above.
             record_event(
                 db,
                 firm_id=matter.firm_id,

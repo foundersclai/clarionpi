@@ -16,8 +16,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.deps import seed_dev_users
+from app.api.routes.analysis import router as analysis_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.evidence import router as evidence_router
 from app.api.routes.gates import router as gates_router
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.matters import router as matters_router
@@ -57,6 +59,8 @@ app.include_router(gates_router)
 app.include_router(uploads_router)
 app.include_router(documents_router)
 app.include_router(ingest_router)
+app.include_router(evidence_router)
+app.include_router(analysis_router)
 
 
 @app.get("/healthz")

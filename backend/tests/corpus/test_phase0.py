@@ -496,6 +496,76 @@ def test_reentrancy_late_documents(
     assert doc1_pages_after == doc1_pages_before
 
 
+def test_late_documents_at_evidence_review_route_to_analysis_rework(
+    db: Session, dev_user: User, matter: Matter, storage: LocalDiskStorage, tmp_path: Path
+) -> None:
+    """A late doc while at evidence_review fires the rework edge -> analysis_running (M4 Wave C).
+
+    All other mid-flow states keep the plain late-docs behavior; only evidence_review routes to an
+    analysis re-run (so the new facts flow into the demand).
+    """
+    _make_doc(
+        db, dev_user, matter, storage, build_text_pdf(_text_pages(2, "EARLY")), filename="a.pdf"
+    )
+    logger = MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path)
+
+    # First run to facts_review, then hand-advance the matter to evidence_review (the state G2a
+    # reviews from — analysis has run in the full flow; here we park it directly).
+    list(
+        run_phase0(
+            db,
+            matter=matter,
+            user=dev_user,
+            storage=storage,
+            ocr=FakeOcr(),
+            provider=ScriptedProvider([_classify_result()]),
+            run_logger=logger,
+        )
+    )
+    db.refresh(matter)
+    assert matter.gate_state == GateState.FACTS_REVIEW.value
+    matter.gate_state = GateState.EVIDENCE_REVIEW.value
+    db.commit()
+
+    # A NEW uploaded doc arrives late (distinct content, so no dedup against the first run).
+    _make_doc(
+        db, dev_user, matter, storage, build_text_pdf(_text_pages(3, "LATE")), filename="late.pdf"
+    )
+    frames = list(
+        run_phase0(
+            db,
+            matter=matter,
+            user=dev_user,
+            storage=storage,
+            ocr=FakeOcr(),
+            provider=ScriptedProvider([_classify_result()]),
+            run_logger=logger,
+        )
+    )
+    parsed = _parse_frames(frames)
+
+    # The matter back-edged to analysis_running (the rework edge), NOT staying at evidence_review.
+    db.refresh(matter)
+    assert matter.gate_state == GateState.ANALYSIS_RUNNING.value
+
+    # A late_documents_rework STATUS frame carries the new gate_state; NO gate_ready this run; the
+    # rework audit event (not the plain late-docs one) is written.
+    assert not any(name == SseEvent.GATE_READY.value for name, _ in parsed)
+    rework_frame = next(
+        d
+        for name, d in parsed
+        if name == SseEvent.STATUS.value and d.get("state") == "late_documents_rework"
+    )
+    assert rework_frame["gate_state"] == GateState.ANALYSIS_RUNNING.value
+    assert not any(
+        name == SseEvent.STATUS.value and d.get("state") == "late_documents_processed"
+        for name, d in parsed
+    )
+    kinds = list(db.scalars(select(AuditEvent.event_kind)))
+    assert "late_documents_rework" in kinds
+    assert "late_documents_rework" in _log_events(logger)
+
+
 def test_zero_pending_repost(
     db: Session, dev_user: User, matter: Matter, storage: LocalDiskStorage, tmp_path: Path
 ) -> None:

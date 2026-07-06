@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_tenant_session
 from app.api.view_models import (
+    evidence_review_vm,
     facts_review_vm,
     matter_to_view,
     minimal_gate_vm,
@@ -97,6 +98,8 @@ def _view_model_for(session: Session, matter: Matter) -> dict:
             select(StrategyInputs).where(StrategyInputs.matter_id == matter.id)
         ).scalar_one_or_none()
         return strategy_intake_vm(matter, inputs)
+    if state is GateState.EVIDENCE_REVIEW:
+        return evidence_review_vm(session, matter)
     return minimal_gate_vm(state)
 
 

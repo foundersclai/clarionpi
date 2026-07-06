@@ -14,7 +14,10 @@ import uuid
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
+from app.engine.brain1 import chronology as chronology_service
 from app.engine.orchestrator.service import deadlines_all_confirmed
 from app.models.enums import (
     ClaimType,
@@ -30,13 +33,22 @@ from app.models.orm import (
     CaseDocument,
     DedupDecision,
     DocumentPage,
+    Exhibit,
     IncidentFacts,
     Matter,
+    RiskFlag,
     StrategyInputs,
     UploadSession,
     UploadSlot,
 )
 from app.models.schemas import DeadlineCandidate
+from app.models.schemas import RiskFlag as RiskFlagView
+from app.money.assemble import compute_matter_ledger
+from app.money.specials import SpecialsLedger
+from app.package import manifest as manifest_service
+from app.package.manifest import DraftBinderManifest
+from app.rules.errors import UnsupportedJurisdiction
+from app.rules.loader import load_pack
 
 
 class MatterView(BaseModel):
@@ -287,3 +299,153 @@ def strategy_intake_vm(matter: Matter, inputs: StrategyInputs | None) -> dict:
 def minimal_gate_vm(state: GateState) -> dict:
     """The honest placeholder for gates whose UI lands in a later milestone."""
     return {"state": state.value, "detail": "gate UI lands in a later milestone"}
+
+
+# --------------------------------------------------------------------------------------
+# G2a (evidence_review) view-model (M4 Wave C) — the payload the workbench reviews.
+#
+# Read-only projection over the landed Brain-1 surfaces: the derived chronology, the
+# specials ledger, the anchored risk flags, and the draft-binder manifest. It NEVER spends
+# LLM budget — chronology is rebuilt with ``generate_narratives=False`` (narratives already
+# persist from the analysis run; a GET must be free), and no manifest tokens are minted.
+# Every value is JSON-safe (dates ISO, uuids stringified, tokens exposed as BARE ids) so the
+# gates route's ``wire_guard.scan_wire_payload`` passes it through untouched.
+# --------------------------------------------------------------------------------------
+
+
+def _risk_flag_view(flag: RiskFlag) -> dict:
+    """One RiskFlag as the wire sees it — the extended view incl. detector + disposition_role."""
+    return RiskFlagView.model_validate(flag).model_dump(mode="json")
+
+
+def _bare_exhibit_token_id(token: str | None) -> str | None:
+    """Strip a full token (``[[EX_1]]``) to its bare id (``EX_1``) — never leak token shape."""
+    if token is None:
+        return None
+    return token.removeprefix("[[").removesuffix("]]")
+
+
+def _manifest_evidence_view(m: DraftBinderManifest, exhibit_id_by_document: dict) -> dict:
+    """Serialize the manifest for the VM — EX tokens exposed as BARE ids (mirrors evidence.py).
+
+    ``exhibit_id_by_document`` maps document_id -> Exhibit row id so the UI can drive the
+    PHI endpoint (keyed by exhibit id) straight from the VM, matching evidence.py's manifest
+    route serialization.
+    """
+    return {
+        "entries": [
+            {
+                "exhibit_id": (
+                    str(exhibit_id_by_document[e.document_id])
+                    if e.document_id in exhibit_id_by_document
+                    else None
+                ),
+                "exhibit_token_id": _bare_exhibit_token_id(e.exhibit_token),
+                "document_id": str(e.document_id),
+                "filename": e.filename,
+                "included_pages": list(e.included_pages),
+                "excluded_pages": list(e.excluded_pages),
+                "phi_disposition": e.phi_disposition,
+                "sort_order": e.sort_order,
+                "page_count": e.page_count,
+                "integrity": e.integrity,
+            }
+            for e in m.entries
+        ],
+        "blocking": list(m.blocking),
+    }
+
+
+def _ledger_evidence_view(ledger: SpecialsLedger) -> dict:
+    """Serialize the specials ledger for the VM — integer cents only, the FE renders (inv 10).
+
+    Carries the same columns evidence.py exposes plus the two visibility lists the G2a workbench
+    surfaces (``missing_paid_line_ids`` / ``excluded_line_ids`` — a gap is shown, never swallowed).
+    """
+
+    def _cols(cols: object) -> dict:
+        return {
+            "billed_cents": cols.billed_cents,  # type: ignore[attr-defined]
+            "adjusted_cents": cols.adjusted_cents,  # type: ignore[attr-defined]
+            "paid_cents": cols.paid_cents,  # type: ignore[attr-defined]
+            "outstanding_cents": cols.outstanding_cents,  # type: ignore[attr-defined]
+        }
+
+    return {
+        "grand_total": _cols(ledger.grand_total),
+        "by_category": {cat: _cols(cols) for cat, cols in ledger.by_category.items()},
+        "demand_basis_total_cents": ledger.demand_basis_total_cents,
+        "basis": ledger.basis,
+        "line_set_hash": ledger.line_set_hash,
+        "missing_paid_line_ids": list(ledger.missing_paid_line_ids),
+        "excluded_line_ids": list(ledger.excluded_line_ids),
+    }
+
+
+def evidence_review_vm(db: Session, matter: Matter) -> dict:
+    """The G2a (evidence_review) view-model: chronology + ledger + risk flags + exhibits.
+
+    Composed from the landed Brain-1 read surfaces, budget-free:
+
+    * ``chronology`` — ``build_chronology(..., generate_narratives=False)`` then
+      ``render_rows_for_wire`` (tokens resolved to display forms; NOTHING token-shaped survives).
+      ``conflicts`` / ``parked`` are the overlay-quarantine counts. Narratives already persist from
+      the analysis run — regenerating on a GET would spend LLM budget, so it is disabled here.
+    * ``ledger`` — the specials ledger (cents ints). ``None`` if the jurisdiction pack is
+      unsupported (defensive; matter creation already gates it).
+    * ``risk_flags`` — every RiskFlag for the matter (incl. detector + disposition_role + anchors),
+      ordered ``(severity-desc-ish by created_at, id)`` deterministically.
+    * ``exhibits`` — the draft-binder manifest entries (bare ``exhibit_token_id``) + ``blocking``,
+      built WITHOUT minting tokens.
+    * ``dedup_pending`` — count of still-unresolved dedup decisions (a G2a prep visibility count).
+    """
+    outcome = chronology_service.build_chronology(
+        db, None, matter=matter, generate_narratives=False
+    )
+    chronology = {
+        "rows": chronology_service.render_rows_for_wire(db, matter=matter, rows=outcome.rows),
+        "conflicts": outcome.overlays_conflict,
+        "parked": outcome.overlays_parked,
+    }
+
+    ledger_view: dict | None = None
+    try:
+        pack = load_pack(matter.jurisdiction)
+    except UnsupportedJurisdiction:
+        ledger_view = None
+    else:
+        ledger_view = _ledger_evidence_view(compute_matter_ledger(db, matter=matter, pack=pack))
+
+    flags = list(
+        db.execute(
+            select(RiskFlag)
+            .where(RiskFlag.matter_id == matter.id)
+            .order_by(RiskFlag.created_at, RiskFlag.id)
+        ).scalars()
+    )
+    risk_flags = [_risk_flag_view(f) for f in flags]
+
+    manifest = manifest_service.build_draft_manifest(db, matter=matter, mint_tokens=False)
+    exhibit_id_by_document = {
+        doc_id: ex_id
+        for ex_id, doc_id in db.execute(
+            select(Exhibit.id, Exhibit.document_id).where(Exhibit.matter_id == matter.id)
+        )
+    }
+
+    dedup_pending = db.execute(
+        select(func.count())
+        .select_from(DedupDecision)
+        .where(
+            DedupDecision.matter_id == matter.id,
+            DedupDecision.resolution == DedupResolution.PENDING.value,
+        )
+    ).scalar_one()
+
+    return {
+        "chronology": chronology,
+        "ledger": ledger_view,
+        "risk_flags": risk_flags,
+        "exhibits": _manifest_evidence_view(manifest, exhibit_id_by_document),
+        "dedup_pending": dedup_pending,
+    }
