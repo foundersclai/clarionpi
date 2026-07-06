@@ -146,3 +146,74 @@ def test_matter_create_rejects_bad_jurisdiction_type() -> None:
             incident_date=date(2025, 1, 15),
             jurisdiction=["not", "a", "string"],  # type: ignore[arg-type]
         )
+
+
+# --------------------------------------------------------------------------------------
+# M2 extraction I/O contracts (pure Pydantic value objects)
+# --------------------------------------------------------------------------------------
+
+
+def test_page_anchor_carries_optional_extraction_fields() -> None:
+    anchor = schemas.PageAnchor(
+        document_id=uuid.uuid4(), page=4, window_id="doc:1-8", field="provider"
+    )
+    assert anchor.window_id == "doc:1-8"
+    assert anchor.field == "provider"
+
+
+def test_page_anchor_rejects_page_below_one() -> None:
+    with pytest.raises(ValidationError):
+        schemas.PageAnchor(document_id=uuid.uuid4(), page=0)
+
+
+def test_extracted_encounter_requires_nonempty_anchor_pages() -> None:
+    with pytest.raises(ValidationError):
+        schemas.ExtractedEncounter(
+            date_of_service=date(2026, 1, 16),
+            provider="Dr. Smith",
+            encounter_type="er",
+            anchor_pages=[],  # min_length=1 — must be rejected
+        )
+
+
+def test_extracted_encounter_batch_defaults_empty() -> None:
+    batch = schemas.ExtractedEncounterBatch()
+    assert batch.encounters == []
+
+
+def test_extracted_billing_line_validates_category_enum() -> None:
+    line = schemas.ExtractedBillingLine(
+        provider="Imaging Center",
+        date_of_service=date(2026, 1, 17),
+        billed="$1,234.56",
+        category=enums.LedgerCategory.IMAGING,
+        anchor_page=2,
+    )
+    assert line.category is enums.LedgerCategory.IMAGING
+    with pytest.raises(ValidationError):
+        schemas.ExtractedBillingLine(
+            provider="X",
+            date_of_service=date(2026, 1, 17),
+            billed="$1.00",
+            category="not_a_category",  # type: ignore[arg-type]
+            anchor_page=1,
+        )
+
+
+def test_amount_fact_value_cents_is_non_negative() -> None:
+    fact = schemas.AmountFact(
+        key="specials.grand.billed",
+        value_cents=123456,
+        display_form="$1,234.56",
+        ledger_ref={"line_ids": ["a"], "category": None, "column": "billed"},
+        ledger_hash="deadbeef",
+    )
+    assert fact.value_cents == 123456
+    with pytest.raises(ValidationError):
+        schemas.AmountFact(
+            key="specials.grand.billed",
+            value_cents=-1,  # Cents alias is ge=0
+            display_form="-",
+            ledger_ref={},
+            ledger_hash="h",
+        )

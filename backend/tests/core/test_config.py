@@ -34,6 +34,12 @@ def test_defaults_for_ingest_fields(monkeypatch: pytest.MonkeyPatch) -> None:
         "SHINGLE_SIZE",
         "SHINGLE_OVERLAP_THRESHOLD",
         "MATTER_LOGS_DIR",
+        "EXTRACTOR_MODEL",
+        "NARRATIVE_MODEL",
+        "MERGE_TIEBREAK_MODEL",
+        "EXTRACTION_WINDOW_PAGES",
+        "EXTRACTION_WINDOW_OVERLAP",
+        "LLM_MAX_OUTPUT_TOKENS",
     ):
         monkeypatch.delenv(name, raising=False)
     s = get_settings()
@@ -48,6 +54,13 @@ def test_defaults_for_ingest_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.shingle_size == 5
     assert s.shingle_overlap_threshold == pytest.approx(0.35)
     assert s.matter_logs_dir == "./logs/matters"
+    # M2 extraction defaults.
+    assert s.extractor_model == "claude-sonnet-5"
+    assert s.narrative_model == "claude-sonnet-5"
+    assert s.merge_tiebreak_model == "claude-sonnet-5"
+    assert s.extraction_window_pages == 8
+    assert s.extraction_window_overlap == 2
+    assert s.llm_max_output_tokens == 4096
 
 
 def test_env_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,6 +76,12 @@ def test_env_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHINGLE_SIZE", "7")
     monkeypatch.setenv("SHINGLE_OVERLAP_THRESHOLD", "0.5")
     monkeypatch.setenv("MATTER_LOGS_DIR", "/custom/logs")
+    monkeypatch.setenv("EXTRACTOR_MODEL", "claude-opus-4-8")
+    monkeypatch.setenv("NARRATIVE_MODEL", "claude-haiku-4-5")
+    monkeypatch.setenv("MERGE_TIEBREAK_MODEL", "claude-opus-4-8")
+    monkeypatch.setenv("EXTRACTION_WINDOW_PAGES", "12")
+    monkeypatch.setenv("EXTRACTION_WINDOW_OVERLAP", "3")
+    monkeypatch.setenv("LLM_MAX_OUTPUT_TOKENS", "8192")
     s = get_settings()
     assert s.storage_backend == "s3"
     assert s.storage_root == "/custom/root"
@@ -75,6 +94,12 @@ def test_env_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.shingle_size == 7
     assert s.shingle_overlap_threshold == pytest.approx(0.5)
     assert s.matter_logs_dir == "/custom/logs"
+    assert s.extractor_model == "claude-opus-4-8"
+    assert s.narrative_model == "claude-haiku-4-5"
+    assert s.merge_tiebreak_model == "claude-opus-4-8"
+    assert s.extraction_window_pages == 12
+    assert s.extraction_window_overlap == 3
+    assert s.llm_max_output_tokens == 8192
 
 
 def test_test_env_defaults_on_disk_roots_under_tempdir(monkeypatch: pytest.MonkeyPatch) -> None:

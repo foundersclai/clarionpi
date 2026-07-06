@@ -72,10 +72,15 @@ class TokenKind(StrEnum):
 
 
 class TokenStatus(StrEnum):
-    """Verification status of a fact token."""
+    """Verification status of a fact token.
+
+    ``DISPUTED`` is a hard block on G3: a token whose value the attorney has contested is
+    neither verified nor merely unseen, and a draft may not ship citing it (fact_registry §3).
+    """
 
     VERIFIED = "verified"
     UNVERIFIED = "unverified"
+    DISPUTED = "disputed"
 
 
 class TokenSource(StrEnum):
@@ -84,6 +89,52 @@ class TokenSource(StrEnum):
     EXTRACTOR = "extractor"
     ATTORNEY = "attorney"
     RULES = "rules"
+
+
+class ReconciliationStatus(StrEnum):
+    """How a billing line's numbers were sourced.
+
+    M2 ships only ``LLM_ONLY`` (a single LLM reader over the bill); the table-vs-LLM
+    reconciliation pair (``TABLE_ONLY``/``TABLE_LLM_AGREE``/``TABLE_LLM_DIFF``) lands with the
+    S1 OCR-vendor decision, when a deterministic table read exists to reconcile against.
+    """
+
+    LLM_ONLY = "llm_only"
+    TABLE_ONLY = "table_only"
+    TABLE_LLM_AGREE = "table_llm_agree"
+    TABLE_LLM_DIFF = "table_llm_diff"
+
+
+class MergeBasis(StrEnum):
+    """Why two extracted encounter rows were merged into one (medical_records extractor).
+
+    ``DETERMINISTIC_KEY`` is a same-(date, provider) collision resolved by rule;
+    ``LLM_TIEBREAK`` is an ambiguous pair the merge_tiebreak model was asked to adjudicate.
+    """
+
+    DETERMINISTIC_KEY = "deterministic_key"
+    LLM_TIEBREAK = "llm_tiebreak"
+
+
+class OverlayStatus(StrEnum):
+    """Outcome of reapplying a paralegal's chronology-row overlay after a rebuild.
+
+    A rebuilt chronology row either takes the overlay (``APPLIED``), loses its anchor encounter
+    (``PARKED_ORPHANED``), or has drifted under the edit (``CONFLICT``) — never silently
+    dropped (chronology_builder §3).
+    """
+
+    APPLIED = "applied"
+    PARKED_ORPHANED = "parked_orphaned"
+    CONFLICT = "conflict"
+
+
+class ExtractionStatus(StrEnum):
+    """Per-window ``ExtractionRun`` status (corpus_extraction §4)."""
+
+    OK = "ok"
+    PARTIAL = "partial"
+    FAILED = "failed"
 
 
 class DocType(StrEnum):

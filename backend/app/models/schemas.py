@@ -54,11 +54,29 @@ class _ORMModel(BaseModel):
 
 
 class PageAnchor(BaseModel):
-    """A page-level provenance anchor. ``bbox`` is optional (x0, y0, x1, y1)."""
+    """A (doc, page) provenance anchor.
+
+    Two provenance roles share this one shape:
+
+    * **Stored provenance** (M1): the anchor persisted on a :class:`MedicalEncounter`,
+      :class:`BillingLine`, or :class:`FactToken`; ``bbox`` (x0, y0, x1, y1) is the optional
+      on-page region.
+    * **Extraction emission** (M2): the anchor a model emits during an
+      :class:`~app.models.orm.ExtractionRun`; ``window_id`` records *which* window the model was
+      shown when it produced this anchor (the anti-fabrication validation target — a page
+      outside the window is a fabricated cite), and ``field`` names the extracted field the
+      anchor supports.
+
+    The doc id field is ``document_id`` (M1 stored shape) rather than the ``doc_id`` the M2 spec
+    sketched, so the single anchor shape stays backward-compatible with already-persisted rows;
+    the extraction fields (``window_id``, ``field``) are additive and optional.
+    """
 
     document_id: uuid.UUID
-    page: int
+    page: int = Field(ge=1)
     bbox: tuple[float, float, float, float] | None = None
+    window_id: str | None = None
+    field: str | None = None
 
 
 class DeadlineCandidate(BaseModel):
@@ -80,6 +98,101 @@ class PlannedSection(BaseModel):
     allowed_tokens: list[str] = Field(default_factory=list)
     required_tokens: list[str] = Field(default_factory=list)
     max_words: int
+
+
+# --------------------------------------------------------------------------------------
+# Extraction I/O schemas (M2) — the cross-wave extractor contracts
+# --------------------------------------------------------------------------------------
+#
+# These are the *validated shapes* of what the medical-records / billing / incident
+# extractors emit for a single window. Normalization (dollar strings -> cents, date parsing
+# beyond ISO, dedup/merge) lives downstream; these carry the model's JSON as-read. Anchor
+# pages are 1-based absolute page numbers within the window's span, so an anchor can be
+# checked against the ExtractionRun window that produced it (anti-fabrication).
+
+
+class ExtractedEncounter(BaseModel):
+    """Structured output of the medical-records extractor for ONE encounter.
+
+    Pre-normalization: the raw JSON the model returns, validated into shape. ``anchor_pages``
+    is non-empty (every extracted encounter must cite at least one page) and holds 1-based
+    absolute page numbers within the window's span.
+    """
+
+    date_of_service: date
+    provider: str = Field(min_length=1)
+    facility: str = ""
+    encounter_type: str = Field(min_length=1)
+    complaints: list[str] = Field(default_factory=list)
+    findings: list[str] = Field(default_factory=list)
+    diagnoses: list[str] = Field(default_factory=list)
+    procedures: list[str] = Field(default_factory=list)
+    work_status: str | None = None
+    anchor_pages: list[int] = Field(min_length=1)
+    field_confidence: dict[str, float] = Field(default_factory=dict)
+
+
+class ExtractedEncounterBatch(BaseModel):
+    """A window's worth of extracted encounters."""
+
+    encounters: list[ExtractedEncounter] = Field(default_factory=list)
+
+
+class ExtractedBillingLine(BaseModel):
+    """One billing line as read from a bill (pre-normalization).
+
+    Money fields are dollar *strings* exactly as read (e.g. ``"$1,234.56"``); the money engine's
+    deterministic code normalizes them to integer cents. ``category`` is validated into the
+    fixed ledger taxonomy. ``anchor_page`` is a single 1-based absolute page number.
+    """
+
+    provider: str = Field(min_length=1)
+    date_of_service: date
+    code: str | None = None
+    billed: str = Field(min_length=1)
+    adjusted: str | None = None
+    paid: str | None = None
+    outstanding: str | None = None
+    category: LedgerCategory
+    anchor_page: int = Field(ge=1)
+
+
+class ExtractedBillingBatch(BaseModel):
+    """A window's worth of extracted billing lines."""
+
+    lines: list[ExtractedBillingLine] = Field(default_factory=list)
+
+
+class ExtractedIncident(BaseModel):
+    """Structured output of the incident (police-report) extractor.
+
+    ``parties`` is a list of ``{name, role}`` maps. ``anchor_pages`` is non-empty (1-based,
+    within the window span).
+    """
+
+    location: str = ""
+    incident_narrative: str = ""
+    parties: list[dict[str, str]] = Field(default_factory=list)
+    citations_issued: list[str] = Field(default_factory=list)
+    anchor_pages: list[int] = Field(min_length=1)
+
+
+class AmountFact(BaseModel):
+    """money_engine -> fact_registry AMT emission payload.
+
+    The division of labor: money never mints tokens, the registry never sums money. The money
+    engine computes a value and hands the registry this payload; ``key`` is the deterministic
+    ledger key (e.g. ``"specials.grand.billed"``, ``"specials.category.imaging.billed"``,
+    ``"specials.demand_basis"``), ``value_cents`` is integer cents, and ``ledger_ref`` +
+    ``ledger_hash`` pin the linkage back to the exact ledger state that produced it.
+    """
+
+    key: str
+    value_cents: Cents
+    display_form: str
+    # {"line_ids": [...], "category": str | None, "column": str}
+    ledger_ref: dict = Field(default_factory=dict)
+    ledger_hash: str
 
 
 # --------------------------------------------------------------------------------------

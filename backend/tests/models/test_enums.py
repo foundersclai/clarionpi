@@ -51,8 +51,15 @@ def test_gate_event_has_exactly_fourteen_values() -> None:
         (enums.UserRole, {"paralegal", "attorney", "admin"}),
         (enums.GateAction, {"approve", "reject", "edit", "override"}),
         (enums.TokenKind, {"fact", "amount", "citation", "exhibit"}),
-        (enums.TokenStatus, {"verified", "unverified"}),
+        (enums.TokenStatus, {"verified", "unverified", "disputed"}),
         (enums.TokenSource, {"extractor", "attorney", "rules"}),
+        (
+            enums.ReconciliationStatus,
+            {"llm_only", "table_only", "table_llm_agree", "table_llm_diff"},
+        ),
+        (enums.MergeBasis, {"deterministic_key", "llm_tiebreak"}),
+        (enums.OverlayStatus, {"applied", "parked_orphaned", "conflict"}),
+        (enums.ExtractionStatus, {"ok", "partial", "failed"}),
         (
             enums.DocType,
             {

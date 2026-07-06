@@ -288,6 +288,11 @@ class MedicalEncounter(Base, FirmScoped):
     narrative_tokenized: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     anchors: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     merged_from: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Per-field extraction confidence (0..1) as JSON — a mapping, not a Float column, so the
+    # money/Float-column ban is not tripped (scores live in JSON here, keyed by field name).
+    field_confidence: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
+    # Set on rows produced by a merge; carries which basis resolved the collision (# MergeBasis).
+    merge_basis: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -308,6 +313,8 @@ class BillingLine(Base, FirmScoped):
     paid_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     outstanding_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     category: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # LedgerCategory
+    # How the numbers were sourced (# ReconciliationStatus); M2 emits only "llm_only".
+    reconciliation: Mapped[str] = mapped_column(sa.String(24), nullable=False, default="llm_only")
     anchor: Mapped[dict] = mapped_column(sa.JSON, nullable=False)
     created_at: Mapped[datetime] = _created_at()
 
@@ -324,6 +331,81 @@ class IncidentFacts(Base, FirmScoped):
     payload: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
     anchors: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = _created_at()
+
+
+# --------------------------------------------------------------------------------------
+# Extraction runs + chronology overlays (M2)
+# --------------------------------------------------------------------------------------
+
+
+class ExtractionRun(Base, FirmScoped):
+    """One extraction window run.
+
+    Idempotency key: ``(document_id, window_id, prompt_version)`` — re-running the same
+    window under the same prompt is a no-op, while a prompt-version bump re-extracts the
+    window (corpus_extraction §4). ``window_id`` is ``"{doc_id}:{start}-{end}"`` and the
+    ``window_start``/``window_end`` span is an inclusive, 1-based page range.
+    """
+
+    __tablename__ = "extraction_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "window_id",
+            "prompt_version",
+            name="uq_extraction_run_doc_window_prompt",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("case_documents.id"), index=True, nullable=False
+    )
+    window_id: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    window_start: Mapped[int] = mapped_column(sa.Integer, nullable=False)  # inclusive, 1-based
+    window_end: Mapped[int] = mapped_column(sa.Integer, nullable=False)  # inclusive, 1-based
+    prompt_version: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    model: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    status: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # ExtractionStatus
+    error: Mapped[str | None] = mapped_column(sa.String(512), nullable=True)
+    rows_emitted: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    anchors_rejected: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ChronologyRowOverlay(Base, FirmScoped):
+    """A paralegal's chronology-row edit — first-class, survives rebuilds, never silently
+    dropped (chronology_builder §3).
+
+    Keyed by the encounter it annotates; on reapply the builder compares ``base_hash_at_edit``
+    against the freshly rebuilt row to decide the :class:`~app.models.enums.OverlayStatus`.
+    """
+
+    __tablename__ = "chronology_row_overlays"
+    __table_args__ = (
+        UniqueConstraint(
+            "matter_id", "encounter_id", name="uq_chronology_overlay_matter_encounter"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    encounter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("medical_encounters.id"), index=True, nullable=False
+    )
+    edited_fields: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
+    base_hash_at_edit: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    status: Mapped[str] = mapped_column(sa.String(24), nullable=False)  # OverlayStatus
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
 
 
 # --------------------------------------------------------------------------------------
@@ -386,6 +468,38 @@ class FactToken(Base, FirmScoped):
     anchors: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # TokenStatus
     source: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # TokenSource
+    # Deterministic source key (e.g. "encounter:<uuid>", "amt:<ledger key>") that makes registry
+    # sync idempotent — re-syncing the same upstream fact resolves to the same token slot.
+    source_ref: Mapped[str | None] = mapped_column(sa.String(128), nullable=True, index=True)
+    # AMT-only linkage back to the money engine (fact_registry §3): the ledger emission payload,
+    # the snapshot value in integer cents (money discipline), and the ledger hash it was minted at.
+    ledger_ref: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    snapshot_value_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    ledger_hash: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class RegistryVersion(Base, FirmScoped):
+    """One row per registry-version bump for a matter; approvals bind to a version (schema inv 3).
+
+    ``(matter_id, version)`` is unique — a version is minted once. ``frozen`` marks a version
+    that a downstream approval has pinned; ``parent_version`` and ``change_reason`` record the
+    lineage of why the registry advanced (fact_registry §4).
+    """
+
+    __tablename__ = "registry_versions"
+    __table_args__ = (
+        UniqueConstraint("matter_id", "version", name="uq_registry_version_matter_version"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    frozen: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    parent_version: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    change_reason: Mapped[str] = mapped_column(sa.String(255), nullable=False, default="")
     created_at: Mapped[datetime] = _created_at()
 
 

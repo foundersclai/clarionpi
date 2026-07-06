@@ -51,6 +51,13 @@ class Settings:
     shingle_size: int = 5
     shingle_overlap_threshold: float = 0.35
     matter_logs_dir: str = _DEV_MATTER_LOGS_DIR
+    # Extraction (M2). Per-stage models + window sizing + the per-call output-token ceiling.
+    extractor_model: str = "claude-sonnet-5"
+    narrative_model: str = "claude-sonnet-5"
+    merge_tiebreak_model: str = "claude-sonnet-5"
+    extraction_window_pages: int = 8
+    extraction_window_overlap: int = 2
+    llm_max_output_tokens: int = 4096
 
 
 def _env_int(name: str, default: int) -> int:
@@ -115,4 +122,10 @@ def get_settings() -> Settings:
         shingle_size=_env_int("SHINGLE_SIZE", 5),
         shingle_overlap_threshold=_env_float("SHINGLE_OVERLAP_THRESHOLD", 0.35),
         matter_logs_dir=os.environ.get("MATTER_LOGS_DIR") or _default_matter_logs_dir(app_env),
+        extractor_model=os.environ.get("EXTRACTOR_MODEL", "claude-sonnet-5"),
+        narrative_model=os.environ.get("NARRATIVE_MODEL", "claude-sonnet-5"),
+        merge_tiebreak_model=os.environ.get("MERGE_TIEBREAK_MODEL", "claude-sonnet-5"),
+        extraction_window_pages=_env_int("EXTRACTION_WINDOW_PAGES", 8),
+        extraction_window_overlap=_env_int("EXTRACTION_WINDOW_OVERLAP", 2),
+        llm_max_output_tokens=_env_int("LLM_MAX_OUTPUT_TOKENS", 4096),
     )
