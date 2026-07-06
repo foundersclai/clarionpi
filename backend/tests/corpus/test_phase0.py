@@ -40,12 +40,41 @@ from app.models.orm import AuditEvent, CaseDocument, DedupDecision, DocumentPage
 from .pdf_builders import CORRUPT_PDF_BYTES, build_text_pdf
 
 # The valid-classify JSON the model would return; queue one per document for a clean pass.
-_CLASSIFY_JSON = '{"doc_type": "medical_record", "confidence": 0.95, "rationale": "r"}'
+# Classifies as `other` on purpose: `other` is not an extractable doc_type, so the M2 extraction
+# stage skips it visibly (skipped_reason="doc_type_not_extractable") with no extractor call and no
+# extraction frames. That keeps these classify/pages/dedup/gate mechanics tests asserting exactly
+# what they always did (docs end OCR_DONE) — extraction of extractable types is exercised in the
+# dedicated suite `test_phase0_extraction.py`.
+_CLASSIFY_JSON = '{"doc_type": "other", "confidence": 0.95, "rationale": "r"}'
 
 
 def _classify_result() -> CompletionResult:
-    """One scripted classify reply (a valid, above-floor medical_record verdict)."""
+    """One scripted classify reply (a valid, above-floor `other` verdict — see _CLASSIFY_JSON)."""
     return CompletionResult(text=_CLASSIFY_JSON, input_tokens=10, output_tokens=5, cost_cents=1)
+
+
+# medical_record variants — used only where a doc must reach `extracted` (leave the pending set).
+_MEDICAL_CLASSIFY_JSON = '{"doc_type": "medical_record", "confidence": 0.95, "rationale": "r"}'
+
+
+def _medical_classify_result() -> CompletionResult:
+    """A scripted classify reply typing the doc medical_record (so the extractor runs on it)."""
+    return CompletionResult(
+        text=_MEDICAL_CLASSIFY_JSON, input_tokens=10, output_tokens=5, cost_cents=1
+    )
+
+
+def _medical_encounter_result(page: int) -> CompletionResult:
+    """One scripted extractor window reply: a single encounter anchored to ``page``."""
+    text = (
+        '{"encounters": [{'
+        '"date_of_service": "2026-02-01", "provider": "Dr. Smith", "facility": "Mercy", '
+        '"encounter_type": "office visit", "complaints": ["neck pain"], "findings": [], '
+        '"diagnoses": ["strain"], "procedures": [], "work_status": null, '
+        f'"anchor_pages": [{page}], "field_confidence": {{"provider": 0.9}}'
+        "}]}"
+    )
+    return CompletionResult(text=text, input_tokens=20, output_tokens=10, cost_cents=1)
 
 
 def _make_doc(
@@ -156,8 +185,9 @@ def test_happy_path_direct_call(
     parsed = _parse_frames(frames)
     events = [name for name, _ in parsed]
 
-    # Frame ORDER: started -> (per doc: classifying, classified, ocr_done) x2 -> gate_ready -> done.
-    # Both docs are distinct content (tags A/B), so neither dedup-quarantines.
+    # Frame ORDER: started -> (per doc: classifying, classified, ocr_done) x2 -> registry_synced
+    # (the M2 sync stage; no encounters_merged frame because `other` docs extract nothing) ->
+    # gate_ready -> done. Both docs are distinct content (tags A/B), so neither dedup-quarantines.
     assert events == [
         SseEvent.STATUS.value,  # started
         SseEvent.DOC_STATE.value,  # doc1 classifying
@@ -166,6 +196,7 @@ def test_happy_path_direct_call(
         SseEvent.DOC_STATE.value,  # doc2 classifying
         SseEvent.DOC_STATE.value,  # doc2 classified
         SseEvent.DOC_STATE.value,  # doc2 ocr_done
+        SseEvent.STATUS.value,  # registry_synced (M2 sync stage)
         SseEvent.GATE_READY.value,
         SseEvent.STATUS.value,  # completed
     ]
@@ -209,6 +240,16 @@ def test_happy_path_direct_call(
     assert completed["failed_documents"] == 0
     assert completed["dedup_quarantined"] == 0
     assert completed["gate_advanced"] is True
+    # M2 sync-stage fields. Both docs are `other` (not extractable) so nothing was extracted or
+    # merged; the ledger still mints its always-emitted AMT payloads (grand.billed + demand_basis
+    # over an empty billing set = $0.00), bumping the registry to version 1.
+    assert completed["documents_extracted"] == 0
+    assert completed["extraction_rows"] == 0
+    assert completed["anchors_rejected"] == 0
+    assert completed["encounters_merged"] == 0
+    assert completed["facts_minted"] == 0
+    assert completed["amounts_minted"] == 2
+    assert completed["registry_version"] == 1
 
 
 def test_every_frame_is_valid_sse_shape(
@@ -461,7 +502,10 @@ def test_zero_pending_repost(
     _make_doc(db, dev_user, matter, storage, build_text_pdf(_text_pages(1)))
     logger = MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path)
 
-    # First run advances the gate.
+    # First run advances the gate AND fully extracts the doc so it leaves the pending set. Under M2
+    # an `other` doc would stay OCR_DONE and be re-selected for an extraction-only pass, so to get a
+    # genuinely zero-pending re-POST the doc must reach `extracted`: classify medical_record, then
+    # one extractor window reply (1 page -> 1 window).
     list(
         run_phase0(
             db,
@@ -469,11 +513,16 @@ def test_zero_pending_repost(
             user=dev_user,
             storage=storage,
             ocr=FakeOcr(),
-            provider=ScriptedProvider([_classify_result()]),
+            provider=ScriptedProvider([_medical_classify_result(), _medical_encounter_result(1)]),
             run_logger=logger,
         )
     )
-    # Third run with nothing pending: started + late + completed, no crash, no gate move.
+
+    # Second run with nothing pending (the doc is `extracted`, terminal): the sync stage still runs
+    # over the existing facts — started -> encounters_merged (the prior run's encounter is present)
+    # -> registry_synced -> late -> completed, all STATUS frames, no per-doc or gate frames, no
+    # crash. NullProvider is fine: merge's tiebreak is best-effort and this idempotent re-sync needs
+    # no model call.
     frames = list(
         run_phase0(
             db,
@@ -481,7 +530,7 @@ def test_zero_pending_repost(
             user=dev_user,
             storage=storage,
             ocr=FakeOcr(),
-            provider=NullProvider(),  # never called: no pending docs
+            provider=NullProvider(),
             run_logger=logger,
         )
     )
@@ -489,10 +538,14 @@ def test_zero_pending_repost(
     events = [name for name, _ in parsed]
     states = [d.get("state") for name, d in parsed if name == SseEvent.STATUS.value]
 
-    # No docs pending, matter already past corpus_processing: started -> late -> completed, all
-    # STATUS frames, no per-doc or gate frames, no crash.
-    assert events == [SseEvent.STATUS.value] * 3
-    assert states == ["started", "late_documents_processed", "completed"]
+    assert events == [SseEvent.STATUS.value] * 5
+    assert states == [
+        "started",
+        "encounters_merged",
+        "registry_synced",
+        "late_documents_processed",
+        "completed",
+    ]
     assert parsed[0][1]["pending_documents"] == 0
     assert parsed[-1][1]["documents_processed"] == 0
     db.refresh(matter)

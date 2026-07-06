@@ -89,9 +89,16 @@ never reach the wire.
   (`MedicalEncounter.anchors`, `BillingLine.anchor`, `FactToken.anchors`); the
   token registry lives in `backend/app/engine/tokenizer` (see
   [app.engine.tokenizer](module_contracts/app.engine.tokenizer.md)).
-- **Deferred:** anchor-window validation at extraction, orphan→sentinel
-  resolution, and the G3 hard block land **M2** (registry) → **M5** (compliance
-  panel).
+- **Enforced (M2):** anchor-window validation at extraction is live —
+  `backend/app/corpus/extraction/runner.py` rejects any emitted row whose cited page
+  falls outside the window span that produced it (`_anchors_in_window`, counted in
+  `anchors_rejected`, never persisted), and every persisted `MedicalEncounter` /
+  `BillingLine` / `IncidentFacts` row carries a validated `(document, page,
+  window_id)` anchor. `resolve_for_render` runs anchor integrity — a token anchored
+  only on a dedup-superseded document resolves `unverified`, and an orphan resolves
+  to the `SENTINEL` with a loud log.
+- **Deferred:** the orphan/`unverified` **hard G3 block** (the resolver reports the
+  outcome; the gate that blocks on it) lands **M5** (compliance panel).
 
 ### 3. The LLM Never Does Arithmetic
 
@@ -105,8 +112,14 @@ it computed.
   banned for currency by convention + `ruff`/`mypy` + review (see
   [app.money.ledger](module_contracts/app.money.ledger.md)). Date math ownership
   is `backend/app/rules`.
-- **Deferred:** the ledger rollup functions and `[[AMT]]` emission land **M2**;
-  `app/money` is a package stub today.
+- **Enforced (M2):** the specials-ledger rollup + demand math and `[[AMT]]`
+  emission are live and pure — `backend/app/money/specials.py` computes
+  category/grand `LedgerColumns`, the demand-basis total, and the `line_set_hash`
+  with integer cents only (no I/O, no `datetime.now`); `assemble.py` is the sole
+  DB-touching layer. The LLM never emits a computed number: `app.engine.tokenizer`
+  mints `[[AMT]]` tokens from `amounts_for_registry`, storing the value + `ledger_hash`
+  snapshot, and drift is caught by re-hashing at render (`resolve_for_render`
+  `amt_mismatch`), never by mutating a stored value.
 
 ### 4. Deadlines Are Deterministic And Attorney-Confirmed
 
@@ -134,9 +147,16 @@ kinds (`FACT/AMT/CITE/EX`).
   (`TokenKind`, `TokenStatus`, `TokenSource`) are in place; the tokenizer package
   (`backend/app/engine/tokenizer`) is the declared sole minter (see
   [app.engine.tokenizer](module_contracts/app.engine.tokenizer.md)).
-- **Deferred:** the tokenizer/renderer body, prompt-vs-render resolution, and
-  full mint/resolve enforcement land **M2**; the drafter that consumes display
-  forms (`engine.brain2`) lands **M5**.
+- **Enforced (M2):** the registry mint + resolution are live in
+  `backend/app/engine/tokenizer/registry.py` — the **sole** minter of the four
+  token kinds in one shared per-matter ordinal namespace (`sync_extracted_facts`
+  for extracted facts, `mint_amounts` for ledger AMTs, `mint_attorney_fact`), and
+  the two resolution modes are enforced: `resolve_for_prompt` exposes **only**
+  `display_form` (Brain-2 never sees raw names/cites/amounts), `resolve_text_for_wire`
+  asserts nothing token-shaped survives onto a wire, and a missing token resolves to
+  the `SENTINEL` (`"[UNRESOLVED FACT]"`, deliberately not token-shaped).
+- **Deferred:** the G2a version freeze and the drafter that consumes display forms
+  (`engine.brain2`) land **M5**.
 
 ### 6. Adverse Facts: Surface Always, Volunteer Never
 
@@ -256,6 +276,13 @@ checks (token membership, ledger-hash equality, anchor existence) are pure code.
   (`engine.compliance`) are code; the semantic judge is the LLM. Model tiering
   (Opus strategist / Sonnet extractor+judge / Haiku classifier) is contract, per
   [01 §3](../backlog/pi/01_high_level_design.md).
+- **Enforced (M2):** the split is live at the extraction boundary — encounter
+  merge (`backend/app/corpus/extraction/merge.py`) collapses exact-key duplicates by
+  **rule** (casefold + whitespace on `(provider, date, encounter_type)`, no model
+  call) and sends only genuine near-matches (same date, provider Jaccard ≥ 0.5) to
+  the `merge_tiebreak` model; a pair the model can't reach is left **unmerged and
+  counted**, never guessed in code. Ledger-hash equality and anchor existence
+  (`app.money.specials`, `app.engine.tokenizer`) are pure-code mechanical checks.
 - **Deferred:** the compliance panel that runs both families (`engine.compliance`)
   is a stub; it lands **M5**.
 

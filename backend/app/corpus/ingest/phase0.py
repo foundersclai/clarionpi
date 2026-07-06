@@ -1,12 +1,26 @@
-"""Phase 0 — classify -> page pipeline -> dedup per document, streamed over SSE.
+"""Phase 0 — classify -> pages -> dedup -> extract per document, then sync, streamed over SSE.
 
-Re-entrant for late documents (component corpus_ingest §1; invariant 14 run logs).
+Re-entrant for late documents and mid-extraction resumes (component corpus_ingest §1; invariant
+14 run logs).
 
-The run composes the already-landed per-stage functions (``classify``, ``pages``, ``dedup``)
-over every ``CaseDocument`` still in ``uploaded`` for a matter, emitting one SSE frame per
-lifecycle step and appending a JSON-lines trail to the matter's ingest run log. It processes
-ONLY ``uploaded`` docs, so a re-POST after completion resumes at the first unprocessed document
-rather than reprocessing the corpus.
+The run composes the already-landed per-stage functions (``classify``, ``pages``, ``dedup``,
+``extract_document``) over every pending ``CaseDocument`` for a matter, emitting one SSE frame per
+lifecycle step and appending a JSON-lines trail to the matter's ingest run log. After the per-doc
+loop it runs the **sync stage** — encounter merge, fact-registry sync, and specials-ledger AMT
+mint — then the gate step.
+
+Pending selection (re-entrancy): a doc is pending if it is still ``uploaded`` (never processed) OR
+already ``ocr_done`` with no completed extraction. The second case covers three resumes without a
+re-classify: an M1-ingested matter whose docs were paged before extraction existed, a doc an
+attorney reclassified to an extractable type, and a provider-outage that stopped extraction
+mid-document. A doc that fully extracted reaches ``extracted`` and drops out of the pending set, so
+a re-POST resumes at the first doc that never finished rather than reprocessing the corpus.
+
+Per-doc branching by entry status:
+
+* an ``uploaded`` doc runs the full pipeline (classify -> pages -> dedup -> extract);
+* an ``ocr_done`` doc runs the extraction stage ONLY — classify/pages/dedup already ran on a
+  prior run and their commits landed, so re-running them would be wasted work.
 
 Gate consequence:
 
@@ -14,16 +28,19 @@ Gate consequence:
   gate machine (:func:`~app.engine.orchestrator.machine.advance` — the guardless
   ``CORPUS_PROCESSING -> FACTS_REVIEW`` edge is the only sanctioned way ``gate_state`` moves).
 * A **late-document** run (matter already past ``corpus_processing``) processes the new documents
-  but leaves the gate untouched. The gate consequence of late records — re-running analysis so the
-  new pages flow into the demand — belongs to the analysis re-run wave (M2/M3); it is recorded
-  here as an explicit boundary, not an oversight.
+  — now including their extraction + a registry re-sync — but leaves the gate untouched. The gate
+  consequence of late records — re-running analysis so the new facts flow into the demand — belongs
+  to the analysis re-run wave (M3); it is recorded here as an explicit boundary, not an oversight.
 
 The per-stage functions each commit their own work and never raise for a bad document (a corrupt
-PDF is marked ``FAILED`` in place). The run body is still wrapped so that an *unexpected* exception
-— one the composed stages did not absorb — ends the stream with a single ERROR frame after logging
-it, rather than propagating a raw traceback to the SSE caller. Because per-document work has
-already committed and the run is re-entrant, a re-POST resumes cleanly from the first document that
-never finished.
+PDF is marked ``FAILED`` in place; a bad extractor window is recorded ``FAILED`` and the doc stays
+``ocr_done``, resumable). Extraction has two EXPECTED offline conditions — provider down, budget
+exhausted — that stop a doc mid-run and leave it resumable without raising. The sync stage (merge,
+registry, ledger) uses NO LLM on its critical path, so its failures are all provider-independent.
+The run body is still wrapped so that an *unexpected* exception — one the composed stages did not
+absorb — ends the stream with a single ERROR frame after logging it, rather than propagating a raw
+traceback to the SSE caller. Because per-document work has already committed and the run is
+re-entrant, a re-POST resumes cleanly from the first document that never finished.
 """
 
 from __future__ import annotations
@@ -31,7 +48,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.sse_utils import format_sse
@@ -41,16 +58,27 @@ from app.core.llm_provider import LLMProvider
 from app.core.llm_telemetry import MeteredLLMClient
 from app.core.matter_logs import MatterRunLogger
 from app.core.storage import ObjectStorage
+from app.corpus.extraction import extract_document, merge_encounters
 from app.corpus.ingest.classify import classify_document, sample_text_for
 from app.corpus.ingest.dedup import run_dedup
 from app.corpus.ingest.pages import build_document_pages
 from app.corpus.ocr import OcrEngine
 from app.engine.orchestrator.machine import advance
-from app.models.enums import DedupStatus, DocStatus, GateEvent, GateState, SseEvent
-from app.models.orm import CaseDocument, Matter, User
+from app.engine.tokenizer import registry
+from app.models.enums import DedupStatus, DocStatus, DocType, GateEvent, GateState, SseEvent
+from app.models.orm import CaseDocument, Matter, MedicalEncounter, User
+from app.money.assemble import compute_matter_ledger
+from app.money.specials import amounts_for_registry
+from app.rules.errors import UnsupportedJurisdiction
+from app.rules.loader import load_pack
 
 # Truncate an unexpected error's detail so one runaway repr can't flood the SSE frame.
 _ERROR_DETAIL_MAX = 300
+
+# The extractable doc types — mirrors the extractor's `_KIND_BY_DOC_TYPE` keys (its authority) so we
+# can emit the "extracting" in-progress frame ONLY for a doc the extractor will actually process; a
+# non-extractable type emits no extraction frame (the runner still returns skipped_reason for it).
+_EXTRACTABLE_DOC_TYPES = frozenset({DocType.MEDICAL_RECORD, DocType.BILL, DocType.POLICE_REPORT})
 
 
 @dataclass(frozen=True)
@@ -60,6 +88,11 @@ class Phase0Summary:
     ``gate_advanced`` is ``True`` only when this run moved the matter out of
     ``corpus_processing`` into ``facts_review`` (a first run); a late-document run reports
     ``False`` because it deliberately leaves the gate untouched.
+
+    The extraction/sync counters (``documents_extracted`` .. ``registry_version``) are the M2
+    additions: how many docs reached ``extracted`` this run, the anchored rows + rejected anchors
+    the extractors produced, the encounter-merge groups collapsed, and the registry facts/amounts
+    minted at the resulting ``registry_version``.
     """
 
     documents_processed: int
@@ -69,20 +102,39 @@ class Phase0Summary:
     failed_documents: int
     dedup_quarantined: int
     gate_advanced: bool
+    documents_extracted: int
+    extraction_rows: int
+    anchors_rejected: int
+    encounters_merged: int
+    facts_minted: int
+    amounts_minted: int
+    registry_version: int
 
 
 def _pending_documents(db: Session, matter: Matter) -> list[CaseDocument]:
-    """The matter's ``uploaded`` documents, ordered ``(created_at, id)`` (deterministic).
+    """The matter's documents still needing Phase-0 work, ordered ``(created_at, id)``.
 
-    Only ``uploaded`` docs are pending: a doc already classified/ocr_done/failed was handled by
-    a prior run, so a re-POST resumes at the first unprocessed document rather than reprocessing.
+    Two statuses are pending:
+
+    * ``uploaded`` — never processed; runs the full pipeline (classify -> pages -> dedup ->
+      extract).
+    * ``ocr_done`` — paged + deduped already but not yet ``extracted`` (extraction never ran, was
+      re-enabled by a reclassify, or stopped mid-run on a provider/budget outage); runs the
+      extraction stage only.
+
+    A doc that fully extracted is ``extracted`` and not pending, so a re-POST resumes at the first
+    doc that never finished rather than reprocessing the corpus. ``failed`` docs are terminal and
+    excluded.
     """
     return list(
         db.scalars(
             select(CaseDocument)
             .where(
                 CaseDocument.matter_id == matter.id,
-                CaseDocument.status == DocStatus.UPLOADED.value,
+                or_(
+                    CaseDocument.status == DocStatus.UPLOADED.value,
+                    CaseDocument.status == DocStatus.OCR_DONE.value,
+                ),
             )
             .order_by(CaseDocument.created_at, CaseDocument.id)
         )
@@ -101,15 +153,17 @@ def run_phase0(
 ) -> Iterator[str]:
     """Run Phase 0 for ``matter``, yielding SSE frames (strings from :func:`format_sse`).
 
-    Processes every ``uploaded`` document (classify -> pages -> dedup), then does the gate step:
-    a run that started in ``corpus_processing`` advances to ``facts_review``; a late-document run
-    leaves the gate where it is. Re-entrant: a re-POST resumes at the first unprocessed document.
+    Processes every pending document (an ``uploaded`` doc through classify -> pages -> dedup ->
+    extract; an ``ocr_done`` doc through extract only), then runs the sync stage (merge -> registry
+    sync -> ledger AMT mint) and the gate step: a run that started in ``corpus_processing`` advances
+    to ``facts_review``; a late-document run leaves the gate where it is. Re-entrant: a re-POST
+    resumes at the first unprocessed document and re-syncs.
 
     An empty pending set is a legal run (a re-POST after completion): it still emits
-    started/completed and still does the gate step. If the matter is still ``corpus_processing``
-    with zero pending docs, that step DOES advance it — a zero-document matter reaching
-    ``facts_review`` is the attorney's problem to see (an empty corpus), not something this runner
-    silently blocks.
+    started/completed, still runs the sync stage, and still does the gate step. If the matter is
+    still ``corpus_processing`` with zero pending docs, that step DOES advance it — a zero-document
+    matter reaching ``facts_review`` is the attorney's problem to see (an empty corpus), not
+    something this runner silently blocks.
     """
     logger = run_logger if run_logger is not None else MatterRunLogger(matter.id, "ingest")
     settings = get_settings()
@@ -123,6 +177,13 @@ def run_phase0(
     zero_text_pages = 0
     failed_documents = 0
     dedup_quarantined = 0
+    documents_extracted = 0
+    extraction_rows = 0
+    anchors_rejected = 0
+    encounters_merged = 0
+    facts_minted = 0
+    amounts_minted = 0
+    registry_version = matter.registry_version
 
     try:
         pending = _pending_documents(db, matter)
@@ -143,91 +204,224 @@ def run_phase0(
 
         for document in pending:
             current_document_id = str(document.id)
-            yield format_sse(
-                SseEvent.DOC_STATE,
-                {"document_id": str(document.id), "status": "classifying"},
-            )
-
-            # Every model call travels the metered door (invariant 12). One client per matter run.
+            # Every model call travels the metered door (invariant 12). One client per document.
             client = MeteredLLMClient(provider, db, matter.firm_id, matter.id)
-            sample = sample_text_for(storage, document, max_pages=settings.classifier_sample_pages)
-            classify_outcome = classify_document(db, client, document=document, sample_text=sample)
-            logger.log(
-                "doc_classified",
-                document_id=str(document.id),
-                doc_type=classify_outcome.doc_type,
-                confidence=classify_outcome.confidence,
-                degraded=classify_outcome.degraded,
-                degrade_reason=classify_outcome.degrade_reason,
-                needs_review=classify_outcome.needs_review,
-            )
-            yield format_sse(
-                SseEvent.DOC_STATE,
-                {
-                    "document_id": str(document.id),
-                    "status": "classified",
-                    "doc_type": classify_outcome.doc_type,
-                    "needs_review": classify_outcome.needs_review,
-                },
-            )
+            # Capture the entry status BEFORE any stage mutates it: it decides the branch.
+            entry_status = document.status
 
-            pages_outcome = build_document_pages(db, storage=storage, ocr=ocr, document=document)
-            logger.log("doc_pages_built", document_id=str(document.id), **asdict(pages_outcome))
-
-            if pages_outcome.failed:
-                # A poison document is marked FAILED by the pages stage; surface it and move on
-                # (no dedup for a doc with no page store).
-                failed_documents += 1
-                documents_processed += 1
+            if entry_status == DocStatus.UPLOADED.value:
+                # ---- Full pipeline: classify -> pages -> dedup -----------------------------------
+                yield format_sse(
+                    SseEvent.DOC_STATE,
+                    {"document_id": str(document.id), "status": "classifying"},
+                )
+                sample = sample_text_for(
+                    storage, document, max_pages=settings.classifier_sample_pages
+                )
+                classify_outcome = classify_document(
+                    db, client, document=document, sample_text=sample
+                )
+                logger.log(
+                    "doc_classified",
+                    document_id=str(document.id),
+                    doc_type=classify_outcome.doc_type,
+                    confidence=classify_outcome.confidence,
+                    degraded=classify_outcome.degraded,
+                    degrade_reason=classify_outcome.degrade_reason,
+                    needs_review=classify_outcome.needs_review,
+                )
                 yield format_sse(
                     SseEvent.DOC_STATE,
                     {
                         "document_id": str(document.id),
-                        "status": "failed",
-                        "reason": pages_outcome.failure_reason,
+                        "status": "classified",
+                        "doc_type": classify_outcome.doc_type,
+                        "needs_review": classify_outcome.needs_review,
                     },
                 )
-                continue
 
-            pages_created += pages_outcome.pages_created
-            ocr_fallbacks += pages_outcome.ocr_fallbacks
-            zero_text_pages += pages_outcome.zero_text_pages
-            yield format_sse(
-                SseEvent.DOC_STATE,
-                {
-                    "document_id": str(document.id),
-                    "status": "ocr_done",
-                    "pages_done": pages_outcome.pages_created,
-                },
-            )
+                pages_outcome = build_document_pages(
+                    db, storage=storage, ocr=ocr, document=document
+                )
+                logger.log("doc_pages_built", document_id=str(document.id), **asdict(pages_outcome))
 
-            dedup_outcome = run_dedup(db, document=document)
-            logger.log(
-                "doc_dedup",
-                document_id=str(document.id),
-                status=dedup_outcome.status,
-                against_document_id=dedup_outcome.against_document_id,
-                undedupable=dedup_outcome.undedupable,
-            )
-            if dedup_outcome.status != DedupStatus.UNIQUE.value:
-                dedup_quarantined += 1
+                if pages_outcome.failed:
+                    # A poison document is marked FAILED by the pages stage; surface it and move on
+                    # (no dedup/extraction for a doc with no page store).
+                    failed_documents += 1
+                    documents_processed += 1
+                    yield format_sse(
+                        SseEvent.DOC_STATE,
+                        {
+                            "document_id": str(document.id),
+                            "status": "failed",
+                            "reason": pages_outcome.failure_reason,
+                        },
+                    )
+                    continue
+
+                pages_created += pages_outcome.pages_created
+                ocr_fallbacks += pages_outcome.ocr_fallbacks
+                zero_text_pages += pages_outcome.zero_text_pages
                 yield format_sse(
                     SseEvent.DOC_STATE,
                     {
                         "document_id": str(document.id),
-                        "status": "dedup_quarantined",
-                        "dedup_status": dedup_outcome.status,
-                        "against_document_id": (
-                            str(dedup_outcome.against_document_id)
-                            if dedup_outcome.against_document_id is not None
-                            else None
-                        ),
+                        "status": "ocr_done",
+                        "pages_done": pages_outcome.pages_created,
                     },
                 )
+
+                dedup_outcome = run_dedup(db, document=document)
+                logger.log(
+                    "doc_dedup",
+                    document_id=str(document.id),
+                    status=dedup_outcome.status,
+                    against_document_id=dedup_outcome.against_document_id,
+                    undedupable=dedup_outcome.undedupable,
+                )
+                if dedup_outcome.status != DedupStatus.UNIQUE.value:
+                    dedup_quarantined += 1
+                    yield format_sse(
+                        SseEvent.DOC_STATE,
+                        {
+                            "document_id": str(document.id),
+                            "status": "dedup_quarantined",
+                            "dedup_status": dedup_outcome.status,
+                            "against_document_id": (
+                                str(dedup_outcome.against_document_id)
+                                if dedup_outcome.against_document_id is not None
+                                else None
+                            ),
+                        },
+                    )
+
+            # ---- Extraction stage (both branches converge here) ---------------------------------
+            # A freshly-paged doc and a resumed OCR_DONE doc both extract now. The runner is
+            # idempotent per (document, window, prompt_version) — a re-run skips ok/partial windows.
+            # A non-extractable type (incl. a degraded `other`) is skipped VISIBLY, no frames.
+            # Only an extractable-typed doc gets the "extracting" in-progress frame — the
+            # extractor's `_KIND_BY_DOC_TYPE` is the authority for that set; we mirror its three
+            # keys here so a skipped doc emits no extraction frame at all.
+            if DocType(document.doc_type) in _EXTRACTABLE_DOC_TYPES:
+                yield format_sse(
+                    SseEvent.DOC_STATE,
+                    {"document_id": str(document.id), "status": "extracting"},
+                )
+            extract_outcome = extract_document(db, client, document=document)
+            if extract_outcome.skipped_reason is not None:
+                logger.log(
+                    "doc_extraction_skipped",
+                    document_id=str(document.id),
+                    reason=extract_outcome.skipped_reason,
+                )
+            else:
+                extraction_rows += extract_outcome.rows_emitted
+                anchors_rejected += extract_outcome.anchors_rejected
+                # The doc reached EXTRACTED iff every window ran ok/partial (runner rule). We read
+                # the persisted status the runner just committed rather than re-deriving it.
+                db.refresh(document)
+                if document.status == DocStatus.EXTRACTED.value:
+                    documents_extracted += 1
+                    logger.log(
+                        "doc_extracted",
+                        document_id=str(document.id),
+                        rows_emitted=extract_outcome.rows_emitted,
+                        anchors_rejected=extract_outcome.anchors_rejected,
+                        runs_failed=extract_outcome.runs_failed,
+                    )
+                    yield format_sse(
+                        SseEvent.DOC_STATE,
+                        {
+                            "document_id": str(document.id),
+                            "status": "extracted",
+                            "rows_emitted": extract_outcome.rows_emitted,
+                            "anchors_rejected": extract_outcome.anchors_rejected,
+                            "runs_failed": extract_outcome.runs_failed,
+                        },
+                    )
+                else:
+                    # A window failed (provider/budget outage, or two parse failures): the doc
+                    # stays OCR_DONE and a re-run resumes it. Mirror the runner's error string.
+                    error = "provider_unavailable" if extract_outcome.runs_failed else "incomplete"
+                    logger.log(
+                        "doc_extraction_incomplete",
+                        document_id=str(document.id),
+                        runs_failed=extract_outcome.runs_failed,
+                        error=error,
+                    )
+                    yield format_sse(
+                        SseEvent.DOC_STATE,
+                        {
+                            "document_id": str(document.id),
+                            "status": "extraction_incomplete",
+                            "runs_failed": extract_outcome.runs_failed,
+                            "error": error,
+                        },
+                    )
 
             documents_processed += 1
 
         current_document_id = None
+
+        # ---- Sync stage: merge -> registry sync -> ledger AMT mint --------------------------
+        # These paths use NO LLM on their critical work (merge's tiebreak is best-effort and skips
+        # cleanly without a client), so their failures are provider-independent; an unexpected one
+        # falls through to the run_error contract below. One metered client for the merge tiebreak.
+        sync_client = MeteredLLMClient(provider, db, matter.firm_id, matter.id)
+
+        encounter_count = db.scalar(
+            select(MedicalEncounter.id).where(MedicalEncounter.matter_id == matter.id).limit(1)
+        )
+        if encounter_count is not None:
+            merge_outcome = merge_encounters(db, sync_client, matter=matter)
+            encounters_merged = merge_outcome.merged_groups
+            logger.log("encounters_merged", **asdict(merge_outcome))
+            yield format_sse(
+                SseEvent.STATUS,
+                {
+                    "phase": "phase0",
+                    "state": "encounters_merged",
+                    "merged_groups": merge_outcome.merged_groups,
+                    "tiebreaks_skipped": merge_outcome.tiebreaks_skipped,
+                },
+            )
+
+        facts_sync = registry.sync_extracted_facts(db, matter=matter)
+        facts_minted = facts_sync.minted
+        registry_version = facts_sync.version
+        logger.log("registry_synced", **asdict(facts_sync))
+
+        # Ledger AMT mint. Matter creation already gates the jurisdiction, so an
+        # UnsupportedJurisdiction here is defensive: log + skip the ledger, never crash the run.
+        try:
+            pack = load_pack(matter.jurisdiction)
+        except UnsupportedJurisdiction:
+            logger.log("ledger_skipped", reason="jurisdiction_unsupported")
+        else:
+            ledger = compute_matter_ledger(db, matter=matter, pack=pack)
+            amounts = amounts_for_registry(ledger)
+            amt_sync = registry.mint_amounts(db, matter=matter, amounts=amounts)
+            amounts_minted = amt_sync.minted
+            registry_version = amt_sync.version
+            logger.log(
+                "ledger_amounts_minted",
+                count=amt_sync.minted,
+                line_set_hash=ledger.line_set_hash,
+                demand_basis_total_cents=ledger.demand_basis_total_cents,
+                basis=ledger.basis,
+            )
+
+        yield format_sse(
+            SseEvent.STATUS,
+            {
+                "phase": "phase0",
+                "state": "registry_synced",
+                "registry_version": registry_version,
+                "facts_minted": facts_minted,
+                "amounts_minted": amounts_minted,
+            },
+        )
 
         # ---- Gate step ---------------------------------------------------------------------
         gate_advanced = False
@@ -248,6 +442,10 @@ def run_phase0(
                     "zero_text_pages": zero_text_pages,
                     "failed_documents": failed_documents,
                     "dedup_quarantined": dedup_quarantined,
+                    "documents_extracted": documents_extracted,
+                    "facts_minted": facts_minted,
+                    "amounts_minted": amounts_minted,
+                    "registry_version": registry_version,
                 },
             )
             db.commit()
@@ -261,8 +459,8 @@ def run_phase0(
             )
             gate_advanced = True
         else:
-            # Late-document run: process the new docs, leave the gate. The re-run of analysis
-            # that folds these pages into the demand is the M2/M3 wave's job, not this runner's.
+            # Late-document run: process + extract + re-sync the new docs, leave the gate. The
+            # re-run of analysis that folds these facts into the demand is the M3 wave's job here.
             record_event(
                 db,
                 firm_id=matter.firm_id,
@@ -271,6 +469,8 @@ def run_phase0(
                 payload={
                     "matter_id": str(matter.id),
                     "documents_processed": documents_processed,
+                    "documents_extracted": documents_extracted,
+                    "registry_version": registry_version,
                     "gate_state": matter.gate_state,
                 },
             )
@@ -293,6 +493,13 @@ def run_phase0(
             failed_documents=failed_documents,
             dedup_quarantined=dedup_quarantined,
             gate_advanced=gate_advanced,
+            documents_extracted=documents_extracted,
+            extraction_rows=extraction_rows,
+            anchors_rejected=anchors_rejected,
+            encounters_merged=encounters_merged,
+            facts_minted=facts_minted,
+            amounts_minted=amounts_minted,
+            registry_version=registry_version,
         )
         logger.log("run_completed", **asdict(summary))
         yield format_sse(
@@ -301,10 +508,10 @@ def run_phase0(
         )
     except Exception as exc:
         # The composed stages absorb every EXPECTED bad-document condition themselves (classify
-        # degrades, pages marks FAILED, dedup never raises). Reaching here means something
-        # genuinely unexpected broke. We do NOT re-raise through the stream: per-document commits
-        # already landed and the run is re-entrant, so a re-POST resumes at the first unprocessed
-        # doc. Emit one ERROR frame and end the stream cleanly instead of leaking a traceback.
+        # degrades, pages marks FAILED, dedup never raises, extraction records a FAILED window and
+        # resumes). Reaching here means something genuinely unexpected broke. We do NOT re-raise
+        # through the stream: per-document commits already landed and the run is re-entrant, so a
+        # re-POST resumes at the first unprocessed doc. Emit one ERROR frame and end cleanly.
         logger.log(
             "run_error",
             error=type(exc).__name__,

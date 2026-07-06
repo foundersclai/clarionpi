@@ -27,10 +27,10 @@ If any of these fail on a clean checkout, fixing that is the first task.
 backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic
 backend/app/core/       config, db session, tenancy, audit, telemetry, budget
 backend/app/models/     enums + pydantic schemas + ORM; every firm-scoped table carries firm_id
-backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer
+backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer registry (fact spine, live M2)
 backend/app/rules/      lawyer-audited YAML packs + deadline math (backend/app/rules/packs/ is data, not code)
 backend/app/money/      ALL currency arithmetic — integer cents, floats banned
-backend/app/corpus/     document ingest (live M1: sessions, classify, OCR fallback, dedup, phase0 SSE) + extraction (M2 stub)
+backend/app/corpus/     document ingest (live M1: sessions, classify, OCR fallback, dedup, phase0 SSE) + extraction (live M2: windows, extractors, anchor-validation, merge)
 backend/app/package/    demand package builder (M1+ stub at M0)
 backend/tests/          pytest suite, mirrors backend/app/
 docs/adr/               architecture decisions — read before changing architecture
@@ -96,3 +96,10 @@ scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual
   image-only pages flag `zero_text` (set `OCR_ENGINE=tesseract` only if the binary is
   installed); and `LLM_PROVIDER=null` (the default) means document classification degrades
   to the review queue by design rather than blocking the pipeline.
+- Extraction requires a live `LLM_PROVIDER`. With `null` (the default), classification degrades
+  every doc to `other` + review, so the Phase-0 extraction stage skips it
+  (`doc_type_not_extractable`) — by design, so the no-LLM path stays runnable. The ledger/registry
+  sync then still runs (it uses no model): the registry always mints its always-on `[[AMT]]`
+  payloads (grand billed + demand basis over the — possibly empty — billing set). To see facts
+  actually extracted end-to-end, wire `LLM_PROVIDER=anthropic` (needs `ANTHROPIC_API_KEY`) or use
+  a `ScriptedProvider` in tests.

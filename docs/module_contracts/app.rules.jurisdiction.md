@@ -6,10 +6,14 @@ Design source: [`backlog/pi/components/jurisdiction_rules.md`](../../backlog/pi/
 
 ## Status
 
-**Stub @ M0, lands M1–M2.** The package exists with a `packs/` data directory
-(YAML is data, not code). The `DeadlineCandidate` model is in `app/models/schemas.py`.
-The fail-loud loader, the AZ rule packs, and the `HybridEngine` lookup are not yet
-implemented. **v1 = Arizona only.**
+**Live (partial) @ M1–M2.** The fail-loud loader (`loader.py`: YAML →
+validated typed `RulePack`, `UnsupportedJurisdiction` / `RulePackInvalid`), the AZ
+pack (`packs/az.yaml`, unaudited stub — every row `verify_status: unverified`), and
+the deadline model are implemented. **M2 wires the billed-vs-paid basis into the
+money engine**: `pack.billed_vs_paid_basis` (from the pack's `billed_vs_paid` row,
+default `billed`) is what `app.money.assemble.compute_matter_ledger` consumes. The
+`HybridEngine` deadline lookup + LLM fallback remain later work. **v1 = Arizona
+only.**
 
 ## Responsibility
 
@@ -50,11 +54,16 @@ diagnostic); non-AZ packs (v1 is Arizona only).
 
 ## Vocabulary
 
-`RuleRow` (`rule_id`, `statute_cite`, `verified_by`, `verified_date`,
-`verified`) · `DeadlineCandidate` (`kind` ∈ {`sol`, `notice_of_claim`},
-`computed_date`, `assumptions`, `tolling_applied`, `diagnostic`) · `Diagnostic.kind`
-∈ {`matched`, `ambiguous`, `no_rule`} · `RulePackVersion` (`pack_id`, `version`,
-`content_hash`) · billed-vs-paid **basis** (`billed` | `paid`).
+`RuleRow` (`kind`, `claim_type?`, `applies_when?`, `years|days`, `statute_cite`,
+`assumptions`, `verify_status`) · `DeadlineCandidate` (`kind` ∈ {`sol`,
+`notice_of_claim`}, `date`, `statute_cite`, `assumptions`, `verify_status`,
+`confirmed`) · `RulePack` (`pack`, `version`, `audited`, `deadline_rules`,
+`billed_vs_paid?`) · **`billed_vs_paid`** (`basis` ∈ {`billed`, `paid`}, `source`
+cite, `verify_status`) — a typed pack row like every other; AZ v1 = `billed`,
+`source = Lopez v. Safeway Stores, Inc., 212 Ariz. 198 (App. 2006)`,
+`verify_status: unverified` (the collateral-source basis is a computation candidate
+for counsel audit, not confirmed law). A pack omitting the block falls back to the
+conservative `billed` default via `RulePack.billed_vs_paid_basis`.
 
 ## Change rule
 

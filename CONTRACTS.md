@@ -17,13 +17,14 @@ status truthfully (`implemented`/`stub`). `corpus` and `core` each back two cont
 | module path | contract doc | notes |
 |---|---|---|
 | backend/app/corpus | docs/module_contracts/app.corpus.ingest.md | status: live (M1) — raw uploads to page store (sessions, classify, OCR fallback, dedup, phase0 SSE) |
-| backend/app/corpus | docs/module_contracts/app.corpus.extraction.md | status: stub (lands M2) — pages to anchored typed facts |
+| backend/app/corpus | docs/module_contracts/app.corpus.extraction.md | status: live (M2) — pages to anchored typed facts (windows, extractors, anchor-validation, merge; reconciliation llm_only until S1) |
 | backend/app/engine/orchestrator | docs/module_contracts/app.engine.orchestrator.md | status: implemented (partial) — gate machine + audit |
 | backend/app/engine/brain2 | docs/module_contracts/app.engine.brain2.md | status: stub (lands M5) — approved structure to tokenized prose |
 | backend/app/engine/compliance | docs/module_contracts/app.engine.compliance.md | status: stub (lands M5) — G3 deterministic + semantic panel |
-| backend/app/engine/tokenizer | docs/module_contracts/app.engine.tokenizer.md | status: stub (lands M2) — the fact registry / token spine |
-| backend/app/rules | docs/module_contracts/app.rules.jurisdiction.md | status: stub (lands M1-M2) — lawyer-audited YAML to decisions |
-| backend/app/money | docs/module_contracts/app.money.ledger.md | status: stub (lands M2) — all Money arithmetic (integer cents) |
+| backend/app/engine/tokenizer | docs/module_contracts/app.engine.tokenizer.md | status: live (M2) — the fact registry / token spine (mint + versioning + prompt/render resolution) |
+| backend/app/engine/brain1 | docs/module_contracts/app.engine.brain1.chronology.md | status: live (M2) — derived chronology rows + overlays + tokens-only narratives |
+| backend/app/rules | docs/module_contracts/app.rules.jurisdiction.md | status: live partial (M1-M2) — lawyer-audited YAML to decisions (loader + AZ pack + billed-vs-paid basis; HybridEngine lookup later) |
+| backend/app/money | docs/module_contracts/app.money.ledger.md | status: extended (M2) — all Money arithmetic (integer cents); specials ledger + dedup exclusion + [[AMT]] emission |
 | backend/app/package | docs/module_contracts/app.package.builder.md | status: stub (lands M5) — docx letter + Bates binder |
 | backend/app/api | docs/module_contracts/app.api.view_models.md | status: implemented (partial) — the only wire surface |
 | backend/app/core | docs/module_contracts/app.core.llm_telemetry.md | status: implemented (partial) — metered single door + ledger |

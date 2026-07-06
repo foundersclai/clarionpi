@@ -33,15 +33,22 @@ The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-stor
   fail-loud, synchronous. There is no `completing` state; commit is not async at M1 (the
   `UploadSessionStatus` omission is deliberate).
 - **Late-document runs leave the gate untouched.** `run_phase0` processes newly-`uploaded`
-  documents for a matter already past `corpus_processing`, but does not move the gate; the
-  consequence of late records (re-running analysis so the new pages reach the demand) lands
-  with the analysis re-run wave (M2/M3).
+  documents for a matter already past `corpus_processing` — and, at M2, now also **extracts**
+  them and **re-syncs** the fact registry + specials ledger — but still does not move the gate.
+  The remaining consequence of late records (re-running *analysis* so the new facts reach the
+  demand) lands with the analysis re-run wave (M3).
 - **TTL sweep is callable-not-scheduled.** `expire_stale_sessions` runs on an unscoped session
   and is invoked directly by callers/tests; there is no scheduler at M1.
 - **`doc_state` payload vocabulary** (per the `run_phase0` stream):
   `classifying` `{document_id}` · `classified` `{document_id, doc_type, needs_review}` ·
   `ocr_done` `{document_id, pages_done}` · `failed` `{document_id, reason}` ·
-  `dedup_quarantined` `{document_id, dedup_status, against_document_id}`.
+  `dedup_quarantined` `{document_id, dedup_status, against_document_id}` ·
+  `extracting` `{document_id}` (framed just before an **extractable-typed** doc enters the
+  extractor; a non-extractable type gets no `extracting` frame) ·
+  `extracted` `{document_id, rows_emitted, anchors_rejected, runs_failed}` (a doc that reached
+  `extracted`) · `extraction_incomplete` `{document_id, runs_failed, error}` (a window failed —
+  provider/budget outage or two parse failures — so the doc stays `ocr_done`, resumable). A
+  non-extractable doc_type emits **no** extraction frame (logged `doc_extraction_skipped` only).
 
 ## Responsibility
 

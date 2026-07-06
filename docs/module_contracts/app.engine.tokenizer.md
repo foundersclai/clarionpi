@@ -6,9 +6,15 @@ Design source: [`backlog/pi/components/fact_registry.md`](../../backlog/pi/compo
 
 ## Status
 
-**Stub @ M0, lands M2.** The package exists (empty `__init__.py`). The `FactToken`
-model + `TokenKind`/`TokenStatus`/`TokenSource` enums are in `app/models`. No
-mint, resolve, versioning, or orphan-handling logic exists yet.
+**Live @ M2 (2026-07-06).** The registry is implemented and tested in
+`backend/app/engine/tokenizer/registry.py`: token grammar (`token_str`/
+`parse_token`/`TOKEN_RE`/`SENTINEL`), versioning (`current_version`/`bump_version`
+with `RegistryVersion` lineage), minting (`sync_extracted_facts` for encounters +
+the incident row, `mint_amounts` for ledger AMTs, `mint_attorney_fact`), and
+two-mode resolution (`resolve_for_prompt` = display-form only; `resolve_for_render`
+= value + anchors + integrity; `resolve_text_for_wire`/`scan_unregistered`). Phase
+0 calls `sync_extracted_facts` + `mint_amounts` in its sync stage. The G2a freeze
+and the compliance panel that consumes render resolution land later (M4/M5).
 
 ## Responsibility
 
@@ -57,11 +63,23 @@ enters the letter (attorney gates); extracting facts (`app.corpus.extraction`).
 ## Vocabulary
 
 `FactToken` (`token_id`, `kind`, `value`, `display_form`, `anchors`, `status`,
-`source`; AMT-only `ledger_ref`/`snapshot_value`/`ledger_hash`) · `RegistryVersion`
-(`frozen` from G2a; `parent_version`, `change_reason`) · `ResolutionResult.outcome`
-∈ {`ok`, `orphan`, `integrity_fail`, `amt_mismatch`, `unverified_block`} · two
-resolution modes (**prompt** = display_form only; **render** = value + anchors +
-integrity).
+`source`; AMT-only `ledger_ref`/`snapshot_value_cents`/`ledger_hash`) ·
+`RegistryVersion` (`frozen` from G2a; `parent_version`, `change_reason`) ·
+`ResolutionResult.outcome` ∈ {`ok`, `orphan`, `amt_mismatch`, `unverified`,
+`disputed`} — the landed set: an integrity failure surfaces as `unverified` (a
+stale/superseded anchor drops the row's status to `UNVERIFIED` at sync, not a
+separate `integrity_fail` outcome), and the blocking semantics the draft called
+`unverified_block` live at the G3 gate, not in the resolver. `SENTINEL` =
+`"[UNRESOLVED FACT]"` (deliberately **not** token-shaped, so a leaked sentinel
+can't be re-parsed as a token). One **shared ordinal namespace** across all four
+kinds — the next ordinal is one past the highest ever minted for the matter,
+`FACT`/`AMT`/`CITE`/`EX` interleaved. `source_ref` idempotency keys
+(`encounter:<id>` / `incident:<id>` / `amt:<ledger key>` / `attorney:<uuid4>`)
+make a re-sync resolve to the same slot. Version-bump reasons ∈ {`extraction_sync`,
+`ledger_sync`, `attorney_fact`}. `[[AMT]]` source is pinned `EXTRACTOR` (amounts
+derive from extracted billing lines; the `extractor|attorney|rules` vocabulary has
+no `ledger` member and `EXTRACTOR` is the true provenance). Two resolution modes
+(**prompt** = display_form only; **render** = value + anchors + integrity).
 
 ## Change rule
 
