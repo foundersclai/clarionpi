@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Neutral slate palette (HSL channels so Tailwind's hsl(var(--x)) tokens resolve).
+ * Clean legal-tool aesthetic: near-white surfaces, slate ink, one restrained accent.
+ * No purple, no gradients.
+ */
+:root {
+  --surface: 0 0% 100%;
+  --surface-muted: 210 20% 98%;
+  --border: 214 20% 90%;
+  --ink: 215 25% 20%;
+  --ink-muted: 215 14% 45%;
+
+  --accent: 215 45% 38%;
+  --accent-foreground: 0 0% 100%;
+
+  --warning: 38 92% 45%;
+  --warning-foreground: 30 60% 15%;
+  --success: 142 55% 34%;
+  --success-foreground: 0 0% 100%;
+  --danger: 0 65% 46%;
+  --danger-foreground: 0 0% 100%;
+  --info: 215 40% 45%;
+  --info-foreground: 0 0% 100%;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background-color: hsl(var(--surface-muted));
+  color: hsl(var(--ink));
+  font-family: var(--font-sans, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
