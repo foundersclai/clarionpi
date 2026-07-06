@@ -15,8 +15,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.deps import seed_dev_firm_and_user
+from app.api.deps import seed_dev_users
+from app.api.routes.auth import router as auth_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.gates import router as gates_router
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.matters import router as matters_router
 from app.api.routes.uploads import router as uploads_router
@@ -25,13 +27,18 @@ from app.core.db import create_all_for_tests, get_engine, get_session_factory
 
 
 def _seed_dev_environment() -> None:
-    """Create schema + seed the dev firm/user in non-prod (M0 convenience; see module doc)."""
+    """Create schema + seed the dev firm/users in non-prod (convenience; see module doc).
+
+    Seeds all three dev users (attorney/paralegal/admin, each with the dev password) via
+    :func:`~app.api.deps.seed_dev_users`, so ``make dev`` supports both stub-mode and a real
+    session-mode login per role without a migration/registration step.
+    """
     if get_settings().app_env == "prod":
         return
     create_all_for_tests(get_engine())
     session = get_session_factory()()
     try:
-        seed_dev_firm_and_user(session)
+        seed_dev_users(session)
     finally:
         session.close()
 
@@ -44,7 +51,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="ClarionPI", lifespan=lifespan)
+app.include_router(auth_router)
 app.include_router(matters_router)
+app.include_router(gates_router)
 app.include_router(uploads_router)
 app.include_router(documents_router)
 app.include_router(ingest_router)

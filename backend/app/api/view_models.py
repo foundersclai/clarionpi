@@ -15,6 +15,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.engine.orchestrator.service import deadlines_all_confirmed
 from app.models.enums import (
     ClaimType,
     DedupResolution,
@@ -29,7 +30,9 @@ from app.models.orm import (
     CaseDocument,
     DedupDecision,
     DocumentPage,
+    IncidentFacts,
     Matter,
+    StrategyInputs,
     UploadSession,
     UploadSlot,
 )
@@ -213,3 +216,74 @@ def dedup_decision_to_view(decision: DedupDecision) -> DedupDecisionView:
         shingle_overlap=decision.shingle_overlap,
         resolution=DedupResolution(decision.resolution),
     )
+
+
+# --------------------------------------------------------------------------------------
+# Gate view-models (M3 Wave B) — per-gate ``view_model`` payloads for the gates envelope.
+#
+# These build JSON-safe plain dicts (dates already ISO, uuids stringified) rather than
+# pydantic models: the envelope is heterogeneous per gate, and the gates route passes the
+# whole thing through ``wire_guard.scan_wire_payload`` before it leaves — the scanner walks
+# dict/list/str, so the builders emit exactly that.
+# --------------------------------------------------------------------------------------
+
+
+def facts_review_vm(
+    matter: Matter,
+    incident: IncidentFacts | None,
+    documents_summary: dict,
+) -> dict:
+    """The G1 (facts_review) view-model.
+
+    ``deadline_candidates`` are the stored candidates validated back through
+    :class:`~app.models.schemas.DeadlineCandidate` (malformed JSON fails loud, never leaks)
+    plus a ``rule_id`` — the candidate's ``statute_cite``, the identifier the FE echoes in
+    ``DeadlineConfirmation`` submits. ``incident_facts`` carries payload + anchors, or ``None``
+    when no row exists yet. ``documents_summary`` is the route-computed
+    ``{"total", "needs_review", "failed"}`` counts.
+    """
+    candidates: list[dict] = []
+    for raw in matter.sol_candidates or []:
+        candidate = DeadlineCandidate.model_validate(raw).model_dump(mode="json")
+        candidate["rule_id"] = candidate["statute_cite"]
+        candidates.append(candidate)
+    incident_facts = None
+    if incident is not None:
+        incident_facts = {
+            "payload": dict(incident.payload or {}),
+            "anchors": list(incident.anchors or []),
+        }
+    return {
+        "deadline_candidates": candidates,
+        "incident_facts": incident_facts,
+        "documents_summary": documents_summary,
+    }
+
+
+def strategy_intake_vm(matter: Matter, inputs: StrategyInputs | None) -> dict:
+    """The G1.5 (strategy_intake) view-model: current StrategyInputs values (or defaults).
+
+    ``deadlines_confirmed`` is context the FE renders (G1 is behind us — every deadline was
+    confirmed to get here); computed by the service's single D1 predicate, not re-derived.
+    """
+    return {
+        "strategy_inputs": {
+            "liability_theory": inputs.liability_theory if inputs else "",
+            "injury_framing": inputs.injury_framing if inputs else "",
+            "emphasis_notes": inputs.emphasis_notes if inputs else "",
+            "venue_posture": inputs.venue_posture if inputs else "",
+            "anchor_amount_cents": inputs.anchor_amount_cents if inputs else None,
+            "mmi_date": (
+                inputs.mmi_date.isoformat() if inputs is not None and inputs.mmi_date else None
+            ),
+            "property_damage_estimate_cents": (
+                inputs.property_damage_estimate_cents if inputs else None
+            ),
+        },
+        "deadlines_confirmed": deadlines_all_confirmed(matter),
+    }
+
+
+def minimal_gate_vm(state: GateState) -> dict:
+    """The honest placeholder for gates whose UI lands in a later milestone."""
+    return {"state": state.value, "detail": "gate UI lands in a later milestone"}

@@ -408,6 +408,84 @@ class MatterCreate(BaseModel):
 
 
 # --------------------------------------------------------------------------------------
+# Gate submit / edit schemas (M3 Wave B) — all CLOSED (extra="forbid", the anti-echo
+# discipline: a submit must never round-trip fields the server did not define, so an AI
+# overlay echoed back by a buggy FE is rejected at the boundary, not silently absorbed).
+# --------------------------------------------------------------------------------------
+
+
+class DeadlineConfirmation(BaseModel):
+    """One per-candidate G1 confirm act (pinned design D1: deadline confirm is PER-CANDIDATE).
+
+    ``rule_id`` is the candidate's ``statute_cite`` — the only stable identifier a
+    :class:`DeadlineCandidate` carries (rule-pack rows have no synthetic ids; the cite is the
+    lawyer-audited identity of the rule). ``confirmed=False`` is legal: an attorney may
+    un-confirm a candidate they confirmed in error. ``confirmed`` here is the attorney's G1
+    act; the candidate's ``verify_status`` is the orthogonal lawyer-audit status of the rule
+    text itself — confirming a deadline does not verify the underlying statute.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str
+    confirmed: bool
+
+
+class FactsReviewEdits(BaseModel):
+    """G1 (facts_review) edit payload: per-candidate confirmations + intake-fact updates.
+
+    ``incident_facts`` is a shallow ``str -> str`` payload merge (coverage details etc.) into
+    the matter's :class:`~app.models.orm.IncidentFacts` row — attorney-supplied intake facts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    deadline_confirmations: list[DeadlineConfirmation] = Field(default_factory=list)
+    incident_facts: dict[str, str] | None = None
+
+
+class StrategyIntakeEdits(BaseModel):
+    """G1.5 (strategy_intake) edit payload — upserted VERBATIM into StrategyInputs.
+
+    Only non-``None`` fields are applied; attorney text is preserved exactly as typed (no
+    trimming, no normalization — the strategy memo is the attorney's voice). ``mmi_date`` /
+    ``property_damage_estimate_cents`` are the M4 pull-forward fields (design D2: MMI is
+    attorney-set at G1.5, never inferred; the treatment-gap and low-property-damage
+    detectors read these).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    liability_theory: str | None = None
+    injury_framing: str | None = None
+    emphasis_notes: str | None = None
+    venue_posture: str | None = None
+    anchor_amount_cents: Cents | None = None
+    mmi_date: date | None = None
+    property_damage_estimate_cents: Cents | None = None
+
+
+class GateSubmit(BaseModel):
+    """A gate action submission (POST /api/matters/{id}/gates/{gate}/submit).
+
+    ``idempotency_key`` is client-minted and unique per matter (pinned design D3): a duplicate
+    submit replays the first outcome, writing no new record. ``payload_version`` is the
+    optimistic-concurrency check (``matter.registry_version + gate-record count``); a stale
+    value is refused with the fresh version. ``edits`` is validated **per-gate in the
+    service** — the union here cannot discriminate without the path's gate, but each typed
+    member is closed so unknown keys inside are rejected either way.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: GateAction
+    idempotency_key: str = Field(min_length=8, max_length=64)
+    payload_version: int
+    override_reason: str | None = None
+    edits: FactsReviewEdits | StrategyIntakeEdits | dict | None = None
+
+
+# --------------------------------------------------------------------------------------
 # Corpus-ingest input schemas (M1)
 # --------------------------------------------------------------------------------------
 

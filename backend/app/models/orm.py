@@ -86,6 +86,26 @@ class User(Base, FirmScoped):
     email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     role: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # UserRole
+    # Argon2 hash of the user's password (M3 session auth). Nullable: a stub-mode seeded user
+    # has no password until one is set, and the M0→M3 transition tolerates password-less rows.
+    password_hash: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class AuthSession(Base, FirmScoped):
+    """A server-side login session. The cookie carries an opaque token; only its sha256
+    lands here — a DB leak exposes no usable credentials."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, ForeignKey("users.id"), index=True, nullable=False
+    )
+    # sha256 hexdigest (64 chars) of the raw token; the raw token is never stored.
+    token_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -522,6 +542,11 @@ class StrategyInputs(Base, FirmScoped):
     emphasis_notes: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     anchor_amount_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     venue_posture: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    # M4 pull-forward (design D2): MMI is attorney-set at G1.5, never inferred, and the
+    # treatment-gap / low-property-damage detectors read these. Both nullable — an attorney may
+    # submit strategy before either is known. property_damage_estimate is integer cents (money).
+    mmi_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
+    property_damage_estimate_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -606,13 +631,18 @@ class ComplianceFinding(Base, FirmScoped):
 
 
 class GateRecord(Base, FirmScoped):
-    """One row per gate transition (invariant 9). Idempotent on (matter, gate, key)."""
+    """One row per gate action (invariant 9). Idempotent on (matter, idempotency_key).
+
+    M3 Wave B pins client-minted idempotency: the key is unique **per matter** (not per
+    (matter, gate)), so a duplicate submit anywhere on the matter replays the first outcome
+    (design D3). The service (``orchestrator.service.apply_gate_action``) looks a replay up by
+    ``(matter_id, idempotency_key)``, so the DB constraint keys on exactly that pair — the M0
+    ``(matter, gate, key)`` shape was superseded here to match the replay semantics.
+    """
 
     __tablename__ = "gate_records"
     __table_args__ = (
-        UniqueConstraint(
-            "matter_id", "gate", "idempotency_key", name="uq_gate_record_matter_gate_key"
-        ),
+        UniqueConstraint("matter_id", "idempotency_key", name="uq_gate_record_matter_idempotency"),
     )
 
     id: Mapped[uuid.UUID] = _pk()

@@ -90,6 +90,20 @@ def create_matter(
     return matter_to_view(matter)
 
 
+@router.get("", response_model=None)
+def list_matters(
+    session: Session = _TenantSession,
+) -> dict:
+    """List the caller's firm's matters, newest first (M3: the FE matter list).
+
+    Tenant-scoped by construction (the session only sees the caller's firm), ordered
+    ``created_at`` desc with ``id`` as a stable tiebreak (SQLite timestamps are
+    second-resolution), capped at 100 — pagination lands when a captive firm nears the cap.
+    """
+    matters = session.query(Matter).order_by(Matter.created_at.desc(), Matter.id).limit(100).all()
+    return {"matters": [matter_to_view(m) for m in matters]}
+
+
 @router.get("/{matter_id}", response_model=MatterView)
 def get_matter(
     matter_id: uuid.UUID,
