@@ -237,9 +237,19 @@ analytics on matter pages.
   `app/core` (see [app.core.llm_telemetry](module_contracts/app.core.llm_telemetry.md) and
   [app.core.matter_budget](module_contracts/app.core.matter_budget.md), which
   both point at the shared substrate).
+- **Enforced (M6):** PHI byte-access is audited at the read surface — the provenance viewer
+  serves case blobs through `app/api/routes/provenance.py::get_document_blob`, which writes a
+  committed `phi_access` audit row (actor + `document_id` + `surface`) BEFORE the bytes leave
+  (the byte read is the audited PHI event; the token/metadata lookup is deliberately unaudited),
+  mirroring the M5 artifact-download precedent (see
+  [ADR-0008](adr/0008-m6-provenance-decisions.md)). The bytes are app-served over an
+  authenticated, tenant-scoped route (a cross-firm document 404s) — the `local` backend has no
+  presign, so no PHI leaves the box unaudited.
 - **Deferred:** the checked-in BAA egress inventory is still the gating document for **R2**;
-  the S3/MinIO object-store backend (prod account), PHI-access audit logging, and the
-  live OCR-vendor + LLM-provider wiring land with that BAA/vendor decision (**S1/S4**).
+  the S3/MinIO object-store backend (prod account) and the live OCR-vendor + LLM-provider
+  wiring land with that BAA/vendor decision (**S1/S4**). A presigned direct-to-store egress
+  would replace the M6 app-serve only if the presign issuance itself is audited (so the
+  `phi_access` row still precedes egress) — ADR-0008 (1).
 
 ### 8. Role-Gated Sign-Off
 
@@ -344,9 +354,15 @@ state, never a fabricated default. Nothing token-shaped reaches the frontend.
   — the internal `object_key` never reaches the wire — and every artifact builder re-scans
   its strings before finalizing (`ArtifactTokenLeak` on a survivor), so no token reaches a
   deliverable (asserted in the M5-exit E2E: `letter.docx` has zero token matches).
-- **Deferred:** promoting the scanner to a response middleware, and the rendered-letter span
-  map (span_id → fact_id) at the FE viewer (**M6** — the render spans persist on
-  `DraftSection.spans` now); SSE `Last-Event-ID` replay is deferred too.
+- **Enforced (M6) at the provenance read surface:** the rendered-letter span map
+  (span_id → fact_id) now reaches the FE viewer — the compliance panel's BARE-id
+  `DraftSection.spans` click through to `get_token_provenance`, whose response
+  (`{token_id, display_form, outcome, source, anchors[]}`, each anchor page-level with
+  `bbox: null`) is wire-scanned like the rest, so nothing token-shaped escapes; the accepted
+  path id is the BARE registry grammar only (`^(FACT|AMT|CITE|EX)_\d+$` → 422 otherwise), so
+  no token-shaped string is even accepted on the request path (ADR-0008 §2–3).
+- **Deferred:** promoting the scanner to a response middleware; SSE `Last-Event-ID` replay is
+  deferred too.
 
 ### 12. Per-Matter AI Cost Is Metered And Capped
 

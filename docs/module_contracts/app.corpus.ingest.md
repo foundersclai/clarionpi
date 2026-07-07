@@ -78,6 +78,7 @@ upstream of analysis).
 | Consumes | upload registration + presigned-PUT requests | app.api.view_models |
 | Consumes | OCR results (per-page text + confidence) | external OCR, via the `app/core` BAA inventory |
 | Produces | `DocumentPage` rows (text, image ref, confidence) | app.corpus.extraction |
+| Produces | `CaseDocument` blobs (`storage_key` → object store) — served **read-only** by the M6 provenance route (`app.api::get_document_blob`); ingest stays the SOLE author of pages/blobs | app.api.view_models → frontend (viewer) |
 | Produces | `doc_state` SSE (`{document_id, status, pages_done}`) | app.api.view_models → frontend |
 | Produces | dedup + low-confidence review items | frontend (Document Center) |
 

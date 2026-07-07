@@ -1,6 +1,6 @@
 # app.api.view_models
 
-Backs [`system_contract.md`](../system_contract.md) invariants **8, 11, 12, 14**.
+Backs [`system_contract.md`](../system_contract.md) invariants **7, 8, 11, 12, 14**.
 Module path: `backend/app/api`.
 Design source: [`backlog/pi/components/api_and_wire.md`](../../backlog/pi/components/api_and_wire.md).
 
@@ -31,12 +31,25 @@ byte download). The demand + package runs are SSE (a `post_draft` compliance pre
 INSIDE the demand stream); the compliance panel exposes each section's RENDERED preview,
 never the tokenized body.
 
+**Extended @ M6.** The provenance-viewer read surface is live (`routes/provenance.py`, two
+routes; no view-model builder — both serialize directly): `GET /api/documents/{id}/blob`
+(the app-served whole-document `application/pdf` bytes, `inline` `Content-Disposition`, a
+`phi_access` audit row written BEFORE the bytes leave — the PHI byte-access event, inv 7 —
+mirroring `get_artifact_download`; raw bytes, NOT wire-scanned) and
+`GET /api/matters/{id}/provenance/{token_id}` (a BARE token id → `{token_id, display_form,
+outcome, source, anchors[]}`, each anchor `{document_id, page, bbox, blob_url, page_count,
+superseded}` with `bbox` always `null` at v1 — page-level highlights; NO audit here, the token
+lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-span map reaching
+the FE viewer (the deferred M5 line): the compliance panel's BARE-id `spans` click through to
+this route.
+
 **Deferred:** SSE journal / `Last-Event-ID` replay is still deferred — the gates wire is
 request/response, and the analysis/ingest/demand/package streams are fire-and-forward (no
 journal). The scanner is applied **explicitly** per response (every gate envelope AND every
-evidence/analysis/drafting JSON response); promoting it to a response middleware is still
-planned. The rendered-letter span map (span_id → fact_id) reaches the FE viewer at **M6**
-(the render spans persist on `DraftSection.spans` now).
+evidence/analysis/drafting/provenance JSON response); promoting it to a response middleware is
+still planned. The rendered-letter span map (span_id → fact_id) now reaches the FE viewer at
+**M6** via the provenance route (the render spans persist on `DraftSection.spans` and click
+through to `GET /api/matters/{id}/provenance/{token_id}`).
 
 ## Responsibility
 
@@ -61,10 +74,16 @@ minting or resolving tokens (`app.engine.tokenizer`).
 | Consumes | auth/tenancy context, run journal, presign | app/core (cross-cutting) |
 | Produces | HTTP responses (view-models, discriminated gate payloads) | frontend |
 | Produces | SSE streams (`status`, `doc_state`, `section`, `gate_ready`, `artifact_ready`, `budget_warning`, `error`) | frontend |
-| Produces | provenance span→fact anchor lookups | frontend (viewer) |
+| Produces | provenance token→anchor lookups (`provenance/{token_id}`) + app-served document blobs (`documents/{id}/blob`) | frontend (viewer) |
 
 ## Invariants enforced
 
+- **[7]** The M6 blob route (`get_document_blob`) is a PHI byte-access surface: every
+  fetch that returns bytes writes a committed `phi_access` audit row (actor + `document_id`
+  + `surface`) **before** the bytes leave — mirroring the M5 `get_artifact_download`
+  precedent. The token/metadata lookup (`get_token_provenance`) is deliberately **unaudited**
+  (it returns anchor metadata, not PHI bytes). The bytes are tenant-scoped (a cross-firm
+  document 404s) and served `inline`; the object store stays inside the envelope.
 - **[8]** Gate-action authorization is **server-side** (M3): `require_role`
   (`deps.py`) guards the door and the service re-derives the actor role onto
   `GateRecord.actor_role`; a cross-firm matter **404s, never 403s** (existence must
@@ -117,7 +136,20 @@ only the kind-keyed download `url`) · **drafting-route error vocabulary**:
 converts a structural `post_draft` escape (`compliance_snapshot_drift` /
 `draft_registry_drift`) into a trailing `error` frame, and the package SSE surfaces
 `binder_blocked` / `artifact_token_leak` / `binder_page_missing` / `no_draft` as `error`
-frames with NO advance (the state unchanged) ·
+frames with NO advance (the state unchanged) · **M6 provenance routes** (`routes/provenance.py`,
+serialize-direct, no view-model builder): `GET /api/documents/{id}/blob` → raw
+`application/pdf` bytes, `inline` `Content-Disposition` (sanitized filename), a `phi_access`
+audit row written+committed BEFORE the bytes (the PHI byte-access event, inv 7; a raw-bytes
+`Response`, deliberately NOT wire-scanned) — errors `document_not_found` / `blob_missing` →
+`404`; `GET /api/matters/{id}/provenance/{token_id}` → `{token_id, display_form, outcome,
+source, anchors[]}` where each anchor is `{document_id, page, bbox, blob_url, page_count,
+superseded}` (`bbox` always `null` at v1 — page-level highlights; `blob_url` is the
+ready-to-fetch `documents/{id}/blob` path so the FE never constructs it; resolved WITHOUT a
+`live_ledger_hash` — the viewer shows provenance, not the G3 amount-drift verdict; NO audit
+here — the token lookup is not the PHI event; wire-scanned, inv 11) — the accepted id is the
+BARE registry grammar `^(FACT|AMT|CITE|EX)_\d+$` (a bracketed/lower-case shape is rejected too),
+errors `invalid_token_id` → `422` (malformed) / `token_not_found` → `404` (well-formed but
+unknown) / `matter_not_found` → `404` (cross-firm, existence not leaked) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:
@@ -129,13 +161,16 @@ monotonic-`id` `Last-Event-ID` **replay is deferred to the analysis/demand strea
 ## Change rule
 
 A boundary change requiring a contract update: adding/removing a REST route or
-SSE event (incl. the M4 evidence/analysis routes and the M5 drafting routes — plan
+SSE event (incl. the M4 evidence/analysis routes, the M5 drafting routes — plan
 emit, demand generate, finding action, package build, artifact list/download — and
-their typed error shapes); changing a request/response shape or status code (incl. the
+the M6 provenance routes — `documents/{id}/blob`, `matters/{id}/provenance/{token_id}` —
+and their typed error shapes); changing a request/response shape or status code (incl. the
 gate envelope, a per-gate view-model builder's shape, the `evidence_review_vm` key set /
 its GET-never-spends-LLM + ledger-serialization rules, the M5 `plan_review_vm` /
 `compliance_review_vm` / `package_vm` key sets, the `artifact_sets_view`
-object_key-never-on-wire rule, or the drafting-route error vocabulary); changing the
+object_key-never-on-wire rule, the drafting-route error vocabulary, or the M6 provenance
+anchor shape / bare-id grammar / the blob route's audited-before-bytes + inline-bytes rule);
+changing the
 wire-scanner
 policy (raise/scrub, or where it is applied), the submit-schema closure, the
 `role_affordances` contract, or the span-map contract; changing the

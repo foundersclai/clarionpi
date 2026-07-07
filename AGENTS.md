@@ -29,7 +29,7 @@ If any of these fail on a clean checkout, fixing that is the first task.
 ## Repo Map
 
 ```
-backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic (+ auth/session login, role guards, gates envelope + submit at M3; G2a evidence VM + evidence/analysis routes at M4; G2.5/G3/package VMs + drafting/compliance/package routes at M5)
+backend/app/api/        REST + SSE wire only — view-models in, view-models out; no business logic (+ auth/session login, role guards, gates envelope + submit at M3; G2a evidence VM + evidence/analysis routes at M4; G2.5/G3/package VMs + drafting/compliance/package routes at M5; M6 provenance routes — token→anchor lookup + app-served PHI-audited document blob)
 backend/app/core/       config, db session, tenancy, audit, telemetry, budget
 backend/app/models/     enums + pydantic schemas + ORM; every firm-scoped table carries firm_id
 backend/app/engine/     orchestrator gate machine (G1-G3) + tokenizer registry (fact spine, M2) + brain1 (chronology + risk detectors/disposition, M4) + analysis composition (analysis_running→evidence_review, M4) + brain2 (plan/allocator + drafter + validator + renderer + memo + the drafting SSE run, M5) + compliance (G3 deterministic checks + Sonnet judge + corrections + finding lifecycle, M5)
