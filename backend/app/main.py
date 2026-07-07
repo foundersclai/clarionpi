@@ -24,6 +24,7 @@ from app.api.routes.evidence import router as evidence_router
 from app.api.routes.gates import router as gates_router
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.matters import router as matters_router
+from app.api.routes.provenance import router as provenance_router
 from app.api.routes.uploads import router as uploads_router
 from app.core.config import get_settings
 from app.core.db import create_all_for_tests, get_engine, get_session_factory
@@ -63,6 +64,7 @@ app.include_router(ingest_router)
 app.include_router(evidence_router)
 app.include_router(analysis_router)
 app.include_router(drafting_router)
+app.include_router(provenance_router)
 
 
 @app.get("/healthz")
