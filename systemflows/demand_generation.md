@@ -49,8 +49,7 @@ flowchart TB
     findings --> sem
     det -. "hard block found" .-> hard
     mech -- "patched -> re_verified" --> g3
-    sem -- "semantic_finding_regen<br/>-> back to drafting<br/>(new draft version, new pass)" --> redraft["drafting"]:::auto
-    redraft -.-> pass
+    sem -- "semantic_finding_regen" --> redraft["back to drafting:<br/>new draft version, then<br/>a fresh compliance pass"]:::auto
     g3 --> out["package_assembly"]:::auto
 
     classDef auto fill:#eceff1,stroke:#78909c,color:#333
