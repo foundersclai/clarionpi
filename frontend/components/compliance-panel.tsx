@@ -32,6 +32,7 @@ import {
   type ComplianceReviewVM,
   type ComplianceSectionView,
   type FindingActionBody,
+  type RenderedSpanView,
   type RoleAffordances,
 } from "@/lib/types";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ProvenanceViewer } from "@/components/provenance-viewer";
 
 export interface CompliancePanelProps {
   matterId: string;
@@ -87,6 +89,9 @@ export function CompliancePanel({
   payloadVersion,
   roleAffordances,
 }: CompliancePanelProps) {
+  // M6 provenance click-through: an interactive letter span opens the viewer in token mode.
+  const [viewerToken, setViewerToken] = useState<string | null>(null);
+
   if (vm.draft === null) {
     return (
       <Card data-testid="compliance-panel" data-no-draft="true">
@@ -126,8 +131,8 @@ export function CompliancePanel({
           </Badge>
         </div>
 
-        {/* Letter preview */}
-        <LetterPreview sections={vm.sections} />
+        {/* Letter preview — spans are click-through to the provenance viewer (token mode). */}
+        <LetterPreview sections={vm.sections} onSpanClick={(tokenId) => setViewerToken(tokenId)} />
 
         {/* Findings (blocking-first, as the wire ordered them) */}
         <div className="flex flex-col gap-3">
@@ -150,6 +155,14 @@ export function CompliancePanel({
           roleAffordances={roleAffordances}
         />
       </CardContent>
+
+      {/* M6 provenance viewer — opened by a letter-span click; token mode. */}
+      <ProvenanceViewer
+        matterId={matterId}
+        open={viewerToken !== null}
+        onClose={() => setViewerToken(null)}
+        source={{ kind: "token", tokenId: viewerToken ?? "" }}
+      />
     </Card>
   );
 }
@@ -158,7 +171,13 @@ export function CompliancePanel({
 // Letter preview — sections by sort_order; spans attached via data-* for M6 (NOT interactive).
 // ---------------------------------------------------------------------------------------
 
-function LetterPreview({ sections }: { sections: ComplianceSectionView[] }) {
+function LetterPreview({
+  sections,
+  onSpanClick,
+}: {
+  sections: ComplianceSectionView[];
+  onSpanClick: (tokenId: string) => void;
+}) {
   const ordered = useMemo(
     () => [...sections].sort((a, b) => a.sort_order - b.sort_order),
     [sections],
@@ -177,8 +196,16 @@ function LetterPreview({ sections }: { sections: ComplianceSectionView[] }) {
             className="flex flex-col gap-1"
           >
             <h4 className="text-sm font-semibold text-ink">{section.section_id}</h4>
-            <p className="whitespace-pre-wrap text-sm text-ink">{section.rendered_preview ?? ""}</p>
-            {/* Span metadata for M6 click-through — kept off-screen, never token-shaped copy. */}
+            <p className="whitespace-pre-wrap text-sm text-ink">
+              <SpannedText
+                text={section.rendered_preview ?? ""}
+                spans={section.spans}
+                onSpanClick={onSpanClick}
+              />
+            </p>
+            {/* Span metadata for M6 click-through — kept off-screen alongside the interactive
+                copy above (the hidden block preserves the existing data-* contract; the visible
+                segments carry the same data-token-id and the click handler). */}
             {section.spans.length > 0 && (
               <div className="hidden" data-testid="preview-spans" aria-hidden>
                 {section.spans.map((span) => (
@@ -196,6 +223,66 @@ function LetterPreview({ sections }: { sections: ComplianceSectionView[] }) {
         ))
       )}
     </div>
+  );
+}
+
+/**
+ * Render a section's already-token-resolved preview text, turning each `[start, end)` span into a
+ * clickable, subtly-underlined segment that opens the provenance viewer for its `token_id`. Spans
+ * that fall out of range (defensive — the preview text is authoritative) are skipped; overlapping
+ * spans are handled by walking left-to-right and ignoring any span that starts before the cursor.
+ * Nothing token-shaped renders — the segment shows the plain preview substring, not the token id.
+ */
+function SpannedText({
+  text,
+  spans,
+  onSpanClick,
+}: {
+  text: string;
+  spans: RenderedSpanView[];
+  onSpanClick: (tokenId: string) => void;
+}) {
+  const segments = useMemo(() => {
+    const inRange = spans
+      .filter((s) => s.start >= 0 && s.end <= text.length && s.start < s.end)
+      .sort((a, b) => a.start - b.start);
+    const out: Array<{ key: string; text: string; span: RenderedSpanView | null }> = [];
+    let cursor = 0;
+    for (const span of inRange) {
+      // Skip a span that overlaps one already emitted (walk is strictly forward).
+      if (span.start < cursor) continue;
+      if (span.start > cursor) {
+        out.push({ key: `plain-${cursor}`, text: text.slice(cursor, span.start), span: null });
+      }
+      out.push({ key: span.span_id, text: text.slice(span.start, span.end), span });
+      cursor = span.end;
+    }
+    if (cursor < text.length) {
+      out.push({ key: `plain-${cursor}`, text: text.slice(cursor), span: null });
+    }
+    return out;
+  }, [text, spans]);
+
+  return (
+    <>
+      {segments.map((seg) =>
+        seg.span === null ? (
+          seg.text
+        ) : (
+          <button
+            key={seg.key}
+            type="button"
+            onClick={() => onSpanClick(seg.span!.token_id)}
+            data-testid="preview-span"
+            data-span-id={seg.span.span_id}
+            data-token-id={seg.span.token_id}
+            className="cursor-pointer rounded-sm underline decoration-dotted decoration-accent/60 underline-offset-2 hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {seg.text}
+          </button>
+        ),
+      )}
+    </>
   );
 }
 

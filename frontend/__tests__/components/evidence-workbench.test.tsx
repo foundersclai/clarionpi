@@ -5,6 +5,17 @@ import { renderWithQuery } from "../test-utils";
 import { EvidenceWorkbench } from "@/components/evidence-workbench";
 import type { EvidenceReviewVM, RoleAffordances } from "@/lib/types";
 
+/**
+ * The M6 provenance viewer renders a real pdf.js page when opened; pdf.js is not a jsdom render
+ * target, so we mock the rendering primitive behind a test seam. The stub echoes the blobUrl/page
+ * it was handed so the anchors-mode wiring (blob_url built centrally, correct page) is asserted.
+ */
+vi.mock("@/components/pdf-page-view", () => ({
+  PdfPageView: ({ blobUrl, page }: { blobUrl: string; page: number }) => (
+    <div data-testid="pdf-page-view-stub" data-blob-url={blobUrl} data-page={page} />
+  ),
+}));
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -184,6 +195,49 @@ describe("EvidenceWorkbench — chronology", () => {
       ["encounter_type", "facility_display", "narrative_override", "provider_display"].sort(),
     );
     expect((body.edited_fields as Record<string, string>).provider_display).toBe("Dr. Ramos, MD");
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// M6 provenance — view-source (anchors mode)
+// ---------------------------------------------------------------------------------------
+
+describe("EvidenceWorkbench — view source (anchors mode)", () => {
+  it("a chronology row with anchors opens the viewer in anchors mode (no provenance fetch) with a central blob_url", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    renderWorkbench();
+
+    // enc-1 carries an anchor (doc-1, page 3); enc-2 carries none → only enc-1 shows the affordance.
+    const viewButtons = screen.getAllByTestId("chronology-view-source");
+    expect(viewButtons).toHaveLength(1);
+    await user.click(viewButtons[0]);
+
+    expect(await screen.findByTestId("provenance-viewer")).toBeInTheDocument();
+    // Anchors mode → no provenance hop; the page view gets the CENTRALLY-built blob route.
+    const stub = await screen.findByTestId("pdf-page-view-stub");
+    expect(stub).toHaveAttribute("data-blob-url", "/api/documents/doc-1/blob");
+    expect(stub).toHaveAttribute("data-page", "3");
+    expect(screen.getByTestId("provenance-display-form")).toHaveTextContent("Dr. Ramos · 2025-02-01");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a risk flag with anchors opens the viewer in anchors mode", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    renderWorkbench();
+
+    // Both flags carry an anchor → both expose the affordance.
+    const flagButtons = screen.getAllByTestId("flag-view-source");
+    expect(flagButtons.length).toBeGreaterThanOrEqual(1);
+    await user.click(flagButtons[0]);
+
+    expect(await screen.findByTestId("provenance-viewer")).toBeInTheDocument();
+    // The high flag (flag-high) sorts first → its anchor is doc-3, page 2.
+    const stub = await screen.findByTestId("pdf-page-view-stub");
+    expect(stub).toHaveAttribute("data-blob-url", "/api/documents/doc-3/blob");
+    expect(stub).toHaveAttribute("data-page", "2");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

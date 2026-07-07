@@ -48,6 +48,7 @@ import type {
   RiskFlagVM,
   RoleAffordances,
 } from "@/lib/types";
+import type { AnchorLike } from "@/lib/provenance";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +60,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ProvenanceViewer } from "@/components/provenance-viewer";
 
 // ---------------------------------------------------------------------------------------
 // Closed vocabularies (mirror the backend StrEnum values — labels are display-only).
@@ -136,6 +138,20 @@ export interface EvidenceWorkbenchProps {
   onGateReady?: (gate: string) => void;
 }
 
+/** The M6 anchors-mode viewer request the workbench opens (chronology row / risk flag → source). */
+interface ViewSourceRequest {
+  anchors: AnchorLike[];
+  label: string;
+}
+
+/** Coerce a VM's `anchors: unknown[]` into the AnchorLike list the viewer needs (id + page only). */
+function toAnchorLikes(anchors: unknown[]): AnchorLike[] {
+  return anchors
+    .filter((a): a is Record<string, unknown> => typeof a === "object" && a !== null)
+    .filter((a) => typeof a.document_id === "string" && typeof a.page === "number")
+    .map((a) => a as unknown as AnchorLike);
+}
+
 export function EvidenceWorkbench({
   matterId,
   vm,
@@ -144,6 +160,9 @@ export function EvidenceWorkbench({
   analysisRunning,
   onGateReady,
 }: EvidenceWorkbenchProps) {
+  // M6 provenance: chronology rows / risk flags carry anchors (no token hop) → anchors-mode viewer.
+  const [viewSource, setViewSource] = useState<ViewSourceRequest | null>(null);
+
   return (
     <div className="flex flex-col gap-4" data-testid="evidence-workbench">
       <AnalysisBanner
@@ -156,12 +175,17 @@ export function EvidenceWorkbench({
           whole story until a gate_ready advances us. */}
       {!analysisRunning && (
         <>
-          <ChronologyPanel matterId={matterId} chronology={vm.chronology} />
+          <ChronologyPanel
+            matterId={matterId}
+            chronology={vm.chronology}
+            onViewSource={(req) => setViewSource(req)}
+          />
           <LedgerPanel matterId={matterId} ledger={vm.ledger} />
           <RiskFlagsPanel
             matterId={matterId}
             flags={vm.risk_flags}
             roleAffordances={roleAffordances}
+            onViewSource={(req) => setViewSource(req)}
           />
           <ExhibitsPanel matterId={matterId} exhibits={vm.exhibits} />
           <ConfirmBar
@@ -171,6 +195,18 @@ export function EvidenceWorkbench({
           />
         </>
       )}
+
+      {/* M6 provenance viewer — anchors mode (chronology / flags carry document_id + page). */}
+      <ProvenanceViewer
+        matterId={matterId}
+        open={viewSource !== null}
+        onClose={() => setViewSource(null)}
+        source={{
+          kind: "anchors",
+          anchors: viewSource?.anchors ?? [],
+          label: viewSource?.label ?? "",
+        }}
+      />
     </div>
   );
 }
@@ -318,9 +354,11 @@ const OVERLAY_FIELD_LABELS: Record<OverlayField, string> = {
 function ChronologyPanel({
   matterId,
   chronology,
+  onViewSource,
 }: {
   matterId: string;
   chronology: EvidenceReviewVM["chronology"];
+  onViewSource: (req: ViewSourceRequest) => void;
 }) {
   const [editingRow, setEditingRow] = useState<string | null>(null);
 
@@ -371,6 +409,7 @@ function ChronologyPanel({
                       key={row.row_id}
                       row={row}
                       onEdit={() => setEditingRow(row.row_id)}
+                      onViewSource={onViewSource}
                     />
                   ),
                 )}
@@ -403,8 +442,17 @@ function OverlayBadge({ status }: { status: ChronologyRow["overlay_status"] }) {
   return <Badge variant="info">applied</Badge>;
 }
 
-function ChronologyDisplayRow({ row, onEdit }: { row: ChronologyRow; onEdit: () => void }) {
+function ChronologyDisplayRow({
+  row,
+  onEdit,
+  onViewSource,
+}: {
+  row: ChronologyRow;
+  onEdit: () => void;
+  onViewSource: (req: ViewSourceRequest) => void;
+}) {
   const conflicted = row.overlay_status === "conflict";
+  const anchors = toAnchorLikes(row.anchors);
   return (
     <tr data-testid="chronology-row" data-row-id={row.row_id}>
       <td className="py-2 pr-3 align-top font-mono text-xs">{row.date_of_service}</td>
@@ -423,9 +471,27 @@ function ChronologyDisplayRow({ row, onEdit }: { row: ChronologyRow; onEdit: () 
         <OverlayBadge status={row.overlay_status} />
       </td>
       <td className="py-2 align-top">
-        <Button variant="ghost" size="sm" onClick={onEdit} data-testid="chronology-edit">
-          Edit
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* View-source is shown only when the row actually carries source anchors. */}
+          {anchors.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                onViewSource({
+                  anchors,
+                  label: `${row.provider_display} · ${row.date_of_service}`,
+                })
+              }
+              data-testid="chronology-view-source"
+            >
+              View source
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={onEdit} data-testid="chronology-edit">
+            Edit
+          </Button>
+        </div>
       </td>
     </tr>
   );
@@ -843,10 +909,12 @@ function RiskFlagsPanel({
   matterId,
   flags,
   roleAffordances,
+  onViewSource,
 }: {
   matterId: string;
   flags: RiskFlagVM[];
   roleAffordances: RoleAffordances;
+  onViewSource: (req: ViewSourceRequest) => void;
 }) {
   const sorted = useMemo(
     () =>
@@ -875,6 +943,7 @@ function RiskFlagsPanel({
                 matterId={matterId}
                 flag={flag}
                 canApprove={roleAffordances.can_approve}
+                onViewSource={onViewSource}
               />
             ))}
           </ul>
@@ -888,10 +957,12 @@ function RiskFlagRow({
   matterId,
   flag,
   canApprove,
+  onViewSource,
 }: {
   matterId: string;
   flag: RiskFlagVM;
   canApprove: boolean;
+  onViewSource: (req: ViewSourceRequest) => void;
 }) {
   const disposition = useFlagDisposition(matterId);
   const [choice, setChoice] = useState<FlagDisposition>(flag.disposition ?? "address_in_letter");
@@ -900,6 +971,7 @@ function RiskFlagRow({
 
   const isHigh = flag.severity === "high";
   const rationaleRequired = choice === "omit_with_rationale";
+  const anchors = toAnchorLikes(flag.anchors);
 
   function save() {
     // Client-side required-rationale validation (input validation — fires nothing when it fails).
@@ -939,6 +1011,22 @@ function RiskFlagRow({
         <span className="text-xs text-ink-muted" data-testid="anchors-count">
           {flag.anchors.length} anchor(s)
         </span>
+        {/* Additive M6 affordance — only when the flag carries source anchors. */}
+        {anchors.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              onViewSource({
+                anchors,
+                label: `${labelOf(FLAG_KIND_LABELS, flag.kind)} — ${anchors.length} source page${anchors.length === 1 ? "" : "s"}`,
+              })
+            }
+            data-testid="flag-view-source"
+          >
+            View source
+          </Button>
+        )}
         {isHigh && (
           <span className="text-xs font-medium text-danger" data-testid="signoff-required">
             attorney sign-off required

@@ -222,6 +222,49 @@ describe("CompliancePanel — finding actions", () => {
   });
 });
 
+describe("CompliancePanel — M6 span click-through", () => {
+  it("clicking a mapped letter span opens the provenance viewer in token mode for that token", async () => {
+    const user = userEvent.setup();
+    // The viewer fetches provenance on open — return an ok body for AMT_1.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(200, {
+        token_id: "AMT_1",
+        display_form: "$250,000",
+        outcome: "ok",
+        source: "extractor",
+        anchors: [],
+      }),
+    );
+
+    renderWithQuery(
+      <CompliancePanel matterId="m1" vm={makeVm()} payloadVersion={5} roleAffordances={AFFORDANCES_CLEAR} />,
+    );
+
+    // The damages section's preview carries a span over "Specials" (offsets 0..8) → token AMT_1.
+    const span = screen.getAllByTestId("preview-span").find((el) => el.getAttribute("data-token-id") === "AMT_1");
+    expect(span).toBeDefined();
+    await user.click(span!);
+
+    // The viewer opens and fetches AMT_1's provenance from the pinned route.
+    await waitFor(() => expect(screen.getByTestId("provenance-viewer")).toBeInTheDocument());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const provenanceCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/provenance/"));
+    expect(provenanceCall).toBeDefined();
+    expect(String(provenanceCall![0])).toBe("/api/matters/m1/provenance/AMT_1");
+    // The bare token id renders as an inert label; still nothing token-shaped ("[[") in the DOM.
+    expect(await screen.findByTestId("provenance-token-id")).toHaveTextContent("AMT_1");
+    expect(document.body.innerHTML).not.toContain("[[");
+  });
+
+  it("does not render the viewer until a span is clicked", () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, {}));
+    renderWithQuery(
+      <CompliancePanel matterId="m1" vm={makeVm()} payloadVersion={5} roleAffordances={AFFORDANCES_CLEAR} />,
+    );
+    expect(screen.queryByTestId("provenance-viewer")).not.toBeInTheDocument();
+  });
+});
+
 describe("CompliancePanel — G3 approve", () => {
   it("approve is ALWAYS clickable; a no_blocking_findings guard renders inline and the button stays enabled", async () => {
     const user = userEvent.setup();
