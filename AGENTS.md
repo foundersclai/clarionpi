@@ -41,6 +41,7 @@ backend/tests/          pytest suite, mirrors backend/app/
 frontend/               Next.js 15 workbench (M3): login, matter dashboard, G1/G1.5 gate screens (app/, components/, lib/; Vitest tests in __tests__/)
 docs/adr/               architecture decisions — read before changing architecture
 docs/module_contracts/  per-module boundary contracts — read before changing a module's surface
+systemflows/            Mermaid diagrams of the main business flows (as-built; keep in sync with enums + machine.py)
 scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual repo tree
 ```
 
