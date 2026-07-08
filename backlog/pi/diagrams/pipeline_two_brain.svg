@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 962" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img">
+<title>PI Agent — Two-Brain Pipeline</title>
+<desc>Horizontal swimlane pipeline: Phase 0 corpus build feeds Brain-1 analysis, which feeds HITL attorney and paralegal gates G1 through G3, which feed Brain-2 strategy and drafting and a deterministic core, producing the demand package.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M1 1L9 5L1 9" fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="962" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="954" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Two-Brain Pipeline</text>
+<text x="36" y="76" font-size="13" fill="#64748B">Phase 0 corpus build → Brain-1 analysis → HITL gates → Brain-2 drafting → deterministic core.</text>
+
+<g font-size="12">
+<rect x="1015" y="34" width="12" height="12" rx="2" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="1033" y="44" fill="#475569">HITL gate</text>
+<rect x="1113" y="34" width="12" height="12" rx="2" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1131" y="44" fill="#475569">LLM stage</text>
+<rect x="1211" y="34" width="12" height="12" rx="2" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1229" y="44" fill="#475569">Deterministic</text>
+<rect x="1015" y="56" width="12" height="12" rx="2" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1033" y="66" fill="#475569">Data store</text>
+<rect x="1113" y="56" width="12" height="12" rx="2" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="1131" y="66" fill="#475569">Deliverable</text>
+</g>
+
+<rect x="24" y="100" width="1352" height="168" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+<text x="44" y="124" font-size="13" fill="#64748B" letter-spacing="1">PHASE 0 — CORPUS BUILD (BACKGROUND WORKERS)</text>
+
+<g>
+<rect x="44" y="140" width="120" height="60" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="104" y="174" font-size="15" font-weight="600" fill="#0F172A" text-anchor="middle">Bulk upload</text>
+</g>
+<g>
+<rect x="196" y="140" width="150" height="60" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="271" y="166" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">Classify documents</text>
+<text x="271" y="185" font-size="12" fill="#475569" text-anchor="middle">Haiku</text>
+</g>
+<g>
+<rect x="378" y="140" width="164" height="60" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="460" y="166" font-size="15" font-weight="600" fill="#0F172A" text-anchor="middle">Text layer fast path</text>
+<text x="460" y="185" font-size="12" fill="#475569" text-anchor="middle">OCR fallback</text>
+</g>
+<g>
+<path d="M572 154 a68 10 0 0 1 136 0 v42 a68 10 0 0 1 -136 0 Z" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<ellipse cx="640" cy="154" rx="68" ry="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="640" y="178" font-size="13" font-weight="600" fill="#075985" text-anchor="middle">DocumentPage store</text>
+<text x="640" y="194" font-size="12" fill="#0284C7" text-anchor="middle">+ provenance sidecar</text>
+</g>
+
+<g>
+<rect x="726" y="128" width="160" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="806" y="147" font-size="14" font-weight="600" fill="#5B21B6" text-anchor="middle">Extract encounters</text>
+<text x="806" y="164" font-size="12" fill="#475569" text-anchor="middle">Sonnet, page-anchored</text>
+</g>
+<g>
+<rect x="726" y="180" width="160" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="806" y="199" font-size="14" font-weight="600" fill="#5B21B6" text-anchor="middle">Extract billing lines</text>
+<text x="806" y="216" font-size="12" fill="#475569" text-anchor="middle">Sonnet, page-anchored</text>
+</g>
+<g>
+<rect x="726" y="232" width="160" height="30" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="806" y="252" font-size="14" font-weight="600" fill="#5B21B6" text-anchor="middle">Extract incident facts</text>
+</g>
+
+<g>
+<rect x="922" y="128" width="150" height="46" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="997" y="147" font-size="14" font-weight="600" fill="#166534" text-anchor="middle">Dedupe + merge</text>
+<text x="997" y="164" font-size="12" fill="#475569" text-anchor="middle">encounters</text>
+</g>
+
+<line x1="164" y1="170" x2="192" y2="170" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="346" y1="170" x2="374" y2="170" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="542" y1="170" x2="568" y2="167" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="708" y1="162" x2="722" y2="155" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="708" y1="176" x2="722" y2="199" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="708" y1="188" x2="722" y2="245" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="886" y1="151" x2="918" y2="151" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<rect x="24" y="284" width="1180" height="182" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+<text x="44" y="308" font-size="13" fill="#64748B" letter-spacing="1">BRAIN-1 — ANALYSIS</text>
+
+<g>
+<rect x="44" y="326" width="256" height="56" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="172" y="350" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">Chronology builder</text>
+<text x="172" y="368" font-size="12" fill="#475569" text-anchor="middle">deterministic rows + tokenized narratives</text>
+</g>
+<g>
+<rect x="44" y="396" width="256" height="56" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="172" y="420" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">Specials ledger</text>
+<text x="172" y="438" font-size="12" fill="#475569" text-anchor="middle">pure code</text>
+</g>
+<g>
+<rect x="320" y="326" width="256" height="56" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="448" y="350" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">Risk flags</text>
+<text x="448" y="368" font-size="12" fill="#475569" text-anchor="middle">gaps, priors, degenerative, causation</text>
+</g>
+<g>
+<rect x="320" y="396" width="256" height="56" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="440" y="420" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">Comparables</text>
+<text x="440" y="438" font-size="12" fill="#475569" text-anchor="middle">retrieval, pgvector</text>
+<rect x="516" y="408" width="46" height="20" rx="10" fill="#DDD6FE" stroke="#7C3AED" stroke-width="1"/>
+<text x="539" y="422" font-size="11" font-weight="600" fill="#5B21B6" text-anchor="middle">v1.x</text>
+</g>
+
+<g>
+<path d="M1238 318 a58 10 0 0 1 116 0 v292 a58 10 0 0 1 -116 0 Z" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<ellipse cx="1296" cy="318" rx="58" ry="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1296" y="462" font-size="15" font-weight="600" fill="#075985" text-anchor="middle">Fact registry</text>
+<text x="1296" y="482" font-size="12" fill="#0284C7" text-anchor="middle">versioned</text>
+</g>
+
+<path d="M997 174 L997 214 L230 214 L230 322" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M448 214 L448 322" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M806 226 L806 268 L258 268 L258 392" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="360" y="206" width="180" height="16" fill="#FFFFFF"/>
+<text x="450" y="218" font-size="12" fill="#475569" text-anchor="middle">dedupe → chronology / risk</text>
+<rect x="330" y="260" width="150" height="16" fill="#FFFFFF"/>
+<text x="405" y="272" font-size="12" fill="#475569" text-anchor="middle">billing → ledger</text>
+
+<rect x="24" y="482" width="1352" height="146" rx="14" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="44" y="506" font-size="13" fill="#92400E" letter-spacing="1">HITL GATES — ROLES ENFORCED</text>
+
+<g>
+<rect x="60" y="522" width="220" height="52" rx="24" fill="#FDE9BE" stroke="#D97706" stroke-width="1.5"/>
+<text x="170" y="546" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">G1 Facts + deadlines</text>
+<text x="170" y="564" font-size="12" fill="#92400E" text-anchor="middle">attorney</text>
+</g>
+<g>
+<rect x="322" y="522" width="220" height="52" rx="24" fill="#FDE9BE" stroke="#D97706" stroke-width="1.5"/>
+<text x="432" y="546" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">G1.5 Strategy intake</text>
+<text x="432" y="564" font-size="12" fill="#92400E" text-anchor="middle">attorney</text>
+</g>
+<g>
+<rect x="584" y="522" width="230" height="52" rx="24" fill="#FDE9BE" stroke="#D97706" stroke-width="1.5"/>
+<text x="699" y="546" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">G2a Evidence review</text>
+<text x="699" y="564" font-size="12" fill="#92400E" text-anchor="middle">paralegal prep, attorney confirm</text>
+</g>
+<g>
+<rect x="856" y="522" width="210" height="52" rx="24" fill="#FDE9BE" stroke="#D97706" stroke-width="1.5"/>
+<text x="961" y="546" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">G2.5 Demand plan</text>
+<text x="961" y="564" font-size="12" fill="#92400E" text-anchor="middle">attorney</text>
+</g>
+<g>
+<rect x="1108" y="522" width="200" height="52" rx="24" fill="#FDE9BE" stroke="#D97706" stroke-width="1.5"/>
+<text x="1208" y="546" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">G3 Compliance</text>
+<text x="1208" y="564" font-size="12" fill="#92400E" text-anchor="middle">attorney</text>
+</g>
+
+<line x1="280" y1="548" x2="318" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="542" y1="548" x2="580" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="814" y1="548" x2="852" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="1066" y1="548" x2="1104" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<path d="M726 247 L38 247 L38 548 L56 548" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="470" y="239" width="130" height="16" fill="#FFFFFF"/>
+<text x="535" y="251" font-size="12" fill="#475569" text-anchor="middle">incident facts → G1</text>
+
+<path d="M300 372 L308 372 L308 470 L590 470" fill="none" stroke="#334155" stroke-width="2"/>
+<path d="M300 436 L314 436 L314 466 L590 466" fill="none" stroke="#334155" stroke-width="2"/>
+<path d="M576 348 L590 348" fill="none" stroke="#334155" stroke-width="2"/>
+<path d="M576 418 L590 418" fill="none" stroke="#334155" stroke-width="2"/>
+<path d="M590 348 L590 500 L699 500 L699 518" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="606" y="484" width="130" height="16" fill="#FFFFFF"/>
+<text x="671" y="496" font-size="12" fill="#475569" text-anchor="middle">evidence → G2a</text>
+
+<rect x="24" y="644" width="820" height="200" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+<text x="44" y="668" font-size="13" fill="#64748B" letter-spacing="1">BRAIN-2 — STRATEGY &amp; DRAFTING (OPUS)</text>
+
+<g>
+<rect x="60" y="686" width="200" height="72" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="160" y="726" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">Strategy memo</text>
+</g>
+<g>
+<rect x="330" y="686" width="230" height="72" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="445" y="718" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">Tokenized letter</text>
+<text x="445" y="737" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">sections</text>
+</g>
+<line x1="260" y1="722" x2="326" y2="722" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<rect x="864" y="644" width="512" height="200" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+<text x="884" y="668" font-size="13" fill="#64748B" letter-spacing="1">DETERMINISTIC CORE</text>
+
+<g>
+<rect x="898" y="686" width="210" height="72" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1003" y="718" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">Renderer</text>
+<text x="1003" y="737" font-size="12" fill="#475569" text-anchor="middle">detokenize via registry</text>
+</g>
+<g>
+<rect x="1148" y="686" width="210" height="72" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1253" y="712" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">Package builder</text>
+<text x="1253" y="730" font-size="12" fill="#475569" text-anchor="middle">docx letter</text>
+<text x="1253" y="746" font-size="12" fill="#475569" text-anchor="middle">+ exhibit binder</text>
+</g>
+
+<path d="M961 574 L961 620 L160 620 L160 682" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="470" y="612" width="150" height="16" fill="#FFFFFF"/>
+<text x="545" y="624" font-size="12" fill="#475569" text-anchor="middle">G2.5 → strategy memo</text>
+
+<path d="M560 722 L898 722" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="690" y="714" width="80" height="16" fill="#FFFFFF"/>
+<text x="730" y="726" font-size="12" fill="#475569" text-anchor="middle">to renderer</text>
+
+<path d="M1108 722 L1144 722" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<path d="M1296 610 L1296 676 L1003 676 L1003 682" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M1250 610 L1250 632 L500 632 L500 682" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="740" y="624" width="150" height="16" fill="#FFFFFF"/>
+<text x="815" y="636" font-size="12" fill="#475569" text-anchor="middle">tokens + display forms</text>
+
+<path d="M1003 758 L1003 800 L1208 800 L1208 574" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1050" y="792" width="120" height="16" fill="#FFFFFF"/>
+<text x="1110" y="804" font-size="12" fill="#475569" text-anchor="middle">rendered → G3</text>
+
+<rect x="24" y="874" width="1352" height="56" rx="14" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="700" y="900" font-size="15" font-weight="600" fill="#9F1239" text-anchor="middle">Demand package</text>
+<text x="700" y="920" font-size="12" fill="#9F1239" text-anchor="middle">letter.docx + exhibit binder.pdf + chronology.xlsx</text>
+
+<line x1="1253" y1="758" x2="1253" y2="870" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1200" y="806" width="130" height="16" fill="#FFFFFF"/>
+<text x="1265" y="818" font-size="12" fill="#475569" text-anchor="middle">package builder →</text>
+</svg>

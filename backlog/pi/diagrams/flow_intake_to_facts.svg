@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 850" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="fi-title fi-desc">
+<title id="fi-title">PI Agent — Intake to Facts Review (G1)</title>
+<desc id="fi-desc">UML sequence across eight lifelines — Paralegal frontend, FastAPI, jurisdiction_rules, Object store, Orchestrator, Document workers, corpus_extraction, and fact_registry, with an Attorney return. The paralegal creates a matter (deadlines computed synchronously), bulk-uploads to presigned S3, and runs Phase 0; a budget-guarded per-document loop classifies, OCR/text-layers pages, extracts and dedupes facts, and mints tokens; the orchestrator then opens the G1 facts-review gate. A failure strip lists the intake degrade paths.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+</marker>
+<marker id="arrowr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#A32D2D"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="850" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="842" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Intake to Facts Review (G1)</text>
+<text x="36" y="76" font-size="13" fill="#64748B">Matter create → bulk upload → budget-guarded Phase 0 workers → facts minted → G1 opens.</text>
+
+<!-- Legend (top-right) -->
+<g font-size="12" fill="#475569">
+<rect x="900" y="40" width="14" height="14" rx="3" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="920" y="51">frontend</text>
+<rect x="992" y="40" width="14" height="14" rx="3" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1012" y="51">neutral</text>
+<rect x="1070" y="40" width="14" height="14" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1090" y="51">LLM</text>
+<rect x="1128" y="40" width="14" height="14" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1148" y="51">data store</text>
+<rect x="1220" y="40" width="14" height="14" rx="3" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="1240" y="51">failure path</text>
+</g>
+
+<!-- ============================ LIFELINES ============================ -->
+<line x1="150"  y1="152" x2="150"  y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="320"  y1="152" x2="320"  y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="490"  y1="152" x2="490"  y2="480" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="640"  y1="152" x2="640"  y2="480" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="800"  y1="152" x2="800"  y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="960"  y1="152" x2="960"  y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="1120" y1="152" x2="1120" y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="1290" y1="152" x2="1290" y2="700" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+
+<!-- Header boxes -->
+<rect x="66" y="106" width="168" height="46" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="150" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#9F1239">Paralegal</text>
+<text x="150" y="144" text-anchor="middle" font-size="11" fill="#475569">frontend</text>
+
+<rect x="248" y="106" width="144" height="46" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="320" y="134" text-anchor="middle" font-size="14" font-weight="600" fill="#0F172A">FastAPI</text>
+
+<rect x="410" y="106" width="160" height="46" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="490" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="#0F172A">jurisdiction</text>
+<text x="490" y="144" text-anchor="middle" font-size="13" font-weight="600" fill="#0F172A">_rules</text>
+
+<rect x="566" y="106" width="148" height="46" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="640" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#075985">Object store</text>
+<text x="640" y="144" text-anchor="middle" font-size="11" fill="#475569">S3</text>
+
+<rect x="716" y="106" width="168" height="46" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="800" y="134" text-anchor="middle" font-size="14" font-weight="600" fill="#0F172A">Orchestrator</text>
+
+<rect x="876" y="106" width="168" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="960" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#5B21B6">Doc workers</text>
+<text x="960" y="144" text-anchor="middle" font-size="11" fill="#475569">ingest · Haiku</text>
+
+<rect x="1036" y="106" width="168" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1120" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#5B21B6">corpus_extract</text>
+<text x="1120" y="144" text-anchor="middle" font-size="11" fill="#475569">Sonnet</text>
+
+<rect x="1206" y="106" width="168" height="46" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1290" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#075985">fact_registry</text>
+<text x="1290" y="144" text-anchor="middle" font-size="11" fill="#475569">tokens</text>
+
+<!-- ============================ LOOP FRAME (per document) ============================ -->
+<rect x="768" y="384" width="558" height="216" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1.3"/>
+<path d="M818 384 L818 408 L978 408 L978 398 L968 384 Z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.3"/>
+<text x="830" y="402" font-size="12" font-weight="600" fill="#92400E">loop — per document</text>
+
+<!-- ============================ ACTIVATION BARS ============================ -->
+<rect x="314" y="188" width="12" height="512" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<rect x="794" y="288" width="12" height="412" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<rect x="954" y="424" width="12" height="152" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1"/>
+<rect x="1114" y="480" width="12" height="72" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1"/>
+
+<!-- ============================ MESSAGES ============================ -->
+<g>
+<!-- 1 PL -> API create matter -->
+<line x1="150" y1="188" x2="312" y2="188" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="170" width="240" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="182" font-size="12" fill="#475569">1  POST /api/matters {claim_type:mva}</text>
+
+<!-- 2 API -> RULES compute deadlines -->
+<line x1="326" y1="220" x2="488" y2="220" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="330" y="202" width="200" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="332" y="214" font-size="12" fill="#475569">2  compute deadlines(state)</text>
+
+<!-- 3 RULES --> API DeadlineCandidate[] -->
+<line x1="490" y1="252" x2="328" y2="252" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="330" y="234" width="230" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="332" y="246" font-size="12" fill="#475569">3  DeadlineCandidate[] + assumptions</text>
+
+<!-- 4 API --> PL 201 Matter -->
+<line x1="314" y1="284" x2="152" y2="284" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="150" y="266" width="248" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="278" font-size="12" fill="#475569">4  201 Matter {corpus_processing}</text>
+<rect x="150" y="290" width="270" height="16" fill="#FFF7ED"/>
+<text x="152" y="302" font-size="11.5" font-style="italic" fill="#92400E">non-dismissible deadline banner shown</text>
+
+<!-- 5 PL -> OBJ bulk upload (presigned PUT) : PL to object store, crossing others -->
+<line x1="150" y1="336" x2="638" y2="336" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="318" width="330" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="330" font-size="12" fill="#475569">5  bulk upload: resumable PUT bytes → presigned S3</text>
+
+<!-- 6 PL -> OR run phase0 (via API activation) -->
+<line x1="150" y1="368" x2="792" y2="368" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="350" width="300" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="362" font-size="12" fill="#475569">6  POST /phase0/run  (SSE opens; budget precheck FIRST)</text>
+
+<!-- 7 OR -> workers dispatch job -->
+<line x1="806" y1="424" x2="952" y2="424" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="810" y="406" width="150" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="812" y="418" font-size="12" fill="#475569">7  job per CaseDocument</text>
+
+<!-- ===== inside loop ===== -->
+<!-- 8 workers self: classify + text-layer/OCR -->
+<path d="M966 448 L1016 448 L1016 470 L968 470" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="836" y="428" width="118" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="838" y="440" font-size="11.5" fill="#475569">8  classify → doc_type;</text>
+<rect x="810" y="472" width="150" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="812" y="484" font-size="11.5" fill="#475569">   text-layer else OCR → pages</text>
+
+<!-- 9 workers -> extraction extract windows -->
+<line x1="966" y1="504" x2="1112" y2="504" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="970" y="486" width="150" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="972" y="498" font-size="11.5" fill="#475569">9  extract encounters/</text>
+
+<!-- 10 extraction self: anchor-validate + dedupe -->
+<path d="M1126 522 L1176 522 L1176 540 L1128 540" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1010" y="510" width="180" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="1012" y="522" font-size="11.5" fill="#475569">10  anchor-validate · dedupe (quarantine)</text>
+
+<!-- 11 extraction -> registry mint tokens -->
+<line x1="1126" y1="572" x2="1288" y2="572" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1130" y="554" width="176" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="1132" y="566" font-size="11.5" fill="#475569">11  mint [[FACT_n]] · SSE doc_state</text>
+<!-- ===== end loop ===== -->
+
+<!-- 12 OR self: all docs terminal -> transition -->
+<path d="M806 628 L876 628 L876 650 L808 650" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="884" y="632" width="330" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="886" y="644" font-size="12" fill="#475569">12  all docs terminal → corpus_processing → facts_review</text>
+
+<!-- 13 OR --> API/PL gate_ready -->
+<line x1="794" y1="678" x2="328" y2="678" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="360" y="660" width="300" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="362" y="672" font-size="12" fill="#475569">13  SSE gate_ready {gate: facts_review, payload_version}</text>
+</g>
+
+<!-- Attorney return (G1) -->
+<rect x="66" y="712" width="220" height="42" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="176" y="730" text-anchor="middle" font-size="13" font-weight="600" fill="#9F1239">Attorney — G1</text>
+<text x="176" y="746" text-anchor="middle" font-size="11" fill="#475569">confirms facts + coverage; blocks on deadlines</text>
+<path d="M314 700 L314 733 L290 733" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+
+<!-- ============================ FAILURE STRIP ============================ -->
+<rect x="320" y="712" width="1054" height="118" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="338" y="732" font-size="12" font-weight="600" fill="#791F1F" letter-spacing="1">FAILURE &amp; DEGRADE LANE</text>
+<g font-size="11.5" fill="#791F1F">
+<rect x="338" y="742" width="242" height="76" rx="8" fill="#FDF3F3" stroke="#A32D2D" stroke-width="1"/>
+<text x="350" y="760" font-weight="600">OCR vendor down</text>
+<text x="350" y="778">retry w/ backoff; degrade to</text>
+<text x="350" y="794">text-layer-only; flag pages</text>
+<text x="350" y="810">"OCR pending"</text>
+
+<rect x="592" y="742" width="242" height="76" rx="8" fill="#FDF3F3" stroke="#A32D2D" stroke-width="1"/>
+<text x="604" y="760" font-weight="600">Corrupt / locked PDF</text>
+<text x="604" y="778">CaseDocument.status=failed;</text>
+<text x="604" y="794">no partial extraction; surface</text>
+<text x="604" y="810">reason → re-upload clean copy</text>
+
+<rect x="846" y="742" width="242" height="76" rx="8" fill="#FDF3F3" stroke="#A32D2D" stroke-width="1"/>
+<text x="858" y="760" font-weight="600">Duplicate upload</text>
+<text x="858" y="778">dedupe → quarantine, never</text>
+<text x="858" y="794">silent merge; side-by-side</text>
+<text x="858" y="810">queue → accept / reject</text>
+
+<rect x="1100" y="742" width="262" height="76" rx="8" fill="#FDF3F3" stroke="#A32D2D" stroke-width="1"/>
+<text x="1112" y="760" font-weight="600">Budget cap hit mid-run</text>
+<text x="1112" y="778">run PAUSES (not fails);</text>
+<text x="1112" y="794">budget_warning {spent, cap};</text>
+<text x="1112" y="810">resumable after cap raise</text>
+</g>
+</svg>

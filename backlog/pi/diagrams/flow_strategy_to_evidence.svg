@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 830" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="fs-title fs-desc">
+<title id="fs-title">PI Agent — Strategy Intake to Evidence Confirm (G1 → G2a)</title>
+<desc id="fs-desc">UML sequence across eight lifelines — Attorney, Paralegal, FastAPI, Orchestrator, chronology_builder, money_engine, risk_flag_engine, and fact_registry. The attorney approves G1 (pinning the rule-pack) and submits verbatim StrategyInputs at G1.5; a parallel Brain-1 analysis block builds the chronology, materializes the specials ledger, and runs risk detectors; G2a opens for paralegal prep and attorney confirm, which — once high-severity flags are dispositioned — freezes the fact registry and pins its version. A dashed rework back-edge shows picks changed re-running analysis.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+</marker>
+<marker id="arrowr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#B45309"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="830" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="822" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Strategy Intake to Evidence Confirm (G1 → G2a)</text>
+<text x="36" y="76" font-size="13" fill="#64748B">G1 approve pins the rule-pack; verbatim G1.5 inputs launch analysis; G2a confirm freezes the registry.</text>
+
+<!-- Legend (top-right) -->
+<g font-size="12" fill="#475569">
+<rect x="1006" y="40" width="14" height="14" rx="3" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="1026" y="51">frontend</text>
+<rect x="1098" y="40" width="14" height="14" rx="3" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1118" y="51">neutral</text>
+<rect x="1176" y="40" width="14" height="14" rx="3" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1196" y="51">deterministic</text>
+<rect x="1284" y="40" width="14" height="14" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1304" y="51">data store</text>
+<rect x="1176" y="62" width="14" height="14" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1196" y="73">LLM</text>
+<line x1="1234" y1="69" x2="1262" y2="69" stroke="#B45309" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1270" y="73">rework</text>
+</g>
+
+<!-- ============================ LIFELINES ============================ -->
+<line x1="130"  y1="150" x2="130"  y2="786" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="300"  y1="150" x2="300"  y2="786" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="470"  y1="150" x2="470"  y2="786" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="640"  y1="150" x2="640"  y2="786" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="820"  y1="150" x2="820"  y2="470" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="990"  y1="150" x2="990"  y2="470" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="1160" y1="150" x2="1160" y2="470" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="1320" y1="150" x2="1320" y2="786" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 5"/>
+
+<!-- Header boxes -->
+<rect x="52" y="104" width="156" height="46" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="130" y="126" text-anchor="middle" font-size="14" font-weight="600" fill="#9F1239">Attorney</text>
+<text x="130" y="142" text-anchor="middle" font-size="11" fill="#475569">frontend</text>
+
+<rect x="222" y="104" width="156" height="46" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="300" y="126" text-anchor="middle" font-size="14" font-weight="600" fill="#9F1239">Paralegal</text>
+<text x="300" y="142" text-anchor="middle" font-size="11" fill="#475569">frontend</text>
+
+<rect x="396" y="104" width="148" height="46" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="470" y="132" text-anchor="middle" font-size="14" font-weight="600" fill="#0F172A">FastAPI</text>
+
+<rect x="560" y="104" width="160" height="46" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="640" y="132" text-anchor="middle" font-size="14" font-weight="600" fill="#0F172A">Orchestrator</text>
+
+<rect x="736" y="104" width="168" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="820" y="126" text-anchor="middle" font-size="13" font-weight="600" fill="#5B21B6">chronology</text>
+<text x="820" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#5B21B6">_builder</text>
+
+<rect x="906" y="104" width="168" height="46" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="990" y="126" text-anchor="middle" font-size="14" font-weight="600" fill="#166534">money_engine</text>
+<text x="990" y="142" text-anchor="middle" font-size="11" fill="#475569">specials ledger</text>
+
+<rect x="1076" y="104" width="168" height="46" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1160" y="126" text-anchor="middle" font-size="13" font-weight="600" fill="#5B21B6">risk_flag</text>
+<text x="1160" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#5B21B6">_engine</text>
+
+<rect x="1236" y="104" width="168" height="46" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1320" y="126" text-anchor="middle" font-size="14" font-weight="600" fill="#075985">fact_registry</text>
+<text x="1320" y="142" text-anchor="middle" font-size="11" fill="#475569">versioned</text>
+
+<!-- ============================ PAR FRAME (Brain-1 analysis) ============================ -->
+<rect x="600" y="300" width="754" height="170" rx="8" fill="#F6FBF6" stroke="#16A34A" stroke-width="1.3"/>
+<path d="M600 300 L600 324 L760 324 L760 314 L750 300 Z" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.3"/>
+<text x="612" y="318" font-size="12" font-weight="600" fill="#166534">par — Brain-1 analysis (SSE status/stage)</text>
+<line x1="600" y1="356" x2="1354" y2="356" stroke="#16A34A" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="600" y1="412" x2="1354" y2="412" stroke="#16A34A" stroke-width="1" stroke-dasharray="4 4"/>
+
+<!-- ============================ ACTIVATION BARS ============================ -->
+<rect x="634" y="232" width="12" height="524" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<rect x="814" y="330" width="12" height="20" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1"/>
+<rect x="984" y="386" width="12" height="20" fill="#DCFCE7" stroke="#16A34A" stroke-width="1"/>
+<rect x="1154" y="442" width="12" height="20" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1"/>
+
+<!-- ============================ MESSAGES ============================ -->
+<g>
+<!-- 1 AT -> API G1 approve -->
+<line x1="130" y1="188" x2="468" y2="188" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="170" width="320" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="182" font-size="12" fill="#475569">1  POST /gates/facts_review/submit {approve, deadline_confirmations}</text>
+
+<!-- 2 API -> OR G1 approve (role guard) -->
+<line x1="474" y1="220" x2="632" y2="220" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="478" y="202" width="330" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="480" y="214" font-size="12" fill="#475569">2  G1 approve (role: attorney) → GateRecord; PIN rule-pack; → strategy_intake</text>
+
+<!-- 3 AT -> API G1.5 verbatim inputs -->
+<line x1="130" y1="252" x2="632" y2="252" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="234" width="420" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="246" font-size="12" fill="#475569">3  POST /gates/strategy_intake/submit {liability_theory, injury_framing, anchor_amount...}</text>
+
+<!-- 4 OR self: store verbatim + budget precheck + transition -->
+<path d="M646 284 L716 284 L716 296 L648 296" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="724" y="276" width="440" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="726" y="288" font-size="12" fill="#475569">4  store StrategyInputs VERBATIM · budget precheck · → analysis_running</text>
+
+<!-- par branch 1: chronology -->
+<line x1="646" y1="340" x2="812" y2="340" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="650" y="322" width="340" height="16" fill="#F6FBF6"/>
+<text x="652" y="334" font-size="11.5" fill="#475569">5  build chronology → rows + tokenized narratives</text>
+
+<!-- par branch 2: ledger -->
+<line x1="646" y1="392" x2="982" y2="392" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="650" y="374" width="330" height="16" fill="#F6FBF6"/>
+<text x="652" y="386" font-size="11.5" fill="#475569">6  materialize specials ledger from BillingLine → mint [[AMT_n]]</text>
+
+<!-- par branch 3: risk flags -->
+<line x1="646" y1="448" x2="1152" y2="448" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="650" y="430" width="470" height="16" fill="#F6FBF6"/>
+<text x="652" y="442" font-size="11.5" fill="#475569">7  run detectors: gaps, priors, degenerative, causation → RiskFlag[]</text>
+
+<!-- 8 OR --> API gate_ready evidence_review -->
+<line x1="634" y1="500" x2="476" y2="500" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="478" y="482" width="330" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="480" y="494" font-size="12" fill="#475569">8  all stages done → SSE gate_ready {gate: evidence_review}</text>
+</g>
+
+<!-- ============================ G2a PARALEGAL PREP NOTE ============================ -->
+<rect x="222" y="520" width="380" height="96" rx="8" fill="#FFF7ED" stroke="#D97706" stroke-width="1.2"/>
+<text x="238" y="540" font-size="12" font-weight="600" fill="#92400E">G2a — PARALEGAL PREP</text>
+<g font-size="11.5" fill="#92400E">
+<text x="238" y="558">9  · chronology overlay edits (edit view, not rows)</text>
+<text x="238" y="574">10 · ledger correction → writes BillingLine (recompute)</text>
+<text x="238" y="590">11 · exhibit picker include/exclude (page-level)</text>
+<text x="238" y="606">12 · risk-flag disposition PREP (attorney owns final)</text>
+</g>
+<!-- paralegal prep touches money_engine recompute -->
+<path d="M602 560 L968 560 L968 470" fill="none" stroke="#334155" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<rect x="700" y="544" width="230" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="702" y="556" font-size="11" fill="#475569">ledger recompute (never hand-edit)</text>
+
+<!-- 13 AT -> API confirm (above the alt frame) -->
+<line x1="130" y1="640" x2="466" y2="640" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="150" y="622" width="470" height="16" fill="#FFFFFF" opacity="0.92"/>
+<text x="152" y="634" font-size="12" fill="#475569">13  POST /gates/evidence_review/submit {approve, dispositions[]}</text>
+
+<!-- ============================ ALT FRAME (attorney confirm) ============================ -->
+<rect x="110" y="656" width="1244" height="118" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1.3"/>
+<path d="M110 656 L110 680 L340 680 L340 670 L330 656 Z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.3"/>
+<text x="122" y="674" font-size="12" font-weight="600" fill="#92400E">alt — G2a confirm outcome (server role + high-severity check)</text>
+<line x1="110" y1="718" x2="1354" y2="718" stroke="#D97706" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="122" y="697" font-size="11" font-weight="600" fill="#92400E">[ high-severity undispositioned ]</text>
+<text x="122" y="737" font-size="11" font-weight="600" fill="#166534">[ all dispositioned ]</text>
+
+<!-- reject branch: OR --> AT -->
+<line x1="632" y1="704" x2="132" y2="704" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="360" y="686" width="272" height="16" fill="#FFFBEB"/>
+<text x="364" y="698" font-size="11.5" fill="#475569">reject: dispositions required (inv 6/8)</text>
+
+<!-- confirm branch: OR -> REG freeze -->
+<line x1="646" y1="752" x2="1318" y2="752" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="650" y="734" width="510" height="16" fill="#FFFBEB"/>
+<text x="652" y="746" font-size="11.5" fill="#475569">14  FREEZE registry · pin registry_version · → plan_review · SSE gate_ready</text>
+
+<!-- ============================ REWORK BACK-EDGE (from G2a prep left edge, up around left margin) ============================ -->
+<path d="M222 568 L60 568 L60 232 L628 232" fill="none" stroke="#B45309" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrowr)"/>
+<rect x="66" y="410" width="236" height="34" fill="#FFFFFF"/>
+<text x="72" y="424" font-size="11.5" fill="#B45309">rework: picks changed / records added</text>
+<text x="72" y="439" font-size="11.5" fill="#B45309">→ back-edge to analysis_running (rebuild)</text>
+</svg>

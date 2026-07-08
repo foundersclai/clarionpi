@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 640" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">PI Agent — MVP Milestones (Weeks 1–16)</title>
+<desc id="d">A gantt-style timeline over 16 weeks with swimlanes: Foundations (M0), Corpus (M1, M2), HITL (M3, M4), Drafting (M5, M6), and Quality (M7). Above the lanes, spikes S1 OCR bake-off, S2 extraction fidelity, S3 pilot firm commitment, and S4 BAA paperwork run as de-risking tracks. M8 v1.x fast-follows begin post-MVP.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<rect x="0" y="0" width="1400" height="640" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="632" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — MVP Milestones (Weeks 1–16)</text>
+<text x="36" y="76" font-size="13" fill="#64748B">Indicative sequencing — single engine dev + AI pairing; placeholder start.</text>
+
+<!-- ============ WEEK GRIDLINES + NUMBERS ============ -->
+<!-- plot area x=220..1360, 16 weeks, 71.25px/week; lanes y=196..560 -->
+<g stroke="#E2E8F0" stroke-width="1">
+<line x1="220" y1="112" x2="220" y2="560"/>
+<line x1="291.25" y1="112" x2="291.25" y2="560"/>
+<line x1="362.5" y1="112" x2="362.5" y2="560"/>
+<line x1="433.75" y1="112" x2="433.75" y2="560"/>
+<line x1="505" y1="112" x2="505" y2="560"/>
+<line x1="576.25" y1="112" x2="576.25" y2="560"/>
+<line x1="647.5" y1="112" x2="647.5" y2="560"/>
+<line x1="718.75" y1="112" x2="718.75" y2="560"/>
+<line x1="790" y1="112" x2="790" y2="560"/>
+<line x1="861.25" y1="112" x2="861.25" y2="560"/>
+<line x1="932.5" y1="112" x2="932.5" y2="560"/>
+<line x1="1003.75" y1="112" x2="1003.75" y2="560"/>
+<line x1="1075" y1="112" x2="1075" y2="560"/>
+<line x1="1146.25" y1="112" x2="1146.25" y2="560"/>
+<line x1="1217.5" y1="112" x2="1217.5" y2="560"/>
+<line x1="1288.75" y1="112" x2="1288.75" y2="560"/>
+<line x1="1360" y1="112" x2="1360" y2="560"/>
+</g>
+<g font-size="11" fill="#94A3B8" text-anchor="middle">
+<text x="255.6" y="106">W1</text>
+<text x="326.9" y="106">W2</text>
+<text x="398.1" y="106">W3</text>
+<text x="469.4" y="106">W4</text>
+<text x="540.6" y="106">W5</text>
+<text x="611.9" y="106">W6</text>
+<text x="683.1" y="106">W7</text>
+<text x="754.4" y="106">W8</text>
+<text x="825.6" y="106">W9</text>
+<text x="896.9" y="106">W10</text>
+<text x="968.1" y="106">W11</text>
+<text x="1039.4" y="106">W12</text>
+<text x="1110.6" y="106">W13</text>
+<text x="1181.9" y="106">W14</text>
+<text x="1253.1" y="106">W15</text>
+<text x="1324.4" y="106">W16</text>
+</g>
+
+<!-- ============ SPIKES STRIP (y 118..192) ============ -->
+<text x="36" y="132" font-size="13" fill="#64748B" letter-spacing="1">SPIKES</text>
+
+<!-- S1 OCR bake-off weeks 1-2 (row 1) -->
+<rect x="220" y="122" width="142.5" height="13" rx="4" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 4"/>
+<path d="M212.5 128.5 l7 -6.5 l7 6.5 l-7 6.5 z" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+<text x="370" y="132" font-size="11.5" fill="#475569">S1 OCR bake-off</text>
+
+<!-- S2 extraction fidelity weeks 3-4 (row 2) -->
+<rect x="362.5" y="143" width="142.5" height="13" rx="4" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 4"/>
+<path d="M355 149.5 l7 -6.5 l7 6.5 l-7 6.5 z" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+<text x="513" y="153" font-size="11.5" fill="#475569">S2 extraction fidelity</text>
+
+<!-- S3 pilot firm diamond at week 6 (row 3) -->
+<path d="M639.5 168 l8 -8 l8 8 l-8 8 z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="664" y="172" font-size="11.5" fill="#92400E">S3 pilot committed by end of M2 — or pause</text>
+
+<!-- S4 BAA paperwork long thin muted bar weeks 1-8 (row 4) -->
+<rect x="220" y="182" width="570" height="10" rx="4" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="798" y="191" font-size="11.5" fill="#64748B">S4 BAA paperwork — longest lead time</text>
+
+<!-- separator under spikes -->
+<line x1="36" y1="196" x2="1360" y2="196" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<!-- ============ LANE: FOUNDATIONS (y 200..252) ============ -->
+<rect x="36" y="200" width="1324" height="52" rx="8" fill="#F8FAFC"/>
+<text x="52" y="230" font-size="13" fill="#64748B" letter-spacing="1">FOUNDATIONS</text>
+<rect x="220" y="211" width="71.25" height="30" rx="6" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="299" y="230" font-size="13" font-weight="600" fill="#475569">M0 Scaffold + contracts</text>
+
+<!-- ============ LANE: CORPUS (y 256..308) ============ -->
+<rect x="36" y="256" width="1324" height="52" rx="8" fill="#FFFFFF"/>
+<text x="52" y="286" font-size="13" fill="#64748B" letter-spacing="1">CORPUS</text>
+<rect x="291.25" y="267" width="142.5" height="30" rx="6" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="298" y="286" font-size="12.5" font-weight="600" fill="#075985">M1 Ingest + OCR</text>
+<rect x="433.75" y="267" width="213.75" height="30" rx="6" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="440" y="286" font-size="12.5" font-weight="600" fill="#075985">M2 Extraction + money engine</text>
+
+<!-- ============ LANE: HITL (y 312..364) ============ -->
+<rect x="36" y="312" width="1324" height="52" rx="8" fill="#F8FAFC"/>
+<text x="52" y="342" font-size="13" fill="#64748B" letter-spacing="1">HITL</text>
+<rect x="647.5" y="323" width="142.5" height="30" rx="6" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="654" y="342" font-size="12.5" font-weight="600" fill="#92400E">M3 Gates G1/G1.5</text>
+<rect x="790" y="323" width="142.5" height="30" rx="6" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="797" y="342" font-size="12" font-weight="600" fill="#92400E">M4 G2a + risk flags</text>
+
+<!-- ============ LANE: DRAFTING (y 368..456, two rows) ============ -->
+<rect x="36" y="368" width="1324" height="88" rx="8" fill="#FFFFFF"/>
+<text x="52" y="416" font-size="13" fill="#64748B" letter-spacing="1">DRAFTING</text>
+<!-- M5 weeks 11-14 row 1 -->
+<rect x="932.5" y="379" width="285" height="30" rx="6" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="939" y="398" font-size="12.5" font-weight="600" fill="#5B21B6">M5 Brain-2 + G2.5/G3 + package</text>
+<!-- M6 weeks 11-13 row 2 -->
+<rect x="932.5" y="415" width="213.75" height="30" rx="6" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="939" y="434" font-size="12.5" font-weight="600" fill="#5B21B6">M6 Provenance viewer</text>
+
+<!-- ============ LANE: QUALITY (y 460..512) ============ -->
+<rect x="36" y="460" width="1324" height="52" rx="8" fill="#F8FAFC"/>
+<text x="52" y="490" font-size="13" fill="#64748B" letter-spacing="1">QUALITY</text>
+<rect x="1217.5" y="471" width="142.5" height="30" rx="6" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1132" y="490" font-size="12.5" font-weight="600" fill="#166534" text-anchor="end">M7 Evals + pilot readiness</text>
+
+<!-- ============ LEGEND (bottom, right of caption) ============ -->
+<g>
+<rect x="700" y="588" width="14" height="14" rx="3" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="720" y="600" font-size="11.5" fill="#475569">Foundations</text>
+<rect x="812" y="588" width="14" height="14" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="832" y="600" font-size="11.5" fill="#475569">Corpus</text>
+<rect x="900" y="588" width="14" height="14" rx="3" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="920" y="600" font-size="11.5" fill="#475569">HITL</text>
+<rect x="972" y="588" width="14" height="14" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="992" y="600" font-size="11.5" fill="#475569">Drafting</text>
+<rect x="1060" y="588" width="14" height="14" rx="3" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1080" y="600" font-size="11.5" fill="#475569">Quality</text>
+<path d="M1152 595 l6 -6 l6 6 l-6 6 z" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+<text x="1170" y="600" font-size="11.5" fill="#475569">Spike</text>
+</g>
+
+<!-- ============ CAPTION ============ -->
+<text x="36" y="600" font-size="12" fill="#94A3B8">M8 v1.x fast-follows begin post-MVP: comparables corpus,</text>
+<text x="36" y="618" font-size="12" fill="#94A3B8">HybridEngine routing, assistant, lost wages.</text>
+
+</svg>

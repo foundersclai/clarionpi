@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 760" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="760" fill="#FFFFFF"/>
+  <rect x="4" y="4" width="1392" height="752" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — deployment &amp; HIPAA/BAA envelope</text>
+  <text x="36" y="76" font-size="13" fill="#64748B">One hardened VM, one datastore, every PHI egress on the BAA inventory</text>
+
+  <!-- ===== Legend (bottom-left) ===== -->
+  <g>
+    <rect x="36" y="612" width="470" height="72" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+    <rect x="50" y="626" width="16" height="16" rx="4" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="74" y="638" font-size="12" fill="#475569">LLM stage</text>
+    <rect x="50" y="654" width="16" height="16" rx="4" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="74" y="666" font-size="12" fill="#475569">Data store</text>
+    <rect x="188" y="626" width="16" height="16" rx="4" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+    <text x="212" y="638" font-size="12" fill="#475569">Frontend surface</text>
+    <rect x="188" y="654" width="16" height="16" rx="4" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+    <text x="212" y="666" font-size="12" fill="#475569">Neutral service</text>
+    <rect x="338" y="626" width="16" height="16" rx="4" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="362" y="638" font-size="12" fill="#475569">External — BAA</text>
+    <line x1="338" y1="662" x2="366" y2="662" stroke="#334155" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="374" y="666" font-size="12" fill="#475569">Scheduled flow</text>
+  </g>
+
+  <!-- ================= LEFT: HARDENED VM ================= -->
+  <rect x="48" y="112" width="792" height="470" rx="14" fill="#FDFEFF" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="68" y="139" font-size="13" fill="#64748B" letter-spacing="1" font-weight="600">HARDENED VM — ENCRYPTED DISK, TLS, FIRM DATA</text>
+
+  <!-- Caddy (neutral) -->
+  <rect x="286" y="158" width="316" height="58" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="302" y="183" font-size="15" font-weight="600" fill="#0F172A">Caddy</text>
+  <text x="302" y="202" font-size="12" fill="#475569">TLS termination</text>
+
+  <!-- Next.js (rose) -->
+  <rect x="120" y="272" width="286" height="58" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+  <text x="136" y="306" font-size="15" font-weight="600" fill="#9F1239">Next.js</text>
+
+  <!-- FastAPI (neutral) -->
+  <rect x="482" y="272" width="286" height="58" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="498" y="306" font-size="15" font-weight="600" fill="#0F172A">FastAPI</text>
+
+  <!-- Procrastinate workers (LLM purple) -->
+  <rect x="120" y="386" width="648" height="62" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+  <text x="136" y="411" font-size="15" font-weight="600" fill="#5B21B6">Procrastinate workers</text>
+  <text x="136" y="431" font-size="12" fill="#475569">Classify, OCR, extract, package</text>
+
+  <!-- Postgres cylinder (data store) -->
+  <g>
+    <path d="M254 494 v46 a190 14 0 0 0 380 0 v-46" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <ellipse cx="444" cy="494" rx="190" ry="14" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="444" y="524" font-size="15" font-weight="600" fill="#075985" text-anchor="middle">Postgres 16 + pgvector</text>
+    <text x="444" y="543" font-size="12" fill="#475569" text-anchor="middle">state, queue, audit</text>
+  </g>
+
+  <!-- ================= RIGHT-MIDDLE: S3 + BACKUPS (outside VM) ================= -->
+  <!-- S3 cylinder -->
+  <g>
+    <path d="M902 236 v58 a120 14 0 0 0 240 0 v-58" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <ellipse cx="1022" cy="236" rx="120" ry="14" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="1022" y="268" font-size="15" font-weight="600" fill="#075985" text-anchor="middle">S3 — SSE-KMS</text>
+    <text x="1022" y="287" font-size="12" fill="#475569" text-anchor="middle">documents + artifacts</text>
+  </g>
+
+  <!-- Encrypted offsite backups cylinder -->
+  <g>
+    <path d="M902 452 v50 a120 14 0 0 0 240 0 v-50" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <ellipse cx="1022" cy="452" rx="120" ry="14" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="1022" y="486" font-size="15" font-weight="600" fill="#075985" text-anchor="middle">Encrypted offsite</text>
+    <text x="1022" y="505" font-size="15" font-weight="600" fill="#075985" text-anchor="middle">backups</text>
+  </g>
+
+  <!-- ================= RIGHT: BAA ENVELOPE (dashed) ================= -->
+  <rect x="1204" y="150" width="158" height="256" rx="14" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="1222" y="177" font-size="13" fill="#64748B" letter-spacing="1" font-weight="600">BAA — EXT.</text>
+
+  <!-- AWS Textract (neutral service, external) -->
+  <rect x="1222" y="196" width="122" height="66" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="1238" y="226" font-size="15" font-weight="600" fill="#0F172A">AWS</text>
+  <text x="1238" y="246" font-size="15" font-weight="600" fill="#0F172A">Textract</text>
+
+  <!-- Claude API / Bedrock (LLM purple, external) -->
+  <rect x="1222" y="292" width="122" height="90" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+  <text x="1238" y="322" font-size="15" font-weight="600" fill="#5B21B6">Claude</text>
+  <text x="1238" y="341" font-size="12" fill="#475569">API /</text>
+  <text x="1238" y="358" font-size="12" fill="#475569">Bedrock</text>
+
+  <!-- ================= ARROWS ================= -->
+  <!-- Caddy -> Next.js -->
+  <path d="M330 216 V244 H263 V272" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Caddy -> FastAPI -->
+  <path d="M558 216 V244 H625 V272" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- FastAPI -> Postgres -->
+  <path d="M600 330 V360 H520 V478" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- workers -> Postgres -->
+  <path d="M400 448 V478" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- FastAPI -> S3 (out of VM to S3 bottom-left) -->
+  <path d="M768 288 H852 V266 H902" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- workers -> S3 -->
+  <path d="M768 400 H872 V296 H902" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- FastAPI -> Claude (corridor x=1160) -->
+  <path d="M768 312 H1160 V326 H1222" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- workers -> Claude (corridor x=1178) -->
+  <path d="M768 424 H1178 V348 H1222" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- workers -> Textract (corridor x=1196) -->
+  <path d="M768 438 H1196 V225 H1222" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Postgres -.nightly.-> backups -->
+  <path d="M634 517 H700 V562 H1022 V506" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <rect x="812" y="553" width="58" height="18" rx="3" fill="#FFFFFF"/>
+  <text x="841" y="566" font-size="12" fill="#475569" text-anchor="middle">nightly</text>
+
+  <!-- S3 -.lifecycle.-> backups -->
+  <path d="M1022 308 V438" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <rect x="994" y="364" width="64" height="18" rx="3" fill="#FFFFFF"/>
+  <text x="1026" y="377" font-size="12" fill="#475569" text-anchor="middle">lifecycle</text>
+
+  <!-- ================= BOTTOM CAPTION ================= -->
+  <text x="540" y="644" font-size="12" fill="#94A3B8">Scaling path: move workers to a second VM — the Postgres queue makes that config, not redesign.</text>
+</svg>

@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 700" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">PI Agent — Structure Decision Tree</title>
+<desc id="d">Decision tree for how a software company can legally participate in law-firm economics. First diamond asks where the firm will practice. Arizona leads to Route A, an Arizona ABS holding equity and taking distributions. Other states lead to a second diamond asking how the company gets paid. Flat or per-matter FMV fees lead to Route B, an MSO or arm's-length license, legal everywhere. Percent of fees or recoveries leads to Route C, prohibited outside ABS equity, with a dashed restructure arrow back to Route A.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M1 1L9 5L1 9" fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="700" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="692" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Structure Decision Tree</text>
+<text x="36" y="76" font-size="13" fill="#64748B">How a software company legally participates in law-firm economics (verified 2026-07).</text>
+
+<!-- ============ LEGEND (top-right) ============ -->
+<g font-size="12">
+<rect x="1066" y="34" width="12" height="12" rx="2" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="1084" y="44" fill="#475569">Decision</text>
+<rect x="1160" y="34" width="12" height="12" rx="2" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1178" y="44" fill="#475569">Chosen route</text>
+<rect x="1066" y="56" width="12" height="12" rx="2" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1084" y="66" fill="#475569">Legal route</text>
+<rect x="1160" y="56" width="12" height="12" rx="2" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="1178" y="66" fill="#475569">Prohibited</text>
+</g>
+
+<!-- ============ Q1 diamond (center x=250, cy=180) ============ -->
+<g>
+<path d="M250 116 L370 180 L250 244 L130 180 Z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="250" y="176" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">Where will the</text>
+<text x="250" y="196" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">firm practice?</text>
+</g>
+
+<!-- Q1 -> Arizona -> Route A (arrow goes right then up-right) -->
+<path d="M370 180 L560 180 L560 130 L636 130" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="420" y="160" width="72" height="18" rx="4" fill="#FFFFFF"/>
+<text x="456" y="173" font-size="12" fill="#475569" text-anchor="middle">Arizona</text>
+
+<!-- Q1 -> Other state -> Q2 (arrow goes down) -->
+<path d="M250 244 L250 336" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="192" y="278" width="116" height="18" rx="4" fill="#FFFFFF"/>
+<text x="250" y="291" font-size="12" fill="#475569" text-anchor="middle">Other state</text>
+
+<!-- ============ ROUTE A card (green) top-right, cx=880 cy=130 ============ -->
+<g>
+<rect x="636" y="94" width="488" height="72" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="656" y="124" font-size="15" font-weight="600" fill="#166534">Route A — AZ ABS: hold equity, take distributions</text>
+<text x="656" y="146" font-size="12" fill="#475569">Chosen. Nonlawyer equity permitted under Arizona's Alternative Business Structure.</text>
+</g>
+<!-- Route A note beneath -->
+<g>
+<rect x="636" y="178" width="488" height="40" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1"/>
+<text x="656" y="202" font-size="12" fill="#475569">Note: firm must genuinely serve AZ — Admin. Order 2026-31.</text>
+</g>
+
+<!-- ============ Q2 diamond (center x=250, cy=400) ============ -->
+<g>
+<path d="M250 336 L378 400 L250 464 L122 400 Z" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="250" y="396" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">How do we</text>
+<text x="250" y="416" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle">get paid?</text>
+</g>
+
+<!-- Q2 -> Flat/per-matter FMV -> Route B (right then up-right to y=360) -->
+<path d="M378 400 L560 400 L560 360 L636 360" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="392" y="341" width="196" height="18" rx="4" fill="#FFFFFF"/>
+<text x="490" y="354" font-size="12" fill="#475569" text-anchor="middle">Flat / per-matter FMV fees</text>
+
+<!-- Q2 -> Percent of fees -> Route C (right then down-right to y=560) -->
+<path d="M378 400 L470 400 L470 560 L636 560" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="392" y="470" width="196" height="18" rx="4" fill="#FFFFFF"/>
+<text x="490" y="483" font-size="12" fill="#475569" text-anchor="middle">Percent of fees or recoveries</text>
+
+<!-- ============ ROUTE B card (blue) middle-right, cx=880 cy=360 ============ -->
+<g>
+<rect x="636" y="324" width="488" height="72" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="656" y="354" font-size="15" font-weight="600" fill="#075985">Route B — MSO or arm's-length license: legal everywhere</text>
+<text x="656" y="376" font-size="12" fill="#475569">Expansion path. Firm stays lawyer-owned; company provides tech and back office.</text>
+</g>
+<!-- Route B note beneath -->
+<g>
+<rect x="636" y="408" width="488" height="40" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1"/>
+<text x="656" y="432" font-size="12" fill="#475569">Note: no control of legal judgment or intake; document FMV.</text>
+</g>
+
+<!-- ============ ROUTE C card (red) bottom-right, cx=880 cy=560 ============ -->
+<g>
+<rect x="636" y="524" width="488" height="72" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="656" y="554" font-size="15" font-weight="600" fill="#791F1F">Route C — Prohibited outside ABS equity</text>
+<text x="656" y="576" font-size="12" fill="#475569">A revenue-share license is Route B in a costume; the lawyer risks discipline.</text>
+</g>
+<!-- Route C note beneath -->
+<g>
+<rect x="636" y="608" width="488" height="40" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1"/>
+<text x="656" y="632" font-size="12" fill="#475569">TX Op. 706 · CO HB26-1421 · CA AB 931.</text>
+</g>
+
+<!-- ============ dashed restructure arrow: Route C -> Route A ============ -->
+<path d="M1150 560 L1200 560 L1200 130 L1130 130" fill="none" stroke="#A32D2D" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="1156" y="336" width="94" height="18" rx="4" fill="#FFFFFF"/>
+<text x="1203" y="349" font-size="12" fill="#791F1F" text-anchor="middle">restructure</text>
+
+</svg>

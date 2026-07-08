@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 760" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="lr-title lr-desc">
+<title id="lr-title">PI Agent — Flow 4: Late Records &amp; Rework</title>
+<desc id="lr-desc">A vertical mini-timeline on the left shows late provider records re-entering Phase 0 for new documents only, extracting new or changed facts, and bumping the fact-registry version from vN to vN+1. A labeled cascade arrow feeds an invalidation matrix on the right: a four-row bordered table keying the current gate state (evidence_review, plan_review, drafting or compliance_review, package_ready) to its effect, with the G3 hard-block phrase in red. Two panels at the bottom contrast what survives rework (chronology overlays, dispositions on unchanged flags, picks on unchanged exhibits) against what never survives silently (plan approval, draft, open G3 findings).</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="760" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="752" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Flow 4: Late Records &amp; Rework</text>
+<text x="36" y="76" font-size="13" fill="#64748B">New evidence bumps the registry version; stale approvals are invalidated explicitly, never silently.</text>
+
+<!-- Legend (top-right) -->
+<g font-size="12" fill="#475569">
+<rect x="1046" y="40" width="14" height="14" rx="3" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="1066" y="51">gate state</text>
+<rect x="1150" y="40" width="14" height="14" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1170" y="51">Brain-1</text>
+<rect x="1238" y="40" width="14" height="14" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1258" y="51">data store</text>
+<rect x="1150" y="62" width="14" height="14" rx="3" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1170" y="73">survives</text>
+<rect x="1238" y="62" width="14" height="14" rx="3" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="1258" y="73">re-earned</text>
+</g>
+
+<!-- ================= LEFT: mini-timeline ================= -->
+<text x="40" y="118" font-size="13" font-weight="600" fill="#64748B" letter-spacing="1">RECORDS ARRIVE LATE</text>
+
+<!-- node 1: matter at plan_review (amber pill) -->
+<rect x="40" y="134" width="340" height="58" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="60" y="160" font-size="15" font-weight="600" fill="#92400E">matter sitting at plan_review</text>
+<text x="60" y="180" font-size="12" fill="#92400E">approvals bound to registry vN</text>
+
+<!-- node 2: new records uploaded (neutral) -->
+<rect x="40" y="230" width="340" height="52" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="60" y="256" font-size="15" font-weight="600" fill="#0F172A">new provider records uploaded</text>
+<text x="60" y="274" font-size="12" fill="#475569">POST /documents/bulk + /phase0/run</text>
+
+<!-- node 3: phase0 re-entrant (purple) -->
+<rect x="40" y="320" width="340" height="52" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="60" y="346" font-size="15" font-weight="600" fill="#5B21B6">phase0 re-entrant: only new docs</text>
+<text x="60" y="364" font-size="12" fill="#5B21B6">existing DocumentPages untouched</text>
+
+<!-- node 4: new/changed facts (purple) -->
+<rect x="40" y="410" width="340" height="52" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="60" y="436" font-size="15" font-weight="600" fill="#5B21B6">new / changed facts extracted</text>
+<text x="60" y="454" font-size="12" fill="#5B21B6">dedupe + merge against existing</text>
+
+<!-- node 5: version bump (data-store blue, emphasized) -->
+<rect x="40" y="500" width="340" height="64" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.4"/>
+<text x="60" y="527" font-size="16" font-weight="700" fill="#075985">registry version bump</text>
+<text x="60" y="549" font-size="15" font-weight="700" fill="#075985">vN &#8594; vN+1 &#183; prior bindings stale</text>
+
+<!-- timeline vertical arrows -->
+<line x1="210" y1="192" x2="210" y2="228" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="210" y1="282" x2="210" y2="318" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="210" y1="372" x2="210" y2="408" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="210" y1="462" x2="210" y2="498" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<!-- cascade arrow into matrix -->
+<path d="M380 532 L470 532 L470 210 L556 210" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="392" y="330" width="150" height="34" fill="#FFFFFF"/>
+<text x="398" y="345" font-size="12" fill="#475569">apply invalidation</text>
+<text x="398" y="360" font-size="12" fill="#475569">matrix per state</text>
+
+<!-- ================= CENTER-RIGHT: invalidation matrix ================= -->
+<text x="576" y="118" font-size="13" font-weight="600" fill="#64748B" letter-spacing="1">INVALIDATION MATRIX &#8212; KEYED ON CURRENT GATE STATE</text>
+
+<!-- table frame -->
+<rect x="576" y="134" width="784" height="376" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<!-- header row -->
+<rect x="576" y="134" width="784" height="42" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<rect x="576" y="160" width="784" height="16" fill="#F1F5F9"/>
+<line x1="576" y1="176" x2="1360" y2="176" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="600" y="161" font-size="13" font-weight="700" fill="#0F172A">Where drift lands</text>
+<text x="900" y="161" font-size="13" font-weight="700" fill="#0F172A">Effect of registry_version++</text>
+<line x1="884" y1="134" x2="884" y2="510" stroke="#94A3B8" stroke-width="1.5"/>
+
+<!-- row separators (4 rows of 83.5) -->
+<line x1="576" y1="259" x2="1360" y2="259" stroke="#CBD5E1" stroke-width="1.2"/>
+<line x1="576" y1="342" x2="1360" y2="342" stroke="#CBD5E1" stroke-width="1.2"/>
+<line x1="576" y1="425" x2="1360" y2="425" stroke="#CBD5E1" stroke-width="1.2"/>
+
+<!-- ROW 1: evidence_review -->
+<rect x="600" y="196" width="176" height="30" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+<text x="688" y="216" text-anchor="middle" font-size="13" font-weight="600" fill="#92400E">evidence_review</text>
+<text x="602" y="245" font-size="11.5" fill="#64748B">not yet frozen</text>
+<text x="906" y="212" font-size="14" fill="#0F172A">re-present with</text>
+<text x="906" y="232" font-size="14" font-weight="600" fill="#0F172A">new-evidence diff in place</text>
+
+<!-- ROW 2: plan_review -->
+<rect x="600" y="279" width="176" height="30" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+<text x="688" y="299" text-anchor="middle" font-size="13" font-weight="600" fill="#92400E">plan_review</text>
+<text x="602" y="328" font-size="11.5" fill="#64748B">plan bound to old version</text>
+<text x="906" y="295" font-size="14" fill="#0F172A">plan stale &#8212;</text>
+<text x="906" y="315" font-size="14" font-weight="600" fill="#0F172A">back-edge to evidence_review</text>
+
+<!-- ROW 3: drafting / compliance_review -->
+<rect x="600" y="358" width="264" height="30" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+<text x="732" y="378" text-anchor="middle" font-size="13" font-weight="600" fill="#92400E">drafting / compliance_review</text>
+<text x="602" y="410" font-size="11.5" fill="#64748B">draft bound to old version</text>
+<text x="906" y="374" font-size="14" fill="#0F172A">draft stale;</text>
+<text x="906" y="394" font-size="14" font-weight="700" fill="#A32D2D">G3 hard-blocked on version mismatch</text>
+<text x="906" y="412" font-size="12.5" fill="#64748B">route to evidence_review re-confirm</text>
+
+<!-- ROW 4: package_ready -->
+<rect x="600" y="445" width="176" height="30" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+<text x="688" y="465" text-anchor="middle" font-size="13" font-weight="600" fill="#92400E">package_ready</text>
+<text x="602" y="494" font-size="11.5" fill="#64748B">artifacts are immutable</text>
+<text x="906" y="461" font-size="14" fill="#0F172A">immutable &#8212; new records</text>
+<text x="906" y="481" font-size="14" font-weight="600" fill="#0F172A">start a new draft cycle (v2 demand)</text>
+
+<!-- resume note under matrix -->
+<text x="576" y="536" font-size="12.5" fill="#475569">Then the attorney re-confirms G2a on a delta payload &#183; money_engine recomputes, [[AMT_n]] snapshots refresh &#183; matter resumes.</text>
+
+<!-- ================= BOTTOM: two panels ================= -->
+<!-- Survives (green) -->
+<rect x="40" y="600" width="656" height="130" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="60" y="628" font-size="15" font-weight="700" fill="#166534">Survives rework &#8212; reapplied automatically</text>
+<g font-size="13" fill="#166534">
+<text x="60" y="656">&#8226;  chronology overlays reapply over rebuilt rows</text>
+<text x="60" y="682">&#8226;  dispositions persist for unchanged flags</text>
+<text x="60" y="708">&#8226;  picks persist for unchanged exhibits</text>
+</g>
+
+<!-- Never survives (red-tinted) -->
+<rect x="716" y="600" width="644" height="130" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="736" y="628" font-size="15" font-weight="700" fill="#791F1F">Never survives silently &#8212; re-earned</text>
+<g font-size="13" fill="#791F1F">
+<text x="736" y="656">&#8226;  plan approval (G2.5) must be re-approved</text>
+<text x="736" y="682">&#8226;  draft &#8212; stale sections regen at new registry</text>
+<text x="736" y="708">&#8226;  open G3 findings re-checked at the new version</text>
+</g>
+</svg>

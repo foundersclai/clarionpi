@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 700" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="pr-title pr-desc">
+<title id="pr-title">PI Agent — Flow 5: Provenance Round-Trip</title>
+<desc id="pr-desc">A left-to-right chain traces a click-through from a rendered letter to its source page: the renderer emits the letter with a span map mapping span_id to fact_id and no tokens on the wire; the user clicks a fact span, which calls GET provenance by token_id; the fact_registry returns anchors and a verification status; the pages endpoint returns page text plus a presigned image; and pdf.js renders the page with a highlight overlay, bbox if present else page-level, targeting under two seconds on a thousand-page fixture. A dashed loop from the anchors node feeds a green box describing anchor-integrity checking at G3, where a broken anchor is a finding rather than a render-time surprise. From the end of the chain, one arrow points to a green box for the E4 provenance report exported by package_builder, and a gray box notes that PHI page access is written to the platform_core audit log.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="700" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="692" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Flow 5: Provenance Round-Trip</text>
+<text x="36" y="76" font-size="13" fill="#64748B">Click any fact in the letter, land on the source page; tokens never reach the wire.</text>
+
+<!-- Legend (top-right) -->
+<g font-size="12" fill="#475569">
+<rect x="1030" y="40" width="14" height="14" rx="3" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="1050" y="51">render / FE</text>
+<rect x="1136" y="40" width="14" height="14" rx="3" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1156" y="51">API endpoint</text>
+<rect x="1244" y="40" width="14" height="14" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1264" y="51">data store</text>
+<rect x="1136" y="62" width="14" height="14" rx="3" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1156" y="73">guarantee</text>
+<line x1="1244" y1="69" x2="1272" y2="69" stroke="#334155" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1280" y="73">check loop</text>
+</g>
+
+<!-- ================= MAIN CHAIN (left to right) ================= -->
+<text x="40" y="122" font-size="13" font-weight="600" fill="#64748B" letter-spacing="1">CLICK-THROUGH: FACT SPAN &#8594; SOURCE PAGE</text>
+
+<!-- Node A: rendered letter + span map (rose) -->
+<rect x="40" y="140" width="208" height="86" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="56" y="166" font-size="15" font-weight="600" fill="#9F1239">rendered letter</text>
+<text x="56" y="185" font-size="15" font-weight="600" fill="#9F1239">+ span map</text>
+<text x="56" y="204" font-size="12" fill="#9F1239">span_id &#8594; fact_id</text>
+<text x="56" y="219" font-size="12" fill="#9F1239">no tokens on wire</text>
+
+<!-- Node B: click fact span (rose) -->
+<rect x="288" y="152" width="168" height="62" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="372" y="180" text-anchor="middle" font-size="15" font-weight="600" fill="#9F1239">click fact span</text>
+<text x="372" y="200" text-anchor="middle" font-size="12" fill="#9F1239">opens prov. viewer</text>
+
+<!-- Node C: GET provenance (neutral / api) -->
+<rect x="496" y="152" width="208" height="62" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="600" y="178" text-anchor="middle" font-size="13.5" font-weight="600" fill="#0F172A">GET /provenance/</text>
+<text x="600" y="197" text-anchor="middle" font-size="13.5" font-weight="600" fill="#0F172A">{token_id}</text>
+
+<!-- Node D: fact_registry (data-store blue) -->
+<rect x="744" y="140" width="212" height="86" rx="10" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="850" y="166" text-anchor="middle" font-size="15" font-weight="600" fill="#075985">fact_registry</text>
+<text x="850" y="188" text-anchor="middle" font-size="12.5" fill="#075985">anchors[] {doc, page, bbox?}</text>
+<text x="850" y="207" text-anchor="middle" font-size="12.5" fill="#075985">+ verification status</text>
+
+<!-- Node E: GET pages (neutral / api) -->
+<rect x="996" y="152" width="200" height="62" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1096" y="178" text-anchor="middle" font-size="13.5" font-weight="600" fill="#0F172A">GET pages/{n}</text>
+<text x="1096" y="197" text-anchor="middle" font-size="12" fill="#475569">text + presigned image</text>
+
+<!-- Node F: pdf.js render (rose) -->
+<rect x="1140" y="270" width="220" height="90" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="1250" y="296" text-anchor="middle" font-size="15" font-weight="600" fill="#9F1239">pdf.js render</text>
+<text x="1250" y="315" text-anchor="middle" font-size="15" font-weight="600" fill="#9F1239">+ highlight overlay</text>
+<text x="1250" y="334" text-anchor="middle" font-size="12" fill="#9F1239">bbox else page-level</text>
+<text x="1250" y="349" text-anchor="middle" font-size="12" fill="#9F1239">&lt;2s @ 1,000 pages</text>
+
+<!-- chain arrows -->
+<line x1="248" y1="183" x2="286" y2="183" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="456" y1="183" x2="494" y2="183" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="704" y1="183" x2="742" y2="183" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="956" y1="183" x2="994" y2="183" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<!-- E down to F -->
+<path d="M1096 214 L1096 244 L1250 244 L1250 268" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1108" y="222" width="120" height="16" fill="#FFFFFF"/>
+<text x="1114" y="234" font-size="12" fill="#475569">render page</text>
+
+<!-- ================= BRANCH A: anchor integrity at G3 (dashed loop from anchors node) ================= -->
+<rect x="480" y="300" width="470" height="132" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="500" y="328" font-size="15" font-weight="700" fill="#166534">Anchor integrity checked at G3</text>
+<g font-size="13" fill="#166534">
+<text x="500" y="356">compliance_engine, per rendered fact:</text>
+<text x="500" y="380">&#8226;  page exists &#183; document not superseded</text>
+<text x="500" y="404">&#8226;  broken anchor = a G3 finding,</text>
+<text x="500" y="424">   not a render-time surprise</text>
+</g>
+<!-- dashed loop from fact_registry node down to this box -->
+<path d="M850 226 L850 262 L715 262 L715 298" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="722" y="268" width="200" height="16" fill="#FFFFFF"/>
+<text x="728" y="280" font-size="12" fill="#475569">integrity check (not render-time)</text>
+
+<!-- ================= BRANCH B: E4 report + audit (from chain end) ================= -->
+<!-- E4 provenance report (green) -->
+<rect x="480" y="472" width="470" height="120" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="500" y="500" font-size="15" font-weight="700" fill="#166534">E4 provenance report</text>
+<g font-size="13" fill="#166534">
+<text x="500" y="528">every rendered fact &#8594; source doc / page + status</text>
+<text x="500" y="552">exported at package build</text>
+<text x="500" y="576">by package_builder &#183; the durable audit artifact</text>
+</g>
+
+<!-- PHI audit (gray/neutral) -->
+<rect x="984" y="472" width="376" height="120" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1004" y="500" font-size="15" font-weight="700" fill="#0F172A">PHI page access &#8594; audit log</text>
+<g font-size="13" fill="#475569">
+<text x="1004" y="528">every page fetch logged by platform_core:</text>
+<text x="1004" y="552">{actor, matter, doc, page, ts}</text>
+<text x="1004" y="576">stays inside the BAA envelope (inv 7)</text>
+</g>
+
+<!-- arrow from pdf.js render node down and around (below PHI box) to E4 report right edge -->
+<path d="M1180 360 L1180 636 L966 636 L966 560 L954 560" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="990" y="628" width="230" height="16" fill="#FFFFFF"/>
+<text x="996" y="640" font-size="12" fill="#475569">at package build &#8594; enumerate facts</text>
+
+<!-- arrow from pages endpoint down to PHI audit box -->
+<path d="M1096 214 L1096 462 L1096 470" fill="none" stroke="#334155" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<rect x="1004" y="436" width="140" height="16" fill="#FFFFFF"/>
+<text x="1010" y="448" font-size="11.5" fill="#475569">log PHI access</text>
+</svg>

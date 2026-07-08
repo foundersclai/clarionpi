@@ -1,0 +1,232 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 940" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" role="img" aria-labelledby="cm-title cm-desc">
+<title id="cm-title">PI Agent — Component Map</title>
+<desc id="cm-desc">Layered component architecture: frontend workbench over the API/wire boundary, an orchestrator gate machine coordinating an engine layer whose hub is the versioned fact registry (data spine), fed by a corpus ingest-then-extraction pipeline, money engine, and jurisdiction rules, all riding a platform-core substrate; the package builder assembles the deliverable. Edges are labeled with what crosses each boundary; color encodes component kind.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M1 1L9 5L1 9" fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<rect x="0" y="0" width="1400" height="940" fill="#FFFFFF"/>
+<rect x="4" y="4" width="1392" height="932" rx="14" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+<text x="36" y="52" font-size="22" font-weight="bold" fill="#0F172A">PI Agent — Component Map</text>
+<text x="36" y="76" font-size="13" fill="#64748B">Layered components around the versioned fact registry; edges labeled with what crosses each boundary.</text>
+
+<!-- ===== Legend (top-right) ===== -->
+<g font-size="12">
+<rect x="978" y="30" width="392" height="62" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+<rect x="992" y="42" width="13" height="13" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1012" y="52" fill="#475569">LLM-touching</text>
+<rect x="1112" y="42" width="13" height="13" rx="3" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1132" y="52" fill="#475569">Deterministic</text>
+<rect x="1238" y="42" width="13" height="13" rx="3" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="1258" y="52" fill="#475569">Data spine</text>
+<rect x="992" y="66" width="13" height="13" rx="3" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="1012" y="76" fill="#475569">HITL gates</text>
+<rect x="1112" y="66" width="13" height="13" rx="3" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="1132" y="76" fill="#475569">Frontend</text>
+<rect x="1238" y="66" width="13" height="13" rx="3" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="1258" y="76" fill="#475569">Neutral / substrate</text>
+</g>
+
+<!-- ===== LAYER: FRONTEND ===== -->
+<text x="44" y="122" font-size="13" fill="#64748B" letter-spacing="1">PRESENTATION</text>
+<g>
+<rect x="44" y="132" width="1140" height="56" rx="10" fill="#FFE4E6" stroke="#E11D48" stroke-width="1.5"/>
+<text x="66" y="157" font-size="15" font-weight="600" fill="#9F1239">frontend_workbench</text>
+<text x="66" y="176" font-size="12" fill="#475569">Gate UIs · chronology grid · provenance viewer — displays state, never invents it (frontend/)</text>
+</g>
+
+<!-- ===== LAYER: API / WIRE ===== -->
+<text x="44" y="220" font-size="13" fill="#64748B" letter-spacing="1">WIRE BOUNDARY</text>
+<g>
+<rect x="44" y="230" width="1140" height="56" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="66" y="255" font-size="15" font-weight="600" fill="#0F172A">api_and_wire</text>
+<text x="66" y="274" font-size="12" fill="#475569">REST + SSE fronting everything · view-models only, no overlay echo · a leaf (app/api)</text>
+</g>
+
+<!-- ===== LAYER: ORCHESTRATION ===== -->
+<text x="44" y="320" font-size="13" fill="#64748B" letter-spacing="1">COORDINATION</text>
+<g>
+<rect x="44" y="330" width="1140" height="56" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="66" y="355" font-size="15" font-weight="600" fill="#92400E">orchestrator_gates</text>
+<text x="66" y="374" font-size="12" fill="#92400E">Gate state machine (G1→G3) + run coordination across engine components (app/engine/orchestrator)</text>
+</g>
+
+<!-- ===== LAYER: ENGINE ===== -->
+<text x="44" y="420" font-size="13" fill="#64748B" letter-spacing="1">ENGINE</text>
+
+<!-- fact_registry: CENTER HUB (data-store cylinder, emphasized) -->
+<g>
+<path d="M556 452 a116 15 0 0 1 232 0 v150 a116 15 0 0 1 -232 0 Z" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.5"/>
+<ellipse cx="672" cy="452" rx="116" ry="15" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.5"/>
+<text x="672" y="512" font-size="16" font-weight="700" fill="#075985" text-anchor="middle">fact_registry</text>
+<text x="672" y="533" font-size="12" fill="#0284C7" text-anchor="middle">THE SPINE — one per-matter token</text>
+<text x="672" y="550" font-size="12" fill="#0284C7" text-anchor="middle">namespace; typed, anchored, versioned</text>
+</g>
+
+<!-- brain2_drafting (LLM, left) -->
+<g>
+<rect x="60" y="440" width="216" height="70" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="168" y="472" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">brain2_drafting</text>
+<text x="168" y="491" font-size="12" fill="#475569" text-anchor="middle">approved structure →</text>
+<text x="168" y="507" font-size="12" fill="#475569" text-anchor="middle">tokenized sections (Opus)</text>
+</g>
+
+<!-- chronology_builder (LLM narratives, left-lower) -->
+<g>
+<rect x="60" y="536" width="216" height="70" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="168" y="568" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">chronology_builder</text>
+<text x="168" y="587" font-size="12" fill="#475569" text-anchor="middle">deterministic rows +</text>
+<text x="168" y="603" font-size="12" fill="#475569" text-anchor="middle">tokenized narratives</text>
+</g>
+
+<!-- risk_flag_engine (LLM semantic detectors, left-of-hub) -->
+<g>
+<rect x="316" y="440" width="212" height="70" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="422" y="466" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">risk_flag_engine</text>
+<text x="422" y="485" font-size="12" fill="#475569" text-anchor="middle">adverse-fact detectors:</text>
+<text x="422" y="501" font-size="12" fill="#475569" text-anchor="middle">gaps, priors, causation</text>
+</g>
+
+<!-- compliance_engine (LLM semantic half, right-of-hub) -->
+<g>
+<rect x="816" y="440" width="212" height="70" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="922" y="466" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">compliance_engine</text>
+<text x="922" y="485" font-size="12" fill="#475569" text-anchor="middle">G3 panel: det. checks +</text>
+<text x="922" y="501" font-size="12" fill="#475569" text-anchor="middle">semantic judge + buckets</text>
+</g>
+
+<!-- package_builder (deterministic green, right side / artifacts) -->
+<g>
+<rect x="1064" y="440" width="216" height="70" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="1172" y="466" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">package_builder</text>
+<text x="1172" y="485" font-size="12" fill="#475569" text-anchor="middle">detokenized letter.docx +</text>
+<text x="1172" y="501" font-size="12" fill="#475569" text-anchor="middle">Bates exhibit binder.pdf</text>
+</g>
+
+<!-- ===== LAYER: DATA / CORPUS ===== -->
+<text x="44" y="646" font-size="13" fill="#64748B" letter-spacing="1">CORPUS &amp; DATA</text>
+
+<!-- corpus_ingest (neutral) -->
+<g>
+<rect x="60" y="656" width="216" height="70" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="168" y="682" font-size="15" font-weight="600" fill="#0F172A" text-anchor="middle">corpus_ingest</text>
+<text x="168" y="701" font-size="12" fill="#475569" text-anchor="middle">firm uploads → page-</text>
+<text x="168" y="717" font-size="12" fill="#475569" text-anchor="middle">addressable store</text>
+</g>
+
+<!-- corpus_extraction (LLM) -->
+<g>
+<rect x="316" y="656" width="216" height="70" rx="10" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="424" y="682" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle">corpus_extraction</text>
+<text x="424" y="701" font-size="12" fill="#475569" text-anchor="middle">pages → typed anchored</text>
+<text x="424" y="717" font-size="12" fill="#475569" text-anchor="middle">rows (Sonnet)</text>
+</g>
+
+<!-- money_engine (deterministic, centered under hub) -->
+<g>
+<rect x="572" y="656" width="216" height="70" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+<text x="680" y="682" font-size="15" font-weight="600" fill="#166534" text-anchor="middle">money_engine</text>
+<text x="680" y="701" font-size="12" fill="#475569" text-anchor="middle">all arithmetic: ledger,</text>
+<text x="680" y="717" font-size="12" fill="#475569" text-anchor="middle">demand math, totals</text>
+</g>
+
+<!-- jurisdiction_rules (neutral, right) -->
+<g>
+<rect x="828" y="656" width="216" height="70" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="936" y="682" font-size="15" font-weight="600" fill="#0F172A" text-anchor="middle">jurisdiction_rules</text>
+<text x="936" y="701" font-size="12" fill="#475569" text-anchor="middle">lawyer-audited YAML →</text>
+<text x="936" y="717" font-size="12" fill="#475569" text-anchor="middle">typed decisions + diags</text>
+</g>
+
+<!-- ===== SUBSTRATE: platform_core ===== -->
+<g>
+<rect x="44" y="790" width="1236" height="88" rx="12" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+<text x="66" y="816" font-size="15" font-weight="600" fill="#0F172A">platform_core</text>
+<text x="66" y="836" font-size="12" fill="#475569" letter-spacing="1">CROSS-CUTTING SUBSTRATE — scopes tenancy · meters budget · logs audit for every component (app/core + app/auth)</text>
+<g font-size="12">
+<rect x="640" y="800" width="80" height="24" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<text x="680" y="816" fill="#475569" text-anchor="middle">auth</text>
+<rect x="728" y="800" width="90" height="24" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<text x="773" y="816" fill="#475569" text-anchor="middle">tenancy</text>
+<rect x="826" y="800" width="100" height="24" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<text x="876" y="816" fill="#475569" text-anchor="middle">telemetry</text>
+<rect x="934" y="800" width="86" height="24" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<text x="977" y="816" fill="#475569" text-anchor="middle">budget</text>
+<rect x="1028" y="800" width="120" height="24" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1"/>
+<text x="1088" y="816" fill="#475569" text-anchor="middle">append-only audit</text>
+</g>
+</g>
+
+<!-- ============================ EDGES ============================ -->
+
+<!-- frontend_workbench -> api_and_wire (only backend contact) -->
+<line x1="614" y1="188" x2="614" y2="228" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="628" y="200" width="196" height="16" fill="#FFFFFF"/>
+<text x="632" y="212" font-size="12" fill="#475569">REST + SSE (only contact)</text>
+
+<!-- api_and_wire -> orchestrator (fronts system) -->
+<line x1="614" y1="286" x2="614" y2="328" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="628" y="299" width="150" height="16" fill="#FFFFFF"/>
+<text x="632" y="311" font-size="12" fill="#475569">emits view-models</text>
+
+<!-- fact_registry -> api_and_wire (token -> anchors, provenance click-through) : right-side up channel -->
+<path d="M786 470 L1140 470 L1140 258 L1187 258" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="962" y="296" width="182" height="16" fill="#FFFFFF"/>
+<text x="966" y="308" font-size="12" fill="#475569">token → anchors (provenance)</text>
+
+<!-- orchestrator -> all engine components (coordinates runs) : four drops -->
+<path d="M168 386 L168 436" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M422 386 L422 436" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M922 386 L922 436" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M672 386 L672 435" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="686" y="402" width="196" height="16" fill="#FFFFFF"/>
+<text x="690" y="414" font-size="12" fill="#475569">coordinates runs · advances gate</text>
+
+<!-- corpus_ingest -> corpus_extraction (DocumentPage rows) -->
+<line x1="276" y1="691" x2="314" y2="691" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="250" y="730" width="132" height="16" fill="#FFFFFF"/>
+<text x="254" y="742" font-size="12" fill="#475569">DocumentPage rows</text>
+
+<!-- corpus_extraction -> fact_registry (anchored typed facts to tokenize) -->
+<path d="M424 656 L424 628 L556 570" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="398" y="612" width="196" height="16" fill="#FFFFFF"/>
+<text x="402" y="624" font-size="12" fill="#475569">anchored facts to tokenize</text>
+
+<!-- corpus_extraction -> chronology/risk/money (Encounter/Billing/Incident rows) : elbow up-left to chronology -->
+<path d="M340 656 L340 628 L168 628 L168 610" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="180" y="632" width="216" height="16" fill="#FFFFFF"/>
+<text x="184" y="644" font-size="12" fill="#475569">Encounter / Billing / Incident rows</text>
+
+<!-- money_engine -> fact_registry ([[AMT_n]] facts) -->
+<path d="M680 656 L680 618" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="694" y="630" width="180" height="16" fill="#FFFFFF"/>
+<text x="698" y="642" font-size="12" fill="#475569">[[AMT_n]] (value + ledger hash)</text>
+
+<!-- jurisdiction_rules -> orchestrator (deadline candidates surface at G1) : right channel up -->
+<path d="M1044 680 L1150 680 L1150 358 L1187 358" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1160" y="520" width="130" height="34" fill="#FFFFFF"/>
+<text x="1225" y="534" font-size="12" fill="#475569" text-anchor="middle">deadline candidates,</text>
+<text x="1225" y="550" font-size="12" fill="#475569" text-anchor="middle">required terms →</text>
+
+<!-- fact_registry -> compliance_engine (token -> resolution, verify anchors) -->
+<line x1="788" y1="475" x2="814" y2="475" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+<!-- fact_registry -> brain2_drafting (token -> display form, prompt-safe) : left across top of engine -->
+<path d="M556 468 L300 468 L300 470 L280 470" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="316" y="420" width="196" height="16" fill="#FFFFFF"/>
+<text x="320" y="432" font-size="12" fill="#475569">token → display form (safe)</text>
+
+<!-- fact_registry -> package_builder (token -> value + anchors, render resolution) -->
+<path d="M788 486 L1040 486 L1040 475 L1060 475" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="820" y="516" width="196" height="16" fill="#FFFFFF"/>
+<text x="824" y="528" font-size="12" fill="#475569">token → value + anchors (render)</text>
+
+<!-- platform_core -> all (cross-cutting) : dashed up-tick to signify substrate scope -->
+<path d="M300 790 L300 748" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<path d="M1000 790 L1000 748" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<rect x="358" y="762" width="220" height="16" fill="#FFFFFF"/>
+<text x="362" y="774" font-size="12" fill="#94A3B8">auth · budget · audit scope every layer</text>
+</svg>
