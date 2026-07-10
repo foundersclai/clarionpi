@@ -28,7 +28,7 @@ License tiers per file (marked in the manifests):
 
 ---
 
-## demand_letters/court_records/ — 11 REAL letters [PUB]
+## demand_letters/court_records/ — 12 REAL letters [PUB]
 
 Real demand letters filed as federal-court exhibits (mostly attached to
 Notices of Removal to prove amount-in-controversy — a repeatable vein; see
@@ -47,6 +47,7 @@ Notices of Removal to prove amount-in-controversy — a repeatable vein; see
 | `gand_removal_c_demand_letter.pdf` | N.D. Ga. 1:23-mi-99999 doc 1880-2 | 3pp short-form demand, image scan |
 | `scott_v_travelers_statutory_60day_demand.pdf` | *Scott v. Travelers* (N.D. Ga. 1:20-cv-04420, doc 28-3) | Georgia statutory 60-day insurer demand, image scan |
 | `andrews_v_autoliv_demand_letter.pdf` | *Andrews v. Autoliv Japan* (N.D. Ga. 1:14-cv-03432, doc 536-1) | 9pp Butler Wooten demand in an airbag-defect death case (top-tier plaintiff-firm craft) |
+| `major_v_zimprich_CA_policy_limits_demand.pdf` | *Major v. Zimprich* (C.D. Cal. 2:20-cv-03335, doc 1-5) | Jacoby & Meyers **California policy-limits demand** to State Farm w/ "notice of exposure" framing (bad-faith setup) — liability argued via Vehicle Code § 22350 negligence per se + **CACI jury instructions** (401/418/430) w/ case cites; excerpt of an originally 97-page fax package. The CA craft dialect (pre-CCP § 999) |
 
 URL pattern for all: `https://storage.courtlistener.com/recap/gov.uscourts.<court>.<pacer_case_id>/gov.uscourts.<court>.<pacer_case_id>.<doc>.<attachment>.pdf`
 
