@@ -65,9 +65,58 @@ complaint. This generalizes to any county whose PI cases get removed
 - **Arizona is NOT free remotely.** Maricopa Superior Court documents: free
   only at in-person terminals; remote = eAccess (paid, below). Plan on FL/GA
   federal-removal letters for volume and treat AZ specimens as premium buys.
-- **CA appellate brief banks** (courts.ca.gov since 2012, SCOCAL, LA Law
-  Library 1999+) — bad-faith appeals sometimes reproduce full demand letters;
-  promising but not yet mined.
+- **California** — a strong source state; details in §2b below.
+
+### 2b. California — verified source map (future-state reference)
+
+Recon 2026-07-10. CA is not a v1 target (pilot is AZ), but it is the strongest
+second-state *sourcing* candidate, so the verified map is recorded here. Nothing
+below is a fixture — THE RULE applies.
+
+Why CA is letter-dense on the free tier: a CA PI complaint may not state a
+damages figure (CCP § 425.10(b)), so a removing defendant must prove
+amount-in-controversy with other paper — usually the demand letter. The RECAP
+removal vein (§1/§1b) returned **412 candidate dockets** across the four CA
+districts (`cacd` 191, `cand` 151, `casd` 36, `caed` 34); it already yielded
+`major_v_zimprich_CA_policy_limits_demand.pdf`. Bonus: CA complaints are often
+the Judicial Council fill-in form **PLD-PI-001** — a clean, field-based layout.
+
+Genuinely free and useful (verified by direct fetch):
+- **CA Supreme Court briefs** (supreme.courts.ca.gov) — full briefs for cases
+  argued since 2010, self-hosted. (The *Courts of Appeal* host no briefs —
+  earlier lead corrected.) SCOCAL (Stanford) + LA Law Library add older ones.
+- **CHP Crash Investigation Manual** HPM 110.5 (chp.ca.gov) — decodes the
+  CHP-555 collision-report fields. Blank **CHP-555** only via NHTSA mirror
+  (`nhtsa.gov/.../ca_chp555_sub6_2012.pdf`), not CHP's own site.
+- **Crash DATA** — TIMS/SWITRS (tims.berkeley.edu, free reg, ~10-yr window) and
+  the successor **CCRS** (data.ca.gov/dataset/ccrs, no login, public domain,
+  2016–2026). Aggregate tables, not individual reports (reports are
+  parties-only, Veh. Code § 20012). Caveat: CCRS had data-quality/matching
+  complaints during the Jan-2025 SWITRS-portal retirement — spot-check freshness.
+- **HCAI/CHHS hospital chargemasters** (data.chhs.ca.gov/dataset/chargemasters)
+  — aggregate, PHI-safe billed-charge data. **License caveat: Terms of Use are
+  noncommercial-only; a commercial (for-profit) product needs OPA approval.**
+  This licensing constraint — plus the file's size (2025 ZIP ≈ 989 MB) — is why
+  we did *not* pull a chargemaster for bill realism; the real-redacted bills +
+  the captured letters' specials tables already cover billed magnitudes.
+
+The § 999 hook: CA's time-limited policy-limits demand statute (CCP §§ 999–999.5,
+eff. 2023) prescribes required letter *contents* — the one state where demand
+compliance is machine-checkable, i.e. a natural `ca.yaml` + `missing_statutory_term`
+target if CA ever becomes a real jurisdiction.
+
+Not free — CA county civil documents (each pulled by case number; CRC 2.503(f)/(g)
+**bars bulk document pull**, so no scraped-corpus path exists):
+- Per-page purchase, imaged civil cases: **LA** ($1/pg→$0.40, $40 cap),
+  **Alameda** (same, $40 cap), **San Diego** ($1→$0.40, $50 cap), **Riverside**
+  ($1→$0.50, $50 cap), **Orange** (online rate unconfirmed).
+- **Index-only remotely** (documents in-person): **San Francisco**,
+  **Santa Clara** — corrects the "Santa Clara may be free" lead; confirmed false.
+- **Sacramento** portal *claims* free civil images (post-2007) — unverified.
+- Verdict/valuation: **Jury Verdict Alert** covers N+S CA incl. arbitration
+  awards; **JVRA does NOT cover CA** (national row in the table below is
+  non-CA). CA judicial-arbitration awards (CCP § 1141.x) land in the ordinary
+  public case file, subject to the same per-county fees.
 
 ### 3. Synthetic data generation (unlimited, $0, PHI-free)
 
