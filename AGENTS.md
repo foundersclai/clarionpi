@@ -42,6 +42,7 @@ frontend/               Next.js 15 workbench (M3): login, matter dashboard, G1/G
 docs/adr/               architecture decisions — read before changing architecture
 docs/module_contracts/  per-module boundary contracts — read before changing a module's surface
 systemflows/            Mermaid diagrams of the main business flows (as-built; keep in sync with enums + machine.py)
+samples/                reference/calibration material (real demand letters, forms, PHI-safe data) — NEVER fixture source; see samples/README.md THE RULE
 scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual repo tree
 ```
 
