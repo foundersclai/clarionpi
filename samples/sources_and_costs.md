@@ -28,12 +28,40 @@ cases). Note `available_only=on` — it hides PACER-paywalled stubs. Full-text
 hits are biased toward already-free docs; the archive holds a small minority
 of all PACER exhibits.
 
+### 1b. County-targeted variant (verified 2026-07-10, yielded `case_files/nj_middlesex/`)
+
+To mine one specific county, add its state docket prefix to the query — NJ
+Law Division dockets are `<COUNTY>-L-<n>-<yy>` (Middlesex = `MID-L`):
+
+```sh
+curl -s "https://www.courtlistener.com/api/rest/v4/search/?type=r&available_only=on&court=njd&q=%22MID-L%22%20removal%20negligence"
+# also productive: q="MID-L" "demand letter" / "settlement demand" / "policy limits" removal
+# then probe sibling exhibits directly: .../gov.uscourts.njd.<id>.1.1.pdf, .1.2.pdf ... (404 = none)
+```
+
+Yield from one pass: 170 candidate dockets, 11 kept — incl. one complete
+lifecycle packet (crash report → demand letter → complaint → answer,
+*Henderson v. Crown Trucking*, MID-L-001382-19). UM/UIM and trucking removals
+are the letter-bearing subset; plain MVA removals usually carry only the
+complaint. This generalizes to any county whose PI cases get removed
+(diversity): swap `MID-L` for the county prefix and `njd` for the district.
+
 ### 2. Free full-document state portals
 
 - **Broward County, FL** (browardclerk.org) — anonymous free PDF viewing of
   civil filings post-2013. **Miami-Dade** similar (Advanced tier needs a
   notarized registration, still free). Florida's statewide standard means most
   FL counties behave alike — the richest free state-court document source.
+- **New Jersey eCourts** (njcourts.gov/public/find-a-case) — free viewing of
+  filed civil PDFs (Law Division case jackets, each page blue-stamped), but a
+  **free one-time registration is now required** (the old anonymous case-jacket
+  URL redirects to the portal login as of 2026-07). Search by party name or
+  docket number; to find PI cases without names, harvest `MID-L-*` docket
+  numbers from App Div opinions (Justia mirrors them) or from the removal vein
+  above, then pull jackets. Jackets carry complaints, answers, arbitration
+  awards (NJ mandatory arb for auto cases — real injury+award numbers), and
+  occasional letter exhibits in UM/UIM and settlement-enforcement motions.
+  Demand letters per se are pre-suit and mostly NOT in state jackets.
 - **Arizona is NOT free remotely.** Maricopa Superior Court documents: free
   only at in-person terminals; remote = eAccess (paid, below). Plan on FL/GA
   federal-removal letters for volume and treat AZ specimens as premium buys.

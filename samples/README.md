@@ -6,6 +6,8 @@ folder exists to answer three questions with real documents in hand:
 1. **What does a real demand letter look like?** → `demand_letters/`
 2. **What layouts arrive in a PI file?** (what ingest/extraction must parse) → `forms/`
 3. **What PHI-safe data can seed realistic test corpora?** → `case_data/`
+4. **What does one real case look like end-to-end** (crash report → demand →
+   complaint → answer)? → `case_files/`
 
 ## THE RULE (read before using anything here)
 
@@ -81,6 +83,32 @@ general-damages narrative → specific-dollar or policy-limits demand w/
 deadline + exhibit list. Bad-faith variants add insured's coverage amount and
 frame the deadline as protecting the insured — a v2 letter mode to discuss
 with the legal cofounder.
+
+## case_files/nj_middlesex/ — 11 real Middlesex County (NJ) PI court records [PUB]
+
+Captured 2026-07-10 via the same removal vein, filtered to `MID-L-*` (Superior
+Court of New Jersey, Law Division, Middlesex County — the user's home county).
+All from `storage.courtlistener.com` (D.N.J. removals; a defendant removing a
+state case must attach all state-court process and pleadings, 28 U.S.C.
+§ 1446(a)).
+
+| File | State docket | What it is |
+|---|---|---|
+| `henderson_v_crown_trucking_removal_packet.pdf` | MID-L-001382-19 | **The crown jewel: a complete PI lifecycle in 23pp** — filled NJ crash report (NJTR-1) w/ officer narrative + crash diagram + handwritten driver statement, the **full demand letter to Progressive** (FACTS → LIABILITY → INJURIES/MEDICALS → PIP/NO-FAULT → "$100,000 demand"), the Middlesex complaint pleading the verbal threshold (N.J.S.A. 39:6A-8(a)), summons, Civil Case Information Statement, and the answer w/ 23 separate defenses. Image scan → OCR test material |
+| `henderson_v_crown_trucking_notice_of_removal.pdf` | ″ | The removal notice using that demand letter as amount-in-controversy proof |
+| `gamble_v_allstate_uim_removal_packet.pdf` | (county not confirmed — noisy OCR) | UIM **bad-faith complaint vs. Allstate** + the underlying policy-limits demand letter + insurer correspondence as exhibits; badly-scanned letter pages = adversarial OCR sample |
+| `byrd_v_raikes_complaint_package.pdf` | MID-L-004864-21 | 47pp NJ-style full filing package (Bramnick Rodriguez): complaint + jury demand + demand for insurance info + R. 4:18-1 document demands + interrogatories + Title 39 physician certification |
+| `cintron_v_jbhunt_complaint.pdf` + `_notice_of_removal.pdf` | MID-L-5735-20 | Trucking (J.B. Hunt); removal recites a **$5,000,000 settlement demand** |
+| `caffrey_v_mcarthur_express_complaint.pdf` | MID-L-003198-21 | Trucking crash complaint |
+| `jay_v_vance_complaint.pdf` | MID-L-005904-21 | MVA complaint, image scan |
+| `leporino_v_home_depot_complaint.pdf` | MID-L-006674-21 | Premises liability complaint |
+| `chunlee_v_toczylowski_notice_of_removal.pdf` | MID-L-1442-22 | MVA removal w/ amount-in-controversy analysis |
+| `zuluaga_v_amazon_notice_of_removal.pdf` | (Middlesex, premises) | Removal reciting the settlement demand + medical-specials totals |
+
+Not captured, deliberately: *M.G. Doe v. Harrah's* (pseudonymous plaintiff —
+sensitivity outweighs value); *DiCostanzo v. Target* 56pp state file (MID-L-4927-21,
+no demand letter inside; URL in CourtListener if ever needed); three more NJ UIM
+removals (Miles/Hanley/Nufris) with no letters attached.
 
 ## forms/ — the paper a PI file is made of [PUB unless noted]
 
