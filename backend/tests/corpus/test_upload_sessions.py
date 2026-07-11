@@ -42,17 +42,13 @@ def _slots(db: Session, session: UploadSession) -> list[UploadSlot]:
         db.scalars(
             select(UploadSlot)
             .where(UploadSlot.session_id == session.id)
-            .order_by(UploadSlot.created_at, UploadSlot.id)
+            .order_by(UploadSlot.ordinal)
         )
     )
 
 
 def _slot_named(db: Session, session: UploadSession, filename: str) -> UploadSlot:
-    """Fetch a session's slot by filename.
-
-    Slot order is deterministic-but-not-registration (see ``commit_session`` docstring), so
-    tests that touch a specific file must address it by name, not by list position.
-    """
+    """Fetch a session's slot by filename (position-independent addressing)."""
     return db.scalars(
         select(UploadSlot).where(
             UploadSlot.session_id == session.id, UploadSlot.filename == filename
@@ -82,6 +78,8 @@ def test_register_mints_sanitized_keys_and_fresh_ids(
     assert _slot_named(db, session, "bill 01.PDF").storage_key.endswith("/bill_01.PDF")
     # Ids are distinct per slot.
     assert len({s.id for s in slots}) == 2
+    # Ordinals are 0..n-1 in exactly the declared registration order (BUS-06 contract).
+    assert [(s.ordinal, s.filename) for s in slots] == [(0, "records.pdf"), (1, "bill 01.PDF")]
 
 
 def test_register_honors_explicit_ttl(
@@ -182,9 +180,9 @@ def test_successful_commit_creates_uploaded_documents_and_audits(
 
     docs = commit_session(db, user=dev_user, upload_session=session)
 
-    # One document per slot (order is deterministic-but-not-registration; assert the set).
-    assert {d.filename for d in docs} == {"first.pdf", "second.pdf"}
-    # docs and slots share the same (created_at, id) ordering, so they pair positionally.
+    # One document per slot, created in ordinal (= registration) order.
+    assert [d.filename for d in docs] == ["first.pdf", "second.pdf"]
+    # docs and slots share the ordinal ordering, so they pair positionally.
     for doc, slot in zip(docs, slots, strict=True):
         assert doc.matter_id == matter.id
         assert doc.doc_type == DocType.OTHER.value

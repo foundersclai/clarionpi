@@ -57,8 +57,11 @@ def test_register_put_commit_happy_flow(
     assert body["status"] == UploadSessionStatus.OPEN.value
     assert body["matter_id"] == str(matter.id)
     slots = body["slots"]
-    # Slot order is deterministic-but-not-registration, so assert the set of names.
-    assert {s["filename"] for s in slots} == {"records.pdf", "bill.pdf"}
+    # Slots come back in ordinal (= registration) order with 0..n-1 ordinals (BUS-06).
+    assert [(s["ordinal"], s["filename"]) for s in slots] == [
+        (0, "records.pdf"),
+        (1, "bill.pdf"),
+    ]
     assert all(s["received"] is False for s in slots)
 
     # PUT each slot's bytes via its app-mediated upload_url.
@@ -108,7 +111,10 @@ def test_resume_get_reflects_received_flags(client: TestClient, matter: Matter) 
 
     resumed = client.get(f"/api/uploads/{body['id']}")
     assert resumed.status_code == 200
-    got = {s["id"]: s["received"] for s in resumed.json()["slots"]}
+    resumed_slots = resumed.json()["slots"]
+    # Resume returns slots ordered by ordinal (registration order).
+    assert [s["ordinal"] for s in resumed_slots] == [0, 1]
+    got = {s["id"]: s["received"] for s in resumed_slots}
     assert got[first["id"]] is True
     assert got[second["id"]] is False
 
@@ -171,6 +177,7 @@ def _seed_firm_b_session(db: Session, firm_b_matter: Matter) -> tuple[UploadSess
     slot = UploadSlot(
         firm_id=FIRM_B_ID,
         session_id=session.id,
+        ordinal=0,
         filename="b.pdf",
         size_bytes=1,
         storage_key=f"matters/{firm_b_matter.id}/uploads/{session.id}/x/b.pdf",

@@ -150,6 +150,9 @@ here — the token lookup is not the PHI event; wire-scanned, inv 11) — the ac
 BARE registry grammar `^(FACT|AMT|CITE|EX)_\d+$` (a bracketed/lower-case shape is rejected too),
 errors `invalid_token_id` → `422` (malformed) / `token_not_found` → `404` (well-formed but
 unknown) / `matter_not_found` → `404` (cross-firm, existence not leaked) ·
+**upload views** (`UploadSessionView`/`UploadSlotView` — each slot carries a stable
+`ordinal`, its zero-based registration order and the client's ONLY sanctioned pairing key;
+slots are served in ordinal order on register and resume) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

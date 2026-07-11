@@ -32,6 +32,11 @@ The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-stor
 - **Commit refuses incomplete sessions** (`UploadIncomplete`, naming the missing files) —
   fail-loud, synchronous. There is no `completing` state; commit is not async at M1 (the
   `UploadSessionStatus` omission is deliberate).
+- **Slot pairing is by `ordinal` (upload-safety audit, BUS-06).** Every slot carries its
+  zero-based registration ordinal (unique per session, DB-constrained); registration,
+  resume, and commit all read slots in ordinal order, and the client pairs browser files to
+  slots by ordinal — never by response-array index. Commit therefore creates documents in
+  exactly the client's declared order.
 - **Late-document runs (M4): the `evidence_review` rework edge is live; other states still leave
   the gate untouched.** `run_phase0` processes newly-`uploaded` documents for a matter already past
   `corpus_processing` — extracting them and re-syncing the fact registry + specials ledger. At

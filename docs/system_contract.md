@@ -361,6 +361,11 @@ state, never a fabricated default. Nothing token-shaped reaches the frontend.
   `bbox: null`) is wire-scanned like the rest, so nothing token-shaped escapes; the accepted
   path id is the BARE registry grammar only (`^(FACT|AMT|CITE|EX)_\d+$` → 422 otherwise), so
   no token-shaped string is even accepted on the request path (ADR-0008 §2–3).
+- **Enforced (upload-safety audit, BUS-06) at the upload wire:** every `UploadSlotView`
+  carries a stable `ordinal` (zero-based registration order, unique per session); the
+  frontend pairs browser files to slots **by ordinal only** — response-array-index pairing
+  is forbidden (it silently attached bytes to the wrong declared identity), and a slot
+  ordinal with no matching file fails the upload mutation before commit.
 - **Deferred:** promoting the scanner to a response middleware; SSE `Last-Event-ID` replay is
   deferred too.
 

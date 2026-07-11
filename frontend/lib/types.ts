@@ -182,6 +182,8 @@ export interface MatterView {
 /** UploadSlotView — one file slot; `upload_url` is where the client PUTs the bytes. */
 export interface UploadSlotView {
   id: string;
+  /** Zero-based registration order — the stable pairing key (never pair by array index). */
+  ordinal: number;
   filename: string;
   size_bytes: number;
   received: boolean;

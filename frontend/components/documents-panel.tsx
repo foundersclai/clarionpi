@@ -81,21 +81,33 @@ export function DocumentsPanel({ matterId, onGateReady }: DocumentsPanelProps) {
         `/api/matters/${matterId}/uploads`,
         { files: files.map((f) => ({ filename: f.name, size_bytes: f.size })) },
       );
-      // Diagnostic (upload-safety audit SEC-05/BUS-06): pairing below is by array index,
-      // but the backend does not guarantee slot order == registration order. Log whether
-      // each pairing's names agree — index/id/boolean only, never raw filenames (PHI risk).
-      session.slots.forEach((slot: UploadSlotView, index: number) => {
-        const file = files[index];
+      // Pair browser files to slots by the backend's stable `ordinal` (registration
+      // order) — NEVER by response-array index, which the backend does not guarantee.
+      const fileByOrdinal = new Map(files.map((file, index) => [index, file] as const));
+      const unmatched = session.slots.filter(
+        (slot: UploadSlotView) => !fileByOrdinal.has(slot.ordinal),
+      );
+      if (unmatched.length > 0) {
+        // Fail BEFORE any commit: a slot we cannot pair means bytes could land under the
+        // wrong declared identity, which would corrupt the provenance spine.
+        throw new ApiError(0, {
+          error: "upload_slot_mismatch",
+          detail: "Upload slots did not match the chosen files; nothing was committed.",
+        });
+      }
+      // Pairing diagnostic (upload-safety audit SEC-05/BUS-06), debug-level: index/id/
+      // boolean only, never raw filenames (PHI risk).
+      session.slots.forEach((slot: UploadSlotView) => {
+        const file = fileByOrdinal.get(slot.ordinal);
         console.debug("clarionpi.uploads.pairing", {
-          browser_file_index: index,
+          browser_file_index: slot.ordinal,
           slot_id: slot.id,
           filename_matches: file !== undefined && file.name === slot.filename,
         });
       });
-      // PUT each file's bytes to the slot the backend paired it with (order-preserving).
       await Promise.all(
-        session.slots.map((slot: UploadSlotView, index: number) => {
-          const file = files[index];
+        session.slots.map((slot: UploadSlotView) => {
+          const file = fileByOrdinal.get(slot.ordinal);
           if (!slot.upload_url || !file) return Promise.resolve();
           return apiPutBytes<UploadSlotView>(slot.upload_url, file);
         }),

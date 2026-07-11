@@ -110,6 +110,7 @@ class UploadSlotView(BaseModel):
     """
 
     id: uuid.UUID
+    ordinal: int
     filename: str
     size_bytes: int
     received: bool
@@ -120,6 +121,7 @@ def upload_slot_to_view(slot: UploadSlot, upload_url: str | None) -> UploadSlotV
     """Project an ORM :class:`~app.models.orm.UploadSlot` plus a caller-supplied URL."""
     return UploadSlotView(
         id=slot.id,
+        ordinal=slot.ordinal,
         filename=slot.filename,
         size_bytes=slot.size_bytes,
         received=slot.received,

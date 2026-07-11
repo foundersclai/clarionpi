@@ -76,6 +76,7 @@ def test_insert_one_row_of_each_new_table_via_tenant_add(session: Session) -> No
 
     slot = orm.UploadSlot(
         session_id=upload_session.id,
+        ordinal=0,
         filename="bill.pdf",
         size_bytes=2048,
         storage_key="matters/x/bill.pdf",

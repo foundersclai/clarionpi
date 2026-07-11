@@ -98,7 +98,7 @@ def register_uploads(
         session.scalars(
             select(UploadSlot)
             .where(UploadSlot.session_id == upload_session.id)
-            .order_by(UploadSlot.created_at, UploadSlot.id)
+            .order_by(UploadSlot.ordinal)
         )
     )
     return _session_to_view(upload_session, slots, storage)
@@ -124,7 +124,7 @@ def get_upload_session(
         session.scalars(
             select(UploadSlot)
             .where(UploadSlot.session_id == upload_session.id)
-            .order_by(UploadSlot.created_at, UploadSlot.id)
+            .order_by(UploadSlot.ordinal)
         )
     )
     return _session_to_view(upload_session, slots, storage)

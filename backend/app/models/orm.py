@@ -208,14 +208,23 @@ class UploadSession(Base, FirmScoped):
 
 
 class UploadSlot(Base, FirmScoped):
-    """One file slot in an upload session; carries the storage key + received flag."""
+    """One file slot in an upload session; carries the storage key + received flag.
+
+    ``ordinal`` is the slot's zero-based position in the client's registration order — the
+    stable pairing contract (BUS-06): the client matches browser files to slots by ordinal,
+    never by response-array index. Unique per session by construction.
+    """
 
     __tablename__ = "upload_slots"
+    __table_args__ = (
+        sa.UniqueConstraint("session_id", "ordinal", name="uq_upload_slot_session_ordinal"),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     session_id: Mapped[uuid.UUID] = mapped_column(
         sa.Uuid, ForeignKey("upload_sessions.id"), index=True, nullable=False
     )
+    ordinal: Mapped[int] = mapped_column(sa.Integer, nullable=False)  # registration order
     filename: Mapped[str] = mapped_column(sa.String(512), nullable=False)  # client name, display
     size_bytes: Mapped[int] = mapped_column(sa.Integer, nullable=False)  # bytes, not money
     storage_key: Mapped[str] = mapped_column(sa.String(1024), nullable=False)

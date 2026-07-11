@@ -115,13 +115,14 @@ def register_upload_session(
     )
     tenant_add(db, session, user.firm_id)
 
-    for decl in files:
+    for ordinal, decl in enumerate(files):
         slot_id = uuid.uuid4()
         safe_name = _safe_name(decl.filename)
         storage_key = f"matters/{matter.id}/uploads/{session_id}/{slot_id}/{safe_name}"
         slot = UploadSlot(
             id=slot_id,
             session_id=session_id,
+            ordinal=ordinal,  # registration order — the client's stable pairing key (BUS-06)
             filename=decl.filename,
             size_bytes=decl.size_bytes,
             storage_key=storage_key,
@@ -186,11 +187,9 @@ def commit_session(db: Session, *, user: User, upload_session: UploadSession) ->
     ``unique``, status ``uploaded``) with ``slot.document_id`` back-linked; the session goes
     COMMITTED and an ``upload_session_committed`` audit event is written.
 
-    Slots (and the returned documents) are ordered by ``(created_at, id)`` — deterministic
-    within a fetch, but NOT guaranteed to equal client registration order: the M1
-    ``upload_slots`` schema has no ordinal column and ``created_at`` is second-resolution on
-    SQLite, so a whole batch shares one timestamp and the ``id`` (random uuid4) is the
-    tiebreaker. Callers must not depend on registration order.
+    Slots (and the returned documents) are ordered by ``ordinal`` — the client's
+    registration order, the stable pairing contract (BUS-06). Documents are therefore
+    created in exactly the order the client declared the files.
     """
     if upload_session.status != UploadSessionStatus.OPEN.value:
         raise UploadSessionNotOpen(upload_session.status)
@@ -199,7 +198,7 @@ def commit_session(db: Session, *, user: User, upload_session: UploadSession) ->
         db.scalars(
             select(UploadSlot)
             .where(UploadSlot.session_id == upload_session.id)
-            .order_by(UploadSlot.created_at, UploadSlot.id)
+            .order_by(UploadSlot.ordinal)
         )
     )
     missing = [slot.filename for slot in slots if not slot.received]
