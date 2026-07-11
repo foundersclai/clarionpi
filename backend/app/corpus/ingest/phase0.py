@@ -72,8 +72,8 @@ from app.models.enums import DedupStatus, DocStatus, DocType, GateEvent, GateSta
 from app.models.orm import CaseDocument, Matter, MedicalEncounter, User
 from app.money.assemble import compute_matter_ledger
 from app.money.specials import amounts_for_registry
-from app.rules.errors import UnsupportedJurisdiction
-from app.rules.loader import load_pack
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 # Truncate an unexpected error's detail so one runaway repr can't flood the SSE frame.
 _ERROR_DETAIL_MAX = 300
@@ -170,6 +170,21 @@ def run_phase0(
     """
     logger = run_logger if run_logger is not None else MatterRunLogger(matter.id, "ingest")
     settings = get_settings()
+
+    # Rule-pack pin preflight (BUS-02): reject version/fingerprint drift at ENTRY — before
+    # any document, registry, or ledger write — and reuse the returned pack at the ledger
+    # stage below (never re-loaded mid-run, so a change-then-revert cannot slip through).
+    try:
+        pack = load_pack_for_pin(
+            matter.jurisdiction,
+            matter.rule_pack_version,
+            matter.rule_pack_fingerprint,
+            require_authoritative=False,
+        )
+    except RulesError as exc:
+        logger.log("run_refused", reason=exc.diagnostic_kind)
+        yield format_sse(SseEvent.ERROR, {"phase": "phase0", "error": exc.diagnostic_kind})
+        return
 
     # A document id we can name in the error frame if the wrapped body blows up mid-document.
     current_document_id: str | None = None
@@ -395,25 +410,20 @@ def run_phase0(
         registry_version = facts_sync.version
         logger.log("registry_synced", **asdict(facts_sync))
 
-        # Ledger AMT mint. Matter creation already gates the jurisdiction, so an
-        # UnsupportedJurisdiction here is defensive: log + skip the ledger, never crash the run.
-        try:
-            pack = load_pack(matter.jurisdiction)
-        except UnsupportedJurisdiction:
-            logger.log("ledger_skipped", reason="jurisdiction_unsupported")
-        else:
-            ledger = compute_matter_ledger(db, matter=matter, pack=pack)
-            amounts = amounts_for_registry(ledger)
-            amt_sync = registry.mint_amounts(db, matter=matter, amounts=amounts)
-            amounts_minted = amt_sync.minted
-            registry_version = amt_sync.version
-            logger.log(
-                "ledger_amounts_minted",
-                count=amt_sync.minted,
-                line_set_hash=ledger.line_set_hash,
-                demand_basis_total_cents=ledger.demand_basis_total_cents,
-                basis=ledger.basis,
-            )
+        # Ledger AMT mint — uses the pack the ENTRY preflight validated against the
+        # matter's pin (BUS-02); a drifted pack never reaches this write.
+        ledger = compute_matter_ledger(db, matter=matter, pack=pack)
+        amounts = amounts_for_registry(ledger)
+        amt_sync = registry.mint_amounts(db, matter=matter, amounts=amounts)
+        amounts_minted = amt_sync.minted
+        registry_version = amt_sync.version
+        logger.log(
+            "ledger_amounts_minted",
+            count=amt_sync.minted,
+            line_set_hash=ledger.line_set_hash,
+            demand_basis_total_cents=ledger.demand_basis_total_cents,
+            basis=ledger.basis,
+        )
 
         yield format_sse(
             SseEvent.STATUS,

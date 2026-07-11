@@ -24,6 +24,7 @@ Determinism (inv 10): the artifact *bytes* are pinned (see the builders); the ``
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -41,6 +42,11 @@ from app.package import artifacts as artifacts_mod
 from app.package import binder as binder_mod
 from app.package import provenance as provenance_mod
 from app.package.manifest import build_draft_manifest
+from app.rules.loader import load_pack_for_pin
+
+# Non-PHI build diagnostics (BUS-02): matter/jurisdiction ids and booleans only — no
+# fingerprints, legal-source text, or audit notes.
+_LOG = logging.getLogger("clarionpi.package")
 
 
 @dataclass(frozen=True)
@@ -129,11 +135,34 @@ def build_artifact_set(
     Does NOT transition the gate (the wiring wave owns the ``artifacts_built`` advance). Returns the
     persisted set with ``reused=False``.
     """
+    settings = get_settings()
+    # Authority gate (BUS-02) — BEFORE the immutable-set reuse lookup and before any
+    # manifest/token minting, artifact rendering, storage writes, rows, or audit events.
+    # Enforced when the environment is prod OR the setting is on, so a direct/background
+    # caller that never ran the FastAPI lifespan still cannot disable the gate in
+    # production. Even with the gate off, a PRESENT pin must match (RulePackChanged).
+    require_authoritative = (
+        settings.app_env == "prod" or settings.require_audited_rule_pack_for_package
+    )
+    pack = load_pack_for_pin(
+        matter.jurisdiction,
+        matter.rule_pack_version,
+        matter.rule_pack_fingerprint,
+        require_authoritative=require_authoritative,
+    )
+    _LOG.debug(
+        "package_build_authority matter_id=%s jurisdiction=%s pack_audited=%s "
+        "pack_authoritative=%s guard_enabled=%s",
+        matter.id,
+        matter.jurisdiction,
+        pack.audited,
+        pack.is_authoritative,
+        require_authoritative,
+    )
+
     existing = _existing_set(db, matter=matter, draft=draft)
     if existing is not None:
         return BuildResult(artifact_set=existing, reused=True)
-
-    settings = get_settings()
 
     # -- 2. Manifest (mint EX tokens so the binder index + bookmarks resolve). --
     manifest = build_draft_manifest(db, matter=matter, mint_tokens=True)

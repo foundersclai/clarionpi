@@ -177,6 +177,12 @@ class Matter(Base, FirmScoped):
     gate_state: Mapped[str] = mapped_column(sa.String(48), nullable=False)  # GateState
     registry_version: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     sol_candidates: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Rule-pack pin (BUS-02): the pack version + deterministic fingerprint the matter's
+    # deadline/ledger/drafting work attested to, written at creation. Nullable ONLY for
+    # legacy pre-pin rows — deliberately never backfilled (that would falsely attest that
+    # earlier work used today's pack); the package guard fails closed on a missing pin.
+    rule_pack_version: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    rule_pack_fingerprint: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

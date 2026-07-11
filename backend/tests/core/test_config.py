@@ -191,6 +191,7 @@ def test_prod_with_session_auth_passes() -> None:
             auth_throttle_hmac_secret="x" * 48,
             auth_trusted_proxy_cidrs=(),
             auth_trusted_proxy_cidrs_explicit=True,
+            require_audited_rule_pack_for_package=True,
         )
     )
 
@@ -289,6 +290,7 @@ def test_prod_with_https_trusted_origin_passes() -> None:
             auth_throttle_hmac_secret="x" * 48,
             auth_trusted_proxy_cidrs=(),
             auth_trusted_proxy_cidrs_explicit=True,
+            require_audited_rule_pack_for_package=True,
         )
     )
 
@@ -310,3 +312,30 @@ def test_parse_origin_canonicalizes_and_rejects() -> None:
     for bad in ("null", "*", "ftp://x", "https://a@b", "https://x/path", "", "x"):
         with pytest.raises(ValueError):
             parse_origin(bad)
+
+
+def test_prod_cannot_disable_the_audited_pack_gate() -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="REQUIRE_AUDITED_RULE_PACK_FOR_PACKAGE"):
+        validate_runtime_settings(
+            _settings(
+                auth_mode="session",
+                session_cookie_secure=True,
+                csrf_enforce=True,
+                csrf_trusted_origins=("https://app.example.com",),
+                auth_throttle_hmac_secret="x" * 48,
+                auth_trusted_proxy_cidrs=(),
+                auth_trusted_proxy_cidrs_explicit=True,
+                require_audited_rule_pack_for_package=False,
+            )
+        )
+
+
+def test_audited_pack_gate_defaults_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REQUIRE_AUDITED_RULE_PACK_FOR_PACKAGE", raising=False)
+    monkeypatch.setenv("APP_ENV", "dev")
+    assert get_settings().require_audited_rule_pack_for_package is False
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    assert get_settings().require_audited_rule_pack_for_package is True

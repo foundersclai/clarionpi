@@ -163,8 +163,6 @@ def test_unpinned_legacy_matter_passes_only_when_authority_not_required() -> Non
 def test_pinned_unaudited_pack_refuses_authority_requirement() -> None:
     current = load_pack("AZ")  # the shipped stub is unaudited
     with pytest.raises(RulePackUnaudited) as exc:
-        load_pack_for_pin(
-            "AZ", current.version, current.fingerprint, require_authoritative=True
-        )
+        load_pack_for_pin("AZ", current.version, current.fingerprint, require_authoritative=True)
     assert exc.value.jurisdiction == "AZ"
     assert exc.value.version == current.version

@@ -343,9 +343,15 @@ def emit_strategy_plan(
     """
     # 1. Pack skeleton — LetterStructureMissing propagates (imported lazily so the pack load happens
     # at call time, keeping the module import side-effect-free).
-    from app.rules.loader import load_pack
+    from app.rules.loader import load_pack_for_pin
 
-    pack = load_pack(matter.jurisdiction)
+    # Pin door (BUS-02): a drifted pack refuses BEFORE the StrategyPlan row is written.
+    pack = load_pack_for_pin(
+        matter.jurisdiction,
+        matter.rule_pack_version,
+        matter.rule_pack_fingerprint,
+        require_authoritative=False,
+    )
     skeleton = pack.letter_sections  # raises LetterStructureMissing when absent
 
     # 2. Deterministic per-section allocation over the matter's live fact-slots.

@@ -195,9 +195,7 @@ class RulePack(BaseModel):
         status, or any behavior-affecting legal input changes — a mutable YAML path or the
         version string alone is not sufficient provenance.
         """
-        canonical = json.dumps(
-            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-        )
+        canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @property

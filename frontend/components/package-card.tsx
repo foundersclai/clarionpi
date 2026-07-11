@@ -234,6 +234,18 @@ function buildErrorText(code: string, data: Record<string, unknown>): string {
       return "An artifact contained an unresolved token and was blocked — this is a build defect; contact an administrator.";
     case "binder_page_missing":
       return "An exhibit page referenced by the binder is missing from the record. Re-check the exhibit picks.";
+    // Rule-pack guard refusals (BUS-02) — safe copy only; never backend detail,
+    // fingerprints, or legal-source metadata.
+    case "rule_pack_unaudited":
+      return "Rule pack requires attorney audit before package build.";
+    case "rule_pack_unpinned":
+      return "This matter predates rule-pack pinning and cannot build a production package. Contact an administrator.";
+    case "rule_pack_changed":
+      return "The rule pack changed after this matter was created. The package cannot build against different law; contact an administrator.";
+    case "rule_pack_invalid":
+      return "The rule pack failed validation and cannot back a package. Contact an administrator.";
+    case "jurisdiction_unsupported":
+      return "No rule pack exists for this matter's jurisdiction.";
     default:
       return detail ?? (code || "Build error.");
   }

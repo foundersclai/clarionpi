@@ -416,3 +416,38 @@ def test_rebuild_is_reused(
         assert len(rows) == 1
     finally:
         db.close()
+
+
+def test_build_refused_typed_when_pack_unaudited_and_guard_on(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUS-02: with the audited-pack gate ON, the unaudited AZ stub refuses the build with a
+    typed SSE error (no fingerprints/legal text on the wire), no advance, no side effects."""
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)  # pinned at creation to the unaudited stub
+    _seed_shippable(seeded, storage, matter_id, clear_phi=True)
+
+    monkeypatch.setenv("REQUIRE_AUDITED_RULE_PACK_FOR_PACKAGE", "true")
+    get_settings.cache_clear()
+    try:
+        resp = client.post(f"/api/matters/{matter_id}/package/build")
+    finally:
+        get_settings.cache_clear()
+    assert resp.status_code == 200, resp.text  # stream opens; refusal is a typed frame
+    events = _sse_events(resp.text)
+    errors = [d for n, d in events if n == "error"]
+    assert errors and errors[0]["error"] == "rule_pack_unaudited"
+    assert errors[0]["jurisdiction"] == "AZ"
+    assert errors[0]["pack_version"] == "0.1.0"
+    assert "fingerprint" not in json.dumps(errors)  # nothing sensitive on the wire
+
+    db = seeded()
+    try:
+        assert db.get(Matter, matter_id).gate_state == GateState.PACKAGE_ASSEMBLY.value
+        assert db.scalar(select(ArtifactSet).where(ArtifactSet.matter_id == matter_id)) is None
+    finally:
+        db.close()

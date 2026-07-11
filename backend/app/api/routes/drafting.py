@@ -86,7 +86,15 @@ from app.models.schemas import StrategyPlan as StrategyPlanView
 from app.package.artifacts import ArtifactTokenLeak
 from app.package.binder import BinderBlocked, BinderPageMissing
 from app.package.build import build_artifact_set
-from app.rules.errors import LetterStructureMissing
+from app.rules.errors import (
+    LetterStructureMissing,
+    RulePackChanged,
+    RulePackInvalid,
+    RulePackUnaudited,
+    RulePackUnpinned,
+    RulesError,
+    UnsupportedJurisdiction,
+)
 
 router = APIRouter(prefix="/api", tags=["drafting"])
 
@@ -160,6 +168,9 @@ def post_plan_emit(
             status_code=422,
             content={"error": "letter_structure_missing", "detail": str(exc)},
         )
+    except RulesError as exc:
+        # Pin drift / unpinned-guard refusals (BUS-02): typed, no legal-source detail.
+        return JSONResponse(status_code=409, content={"error": exc.diagnostic_kind})
     plan_view = StrategyPlanView.model_validate(plan).model_dump(mode="json")
     return JSONResponse(
         status_code=200, content=scan_wire_payload({"plan": plan_view}, where="drafting.plan_emit")
@@ -415,6 +426,60 @@ def _package_stream(
         result = build_artifact_set(
             session, storage, matter=matter, draft=draft, user=user, firm_name=firm_name
         )
+    except RulePackUnaudited as exc:
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "rule_pack_unaudited",
+                "jurisdiction": exc.jurisdiction,
+                "pack_version": exc.version,
+            },
+        )
+        return
+    except RulePackUnpinned as exc:
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "rule_pack_unpinned",
+                "jurisdiction": exc.jurisdiction,
+            },
+        )
+        return
+    except RulePackChanged as exc:
+        # No fingerprints on the wire — the jurisdiction alone identifies the pack.
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "rule_pack_changed",
+                "jurisdiction": exc.jurisdiction,
+            },
+        )
+        return
+    except UnsupportedJurisdiction as exc:
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "jurisdiction_unsupported",
+                "jurisdiction": exc.jurisdiction,
+            },
+        )
+        return
+    except RulePackInvalid:
+        # No exception strings, file paths, or legal citations in the frame.
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {"phase": "package", "error": "rule_pack_invalid"},
+        )
+        return
     except BinderBlocked as exc:
         session.rollback()
         yield format_sse(

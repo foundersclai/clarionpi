@@ -34,6 +34,10 @@ Proposed plan:
 
 ## BUS-02 - Arizona legal rules are explicitly unaudited stubs
 
+> Counsel handoff: [rule-pack-audit-checklist.md](rule-pack-audit-checklist.md) — the
+> per-rule checklist that flips a pack authoritative; production package builds enforce
+> authority via the matter pin + build gate (ADR-0011).
+
 Priority: Critical
 
 Finding: The AZ rule pack intentionally marks legal rules and drafting structure as unaudited and

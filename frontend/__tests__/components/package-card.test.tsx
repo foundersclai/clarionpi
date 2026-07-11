@@ -127,6 +127,68 @@ describe("PackageCard — package_assembly build", () => {
     expect(banner).toHaveTextContent(/third-party-PHI exhibit still pending/i);
     expect(onGateReady).not.toHaveBeenCalled();
   });
+
+  it("renders rule_pack_unaudited as a blocking build error with safe copy; no advance", async () => {
+    const user = userEvent.setup();
+    const onGateReady = vi.fn();
+    renderWithQuery(
+      <PackageCard
+        matterId="m1"
+        gate="package_assembly"
+        vm={{ artifact_sets: [], buildable: true }}
+        onGateReady={onGateReady}
+      />,
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        { event: "status", data: { phase: "package", state: "started" } },
+        {
+          event: "error",
+          data: {
+            phase: "package",
+            error: "rule_pack_unaudited",
+            jurisdiction: "AZ",
+            pack_version: "0.1.0",
+          },
+        },
+      ]),
+    );
+
+    await user.click(screen.getByTestId("build-package"));
+
+    // Concise attorney copy; no backend detail, versions, or fingerprints rendered.
+    await screen.findByText("Rule pack requires attorney audit before package build.");
+    expect(screen.queryByText(/0\.1\.0/)).not.toBeInTheDocument();
+    expect(onGateReady).not.toHaveBeenCalled();
+  });
+
+  it("renders rule_pack_changed with administrator copy; no advance", async () => {
+    const user = userEvent.setup();
+    const onGateReady = vi.fn();
+    renderWithQuery(
+      <PackageCard
+        matterId="m1"
+        gate="package_assembly"
+        vm={{ artifact_sets: [], buildable: true }}
+        onGateReady={onGateReady}
+      />,
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        {
+          event: "error",
+          data: { phase: "package", error: "rule_pack_changed", jurisdiction: "AZ" },
+        },
+      ]),
+    );
+
+    await user.click(screen.getByTestId("build-package"));
+
+    await screen.findByText(/rule pack changed after this matter was created/i);
+    expect(onGateReady).not.toHaveBeenCalled();
+  });
 });
 
 describe("PackageCard — package_ready downloads", () => {

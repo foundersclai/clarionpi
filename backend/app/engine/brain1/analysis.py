@@ -54,8 +54,8 @@ from app.models.enums import GateEvent, GateState, SseEvent
 from app.models.orm import Matter, User
 from app.money.assemble import compute_matter_ledger
 from app.money.specials import amounts_for_registry
-from app.rules.errors import UnsupportedJurisdiction
-from app.rules.loader import load_pack
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 _LOG = logging.getLogger("clarionpi.analysis")
 
@@ -121,6 +121,20 @@ def run_analysis(
             {"phase": _PHASE, "state": "started", "matter_id": str(matter.id)},
         )
 
+        # Rule-pack pin preflight (BUS-02): reject drift at ENTRY, before the first write;
+        # the ledger step below reuses this pack (never re-loaded mid-run).
+        try:
+            pack = load_pack_for_pin(
+                matter.jurisdiction,
+                matter.rule_pack_version,
+                matter.rule_pack_fingerprint,
+                require_authoritative=False,
+            )
+        except RulesError as exc:
+            logger.log("run_refused", reason=exc.diagnostic_kind)
+            yield format_sse(SseEvent.ERROR, {"phase": _PHASE, "error": exc.diagnostic_kind})
+            return
+
         # ---- Step 1: registry sync (idempotent — catches post-phase0 encounter merges) -------
         yield format_sse(
             SseEvent.STATUS,
@@ -164,26 +178,21 @@ def run_analysis(
         )
         ledger_grand_billed_cents = 0
         amounts_minted = 0
-        # Matter creation already gated the jurisdiction, so an UnsupportedJurisdiction here is
-        # defensive: log + skip the ledger, never crash the run.
-        try:
-            pack = load_pack(matter.jurisdiction)
-        except UnsupportedJurisdiction:
-            logger.log("ledger_skipped", reason="jurisdiction_unsupported")
-        else:
-            ledger = compute_matter_ledger(db, matter=matter, pack=pack)
-            ledger_grand_billed_cents = ledger.grand_total.billed_cents
-            amounts = amounts_for_registry(ledger)
-            amt_sync = registry.mint_amounts(db, matter=matter, amounts=amounts)
-            amounts_minted = amt_sync.minted
-            registry_version = amt_sync.version
-            logger.log(
-                "ledger_amounts_minted",
-                count=amt_sync.minted,
-                line_set_hash=ledger.line_set_hash,
-                demand_basis_total_cents=ledger.demand_basis_total_cents,
-                basis=ledger.basis,
-            )
+        # Ledger AMT mint — uses the ENTRY-preflighted pack (BUS-02); a drifted pack never
+        # reaches this write.
+        ledger = compute_matter_ledger(db, matter=matter, pack=pack)
+        ledger_grand_billed_cents = ledger.grand_total.billed_cents
+        amounts = amounts_for_registry(ledger)
+        amt_sync = registry.mint_amounts(db, matter=matter, amounts=amounts)
+        amounts_minted = amt_sync.minted
+        registry_version = amt_sync.version
+        logger.log(
+            "ledger_amounts_minted",
+            count=amt_sync.minted,
+            line_set_hash=ledger.line_set_hash,
+            demand_basis_total_cents=ledger.demand_basis_total_cents,
+            basis=ledger.basis,
+        )
 
         # ---- Step 4: risk flags (deterministic + LLM labeling; idempotent re-run) -------------
         yield format_sse(

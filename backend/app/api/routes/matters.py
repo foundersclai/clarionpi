@@ -75,6 +75,10 @@ def create_matter(
         gate_state=GateState.CORPUS_PROCESSING.value,
         registry_version=0,
         sol_candidates=[c.model_dump(mode="json") for c in candidates],
+        # Pin the exact pack this matter's work attests to (BUS-02): a later YAML edit or
+        # audit flip cannot retroactively authorize work done under this version.
+        rule_pack_version=pack.version,
+        rule_pack_fingerprint=pack.fingerprint,
     )
     tenant_add(session, matter, user.firm_id)
     session.flush()  # assign matter.id before it goes into the audit payload

@@ -55,8 +55,8 @@ from app.money.assemble import compute_matter_ledger
 from app.money.specials import SpecialsLedger
 from app.package import manifest as manifest_service
 from app.package.manifest import DraftBinderManifest
-from app.rules.errors import UnsupportedJurisdiction
-from app.rules.loader import load_pack
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 
 class MatterView(BaseModel):
@@ -420,8 +420,16 @@ def evidence_review_vm(db: Session, matter: Matter) -> dict:
 
     ledger_view: dict | None = None
     try:
-        pack = load_pack(matter.jurisdiction)
-    except UnsupportedJurisdiction:
+        # Pin door (BUS-02): unsupported jurisdiction OR a pin-drifted pack both surface as
+        # a None ledger — the read-only grid shows the absence rather than recomputing
+        # against law the matter never attested to (writes are refused at their own doors).
+        pack = load_pack_for_pin(
+            matter.jurisdiction,
+            matter.rule_pack_version,
+            matter.rule_pack_fingerprint,
+            require_authoritative=False,
+        )
+    except RulesError:
         ledger_view = None
     else:
         ledger_view = _ledger_evidence_view(compute_matter_ledger(db, matter=matter, pack=pack))

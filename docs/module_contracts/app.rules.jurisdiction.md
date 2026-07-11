@@ -57,8 +57,17 @@ diagnostic); non-AZ packs (v1 is Arizona only).
 `RuleRow` (`kind`, `claim_type?`, `applies_when?`, `years|days`, `statute_cite`,
 `assumptions`, `verify_status`) · `DeadlineCandidate` (`kind` ∈ {`sol`,
 `notice_of_claim`}, `date`, `statute_cite`, `assumptions`, `verify_status`,
-`confirmed`) · `RulePack` (`pack`, `version`, `audited`, `deadline_rules`,
-`billed_vs_paid?`) · **`billed_vs_paid`** (`basis` ∈ {`billed`, `paid`}, `source`
+`confirmed`) · `RulePack` (`pack`, `version`, `audited` + counsel-audit provenance
+`audited_by`/`audited_at`/`audit_reference`/`audit_notes` — REQUIRED non-null, tz-aware,
+the moment `audited: true`; `deadline_rules`,
+`billed_vs_paid?`) · **`is_authoritative`** (BUS-02: audited + provenance + a non-empty
+fully-`verified` deadline set + present `verified` `billed_vs_paid` + present `verified`
+`letter_structure` — the fail-loud authority a production package requires; counsel handoff:
+`docs/audit/rule-pack-audit-checklist.md`) · **`fingerprint`** (deterministic SHA-256 over
+the complete canonical model — the matter pin's provenance half) ·
+**`load_pack_for_pin`** (the ONE door for pinned consumption: exact version+fingerprint
+match, `require_authoritative` for the package; typed `RulePackUnpinned` /
+`RulePackChanged` / `RulePackUnaudited` refusals carrying no legal-source text — ADR-0011) · **`billed_vs_paid`** (`basis` ∈ {`billed`, `paid`}, `source`
 cite, `verify_status`) — a typed pack row like every other; AZ v1 = `billed`,
 `source = Lopez v. Safeway Stores, Inc., 212 Ariz. 198 (App. 2006)`,
 `verify_status: unverified` (the collateral-source basis is a computation candidate

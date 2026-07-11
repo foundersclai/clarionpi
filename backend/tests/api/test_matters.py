@@ -5,6 +5,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.models.orm import Matter
 
 
 def _valid_body() -> dict[str, str]:
@@ -71,3 +74,31 @@ def test_get_other_firms_matter_returns_404_not_403(
 def test_get_unknown_matter_returns_404(client: TestClient, firm_b_matter_id: uuid.UUID) -> None:
     resp = client.get(f"/api/matters/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+def test_create_matter_pins_the_rule_pack(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    """BUS-02: creation pins the exact pack (version + deterministic fingerprint) the
+    matter's deadline/ledger/drafting work will attest to."""
+    from app.rules.loader import load_pack
+
+    resp = client.post(
+        "/api/matters",
+        json={
+            "client_display_name": "Pin Client",
+            "claim_type": "mva",
+            "incident_date": "2026-01-15",
+            "jurisdiction": "AZ",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    pack = load_pack("AZ")
+    db = session_factory()
+    try:
+        row = db.get(Matter, uuid.UUID(resp.json()["id"]))
+        assert row is not None
+        assert row.rule_pack_version == pack.version
+        assert row.rule_pack_fingerprint == pack.fingerprint
+    finally:
+        db.close()

@@ -169,7 +169,14 @@ throttling refusals** (SEC-04): a locked account/IP bucket →
 independent of whether the email exists; a TRUSTED proxy presenting a malformed
 `X-Forwarded-For` chain → `400 {error: invalid_forwarded_chain}` (never mis-bucketed);
 the failure security record is the uniform throttle row — there is NO matched-user-only
-`login_failed` audit write ·
+`login_failed` audit write · **rule-pack pin/authority refusals** (BUS-02/ADR-0011): the
+package SSE surfaces `rule_pack_unaudited` (+ `jurisdiction`, `pack_version`) /
+`rule_pack_unpinned` / `rule_pack_changed` / `jurisdiction_unsupported` /
+`rule_pack_invalid` as `error` frames with NO advance and NOTHING sensitive (no
+fingerprints, exception strings, file paths, or legal citations); ingest/analysis SSE
+refuse pin drift at entry with the same `error` codes; plan-emit and billing-edit REST
+refuse `409 {error: <diagnostic_kind>}` BEFORE any write; the read-only evidence VM renders
+a `None` ledger under drift ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

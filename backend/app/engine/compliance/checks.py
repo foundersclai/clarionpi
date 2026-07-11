@@ -65,8 +65,8 @@ from app.models.orm import (
 )
 from app.money.assemble import compute_matter_ledger
 from app.package.manifest import build_draft_manifest
-from app.rules.errors import RulePackInvalid, UnsupportedJurisdiction
-from app.rules.loader import load_pack
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 # A literal written dollar figure in rendered prose (``$1,500.00`` / ``$500``). This matches the
 # FORM of a dollar amount so ``prose_total_mismatch`` can check it against the AMT display forms —
@@ -109,8 +109,16 @@ def _live_ledger_hash(db: Session, *, matter: Matter) -> str | None:
     re-verify then flags every AMT as mismatched rather than silently trusting the stored hash).
     """
     try:
-        pack = load_pack(matter.jurisdiction)
-    except (UnsupportedJurisdiction, RulePackInvalid):
+        # Pin door (BUS-02): unsupported/invalid AND pin-drifted packs all yield None — the
+        # AMT re-verify then flags every AMT as mismatched (a G3 block), never silently
+        # trusting a hash computed under law the matter did not attest to.
+        pack = load_pack_for_pin(
+            matter.jurisdiction,
+            matter.rule_pack_version,
+            matter.rule_pack_fingerprint,
+            require_authoritative=False,
+        )
+    except RulesError:
         return None
     return compute_matter_ledger(db, matter=matter, pack=pack).line_set_hash
 

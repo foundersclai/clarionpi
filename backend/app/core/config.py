@@ -97,6 +97,11 @@ class Settings:
     # Whether AUTH_TRUSTED_PROXY_CIDRS was explicitly present in the environment (prod
     # requires an explicit decision, even if the decision is "no proxies").
     auth_trusted_proxy_cidrs_explicit: bool = False
+    # Audited-rule-pack package gate (BUS-02): production demand packages may only build
+    # from an authoritative (counsel-audited, fully verified) pack pinned at matter creation.
+    # Default ON in prod (an explicit false there is refused at boot); OFF in dev/test so the
+    # unaudited AZ stub stays usable for local/demo work.
+    require_audited_rule_pack_for_package: bool = False
     # Risk flags (M4). GapDetectorConfig threshold: a treatment gap wider than this many days
     # (pre-MMI) flags. Firm-configurable later; a plain int day count, not money.
     treatment_gap_max_days: int = 30
@@ -295,6 +300,11 @@ def validate_runtime_settings(settings: Settings) -> None:
                 "production requires an explicit AUTH_TRUSTED_PROXY_CIDRS decision — set it "
                 "to the reverse-proxy CIDRs, or to an empty value for direct connections"
             )
+        if not settings.require_audited_rule_pack_for_package:
+            raise ValueError(
+                "production cannot disable the audited-rule-pack package gate "
+                "(REQUIRE_AUDITED_RULE_PACK_FOR_PACKAGE must remain true in prod)"
+            )
 
 
 def _default_database_url(app_env: str) -> str:
@@ -375,6 +385,9 @@ def get_settings() -> Settings:
         ),
         auth_trusted_proxy_cidrs=_trusted_proxy_cidrs,
         auth_trusted_proxy_cidrs_explicit=_trusted_proxy_explicit,
+        require_audited_rule_pack_for_package=_env_bool(
+            "REQUIRE_AUDITED_RULE_PACK_FOR_PACKAGE", app_env == "prod"
+        ),
         treatment_gap_max_days=_env_int("TREATMENT_GAP_MAX_DAYS", 30),
         low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
         risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),

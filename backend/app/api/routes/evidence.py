@@ -61,7 +61,8 @@ from app.money.edits import UnknownBillingLine, apply_billing_edits
 from app.money.specials import SpecialsLedger
 from app.money.types import MoneyParseError
 from app.package import manifest as manifest_service
-from app.rules.loader import load_pack
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 router = APIRouter(prefix="/api", tags=["evidence"])
 
@@ -278,7 +279,16 @@ def post_billing_edits(
         return _matter_not_found(matter_id)
     if matter.gate_state != GateState.EVIDENCE_REVIEW.value:
         return _gate_state_mismatch(matter)
-    pack = load_pack(matter.jurisdiction)
+    try:
+        # Pin door (BUS-02): a drifted/unpinned-mismatched pack refuses BEFORE any edit write.
+        pack = load_pack_for_pin(
+            matter.jurisdiction,
+            matter.rule_pack_version,
+            matter.rule_pack_fingerprint,
+            require_authoritative=False,
+        )
+    except RulesError as exc:
+        return JSONResponse(status_code=409, content={"error": exc.diagnostic_kind})
     try:
         outcome = apply_billing_edits(session, matter=matter, pack=pack, batch=body)
     except UnknownBillingLine as exc:
