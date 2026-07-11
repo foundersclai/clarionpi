@@ -26,6 +26,11 @@ the review implied.
 
 ## Prerequisite queue (not part of this plan)
 
+> **STATUS 2026-07-11: the queue is SHIPPED** (order 02 → 01 → 03 → 04 → 05, commits
+> `5326d3f..` on main; ADRs 0010–0012; migrations 0010–0013). ADR-0009 numbering stays
+> RESERVED for WI-1's package_review design, which remains ON HOLD per founder
+> direction; WI-3's attestation wording remains with the legal cofounder.
+
 `docs/audit/plans/01–05` ship FIRST. They are the launch blockers this plan builds on:
 
 1. `02-upload-safety-and-slot-correctness` (SEC-05 + BUS-06) — **highest urgency**:

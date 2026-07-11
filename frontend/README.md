@@ -14,6 +14,15 @@ npm run test       # vitest run
 npm run build      # next build
 ```
 
+Locally, ALWAYS install with the throwaway cache dir shown above — this machine's shared
+global npm cache can wedge. CI instead uses `npm ci` (clean environment + the committed
+`package-lock.json`), which is exactly why the lockfile is checked in.
+
+The repository's single done command — root `make verify` — now covers the FULL workbench:
+it runs `verify-backend` and then `verify-frontend` (typecheck → lint → test → build), so
+frontend deps must be installed first. `make test` at the root stays the fast BACKEND
+suite only. CI runs the frontend gate as its own job on Node 20 (the `engines` floor).
+
 Run the backend (`make dev` at the repo root) on :8400 for live data; the dev proxy in
 `next.config.ts` keeps `/api/*` same-origin so the session cookie stays first-party.
 

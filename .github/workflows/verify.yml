@@ -22,8 +22,35 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -e . --group dev
 
-      - name: make verify
-        run: make verify
+      # Backend-only: this job installs no frontend deps (node_modules is git-ignored);
+      # the frontend gate is its own job below.
+      - name: make verify-backend
+        run: make verify-backend
+
+  frontend:
+    # OTH-01: frontend regressions fail CI with the same reliability as backend ones.
+    # Node 20 is the engines floor ("node": ">=20") — verified as the COMPATIBILITY floor
+    # rather than raising the runtime to hide a jsdom-only import failure.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          # No root lockfile — point the cache at the frontend lockfile explicitly.
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm ci
+
+      # The Makefile target — not a duplicated script sequence — so local and CI
+      # verification cannot drift (typecheck → lint → test → build, in that order).
+      - name: make verify-frontend
+        run: make verify-frontend
 
   integration:
     # Postgres-locking guarantees (upload session serialization, auth-throttle

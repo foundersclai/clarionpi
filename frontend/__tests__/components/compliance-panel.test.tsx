@@ -3,6 +3,34 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithQuery } from "../test-utils";
 import { CompliancePanel } from "@/components/compliance-panel";
+
+// Mock the pdf viewer at the SAME boundary provenance-viewer.test.tsx uses (OTH-01):
+// collecting this suite otherwise imports the real chain compliance-panel →
+// provenance-viewer → pdf-page-view → react-pdf → pdfjs-dist, whose
+// Promise.withResolvers needs Node 22+ — the CI floor is Node 20. These tests verify
+// span-to-provenance wiring, not pdf.js rendering (pdf-page-view.test.tsx covers that
+// behind its own react-pdf mock). No production polyfill; the seam is test-only.
+vi.mock("@/components/pdf-page-view", () => ({
+  PdfPageView: ({
+    blobUrl,
+    page,
+    pageCount,
+    highlight,
+  }: {
+    blobUrl: string;
+    page: number;
+    pageCount: number;
+    highlight: boolean;
+  }) => (
+    <div
+      data-testid="pdf-page-view-stub"
+      data-blob-url={blobUrl}
+      data-page={page}
+      data-page-count={pageCount}
+      data-highlight={String(highlight)}
+    />
+  ),
+}));
 import type {
   ComplianceFindingView,
   ComplianceReviewVM,
