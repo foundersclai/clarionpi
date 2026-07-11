@@ -126,6 +126,29 @@ def test_commit_incomplete_returns_409(client: TestClient, matter: Matter) -> No
     assert payload["missing"] == ["missing.pdf"]
 
 
+def test_put_size_mismatch_is_logged_but_currently_accepted(
+    client: TestClient, matter: Matter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Diagnostic (SEC-05/BUS-06 step 1): declared vs actual byte counts are logged.
+
+    Today a mismatched body is silently accepted — this test records that evidence (the
+    ``size_matches=False`` log plus the 200) before the enforcement lands. Only ids and byte
+    counts are logged, never filenames.
+    """
+    body = _register(client, matter, "a.pdf")  # declared size 5 ("a.pdf")
+    slot = body["slots"][0]
+    with caplog.at_level("DEBUG", logger="clarionpi.uploads"):
+        put = client.put(slot["upload_url"], content=b"only-three-matches-no")  # 21 bytes
+    assert put.status_code == 200  # current behavior: no enforcement yet
+    diag = [r for r in caplog.records if "slot_put_received" in r.getMessage()]
+    assert len(diag) == 1
+    message = diag[0].getMessage()
+    assert "declared_bytes=5" in message
+    assert "actual_bytes=21" in message
+    assert "size_matches=False" in message
+    assert "a.pdf" not in message  # filenames never logged
+
+
 def test_register_unknown_matter_returns_404(client: TestClient) -> None:
     resp = client.post(
         f"/api/matters/{uuid.uuid4()}/uploads",

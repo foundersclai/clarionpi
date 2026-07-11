@@ -13,6 +13,7 @@ below (the dev "presign").
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Request, status
@@ -42,6 +43,10 @@ from app.models.orm import Matter, UploadSession, UploadSlot, User
 from app.models.schemas import UploadRegister
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+
+# Upload-safety diagnostics (SEC-05/BUS-06). Non-PHI by construction: ids, byte counts, and
+# booleans only — never filenames (client names can carry PHI) and never document content.
+_LOG = logging.getLogger("clarionpi.uploads")
 
 
 def get_object_storage() -> ObjectStorage:
@@ -153,6 +158,15 @@ async def put_slot(
             },
         )
     data = await request.body()
+    _LOG.debug(
+        "slot_put_received session_id=%s slot_id=%s declared_bytes=%d actual_bytes=%d "
+        "size_matches=%s",
+        upload_session.id,
+        slot.id,
+        slot.size_bytes,
+        len(data),
+        slot.size_bytes == len(data),
+    )
     try:
         receive_slot_blob(
             session, slot=slot, upload_session=upload_session, storage=storage, data=data

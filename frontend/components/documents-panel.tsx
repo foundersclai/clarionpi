@@ -81,6 +81,17 @@ export function DocumentsPanel({ matterId, onGateReady }: DocumentsPanelProps) {
         `/api/matters/${matterId}/uploads`,
         { files: files.map((f) => ({ filename: f.name, size_bytes: f.size })) },
       );
+      // Diagnostic (upload-safety audit SEC-05/BUS-06): pairing below is by array index,
+      // but the backend does not guarantee slot order == registration order. Log whether
+      // each pairing's names agree — index/id/boolean only, never raw filenames (PHI risk).
+      session.slots.forEach((slot: UploadSlotView, index: number) => {
+        const file = files[index];
+        console.debug("clarionpi.uploads.pairing", {
+          browser_file_index: index,
+          slot_id: slot.id,
+          filename_matches: file !== undefined && file.name === slot.filename,
+        });
+      });
       // PUT each file's bytes to the slot the backend paired it with (order-preserving).
       await Promise.all(
         session.slots.map((slot: UploadSlotView, index: number) => {
