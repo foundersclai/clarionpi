@@ -286,6 +286,14 @@ UI state.
   the approved plan (any firm member); the attorney-only acts are the G3 approve guard and
   the finding **disposition** (`FindingDispositionForbidden -> 403`). The `ARTIFACTS_BUILT`
   advance moves only through `machine.advance` in the run.
+- **Enforced (auth-hardening audit, SEC-01/02/03):** production boots FAIL-CLOSED —
+  `validate_runtime_settings` (checked at `app.main` module construction, so `--lifespan
+  off` cannot bypass it, and again in the lifespan) refuses `APP_ENV=prod` without
+  `AUTH_MODE=session`, an insecure session cookie, a disabled CSRF check, or a non-HTTPS
+  trusted-origin list, and refuses unknown `APP_ENV`/`AUTH_MODE` values outright. The
+  session cookie is HTTPS-only in prod (`Secure`, env-derived) rooted at `path=/`; every
+  unsafe-method request in session mode must carry exactly one `Origin` header matching a
+  configured trusted origin (`403 csrf_failed` otherwise — login/logout included).
 - **Deferred:** TOTP (second factor) is restated for **R2** (ADR-0004 decision 2).
 
 ### 9. Attorney Final + Auditable

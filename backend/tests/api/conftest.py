@@ -91,8 +91,11 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
     app.dependency_overrides[get_db_session] = _override_db_session
     # Plain TestClient (no context manager) so startup/shutdown events don't run — the real
     # startup seed targets the process engine, not this test engine; fixtures seed explicitly.
+    # The default trusted Origin mirrors the browser: session-mode CSRF enforcement stays ON
+    # in tests (same default as production) and suites pass by sending what a real workbench
+    # request sends. Negative CSRF tests override or strip this header explicitly.
     try:
-        yield TestClient(app)
+        yield TestClient(app, headers={"Origin": "http://localhost:3400"})
     finally:
         app.dependency_overrides.clear()
 

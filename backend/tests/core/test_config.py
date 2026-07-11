@@ -182,7 +182,14 @@ def test_prod_with_stub_auth_is_refused() -> None:
 def test_prod_with_session_auth_passes() -> None:
     from app.core.config import validate_runtime_settings
 
-    validate_runtime_settings(_settings(auth_mode="session", session_cookie_secure=True))
+    validate_runtime_settings(
+        _settings(
+            auth_mode="session",
+            session_cookie_secure=True,
+            csrf_enforce=True,
+            csrf_trusted_origins=("https://app.example.com",),
+        )
+    )
 
 
 def test_test_env_with_stub_default_passes() -> None:
@@ -227,3 +234,73 @@ def test_strict_bool_parsing_rejects_garbage(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("SESSION_COOKIE_SECURE", "definitely")
     with pytest.raises(ValueError, match="SESSION_COOKIE_SECURE"):
         get_settings()
+
+
+def test_prod_with_csrf_disabled_is_refused() -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="CSRF_ENFORCE"):
+        validate_runtime_settings(
+            _settings(
+                auth_mode="session",
+                session_cookie_secure=True,
+                csrf_enforce=False,
+                csrf_trusted_origins=("https://app.example.com",),
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "origins",
+    [
+        (),  # empty
+        ("http://app.example.com",),  # not HTTPS
+        ("https://*.example.com",),  # wildcard
+        ("https://user:pw@app.example.com",),  # credentials
+        ("https://app.example.com/path",),  # path-bearing
+    ],
+)
+def test_prod_trusted_origin_shapes_are_refused(origins: tuple[str, ...]) -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError):
+        validate_runtime_settings(
+            _settings(
+                auth_mode="session",
+                session_cookie_secure=True,
+                csrf_enforce=True,
+                csrf_trusted_origins=origins,
+            )
+        )
+
+
+def test_prod_with_https_trusted_origin_passes() -> None:
+    from app.core.config import validate_runtime_settings
+
+    validate_runtime_settings(
+        _settings(
+            auth_mode="session",
+            session_cookie_secure=True,
+            csrf_enforce=True,
+            csrf_trusted_origins=("https://app.example.com",),
+        )
+    )
+
+
+def test_csrf_enforce_defaults_follow_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CSRF_ENFORCE", raising=False)
+    monkeypatch.setenv("AUTH_MODE", "stub")
+    assert get_settings().csrf_enforce is False
+    get_settings.cache_clear()
+    monkeypatch.setenv("AUTH_MODE", "session")
+    assert get_settings().csrf_enforce is True
+
+
+def test_parse_origin_canonicalizes_and_rejects() -> None:
+    from app.core.config import parse_origin
+
+    assert parse_origin("HTTP://LocalHost:3400") == "http://localhost:3400"
+    assert parse_origin("https://app.example.com") == "https://app.example.com"
+    for bad in ("null", "*", "ftp://x", "https://a@b", "https://x/path", "", "x"):
+        with pytest.raises(ValueError):
+            parse_origin(bad)

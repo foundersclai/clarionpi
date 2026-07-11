@@ -74,6 +74,12 @@ class Settings:
     # refuses an explicit false override (validate_runtime_settings — fail closed, no
     # break-glass).
     session_cookie_secure: bool = False
+    # CSRF boundary (SEC-03): unsafe methods require a single Origin header exactly matching
+    # a trusted origin. Enforcement defaults ON whenever auth is session mode (including
+    # tests) and OFF in stub mode; production refuses csrf_enforce=False. Origins are
+    # scheme://host[:port] ONLY — validated at settings load.
+    csrf_enforce: bool = False
+    csrf_trusted_origins: tuple[str, ...] = ()
     # Risk flags (M4). GapDetectorConfig threshold: a treatment gap wider than this many days
     # (pre-MMI) flags. Firm-configurable later; a plain int day count, not money.
     treatment_gap_max_days: int = 30
@@ -141,6 +147,43 @@ def _env_bool(name: str, default: bool) -> bool:
 _VALID_APP_ENVS = frozenset({"dev", "test", "staging", "prod"})
 _VALID_AUTH_MODES = frozenset({"stub", "session"})
 
+# Dev/test default trusted origins: the Next.js workbench + the backend itself.
+_DEV_TRUSTED_ORIGINS = ("http://localhost:3400", "http://localhost:8400")
+
+
+def parse_origin(value: str) -> str:
+    """Parse ``value`` as an ORIGIN ONLY (scheme://host[:port]) and return it canonicalized.
+
+    Rejects anything that is not a plain web origin: missing/unknown scheme, empty host,
+    credentials, path, query, fragment, wildcard, or the literal ``null``. Scheme and host
+    are lowercased so comparison is an exact string match.
+    """
+    from urllib.parse import urlsplit
+
+    raw = value.strip()
+    if not raw or raw.lower() == "null" or "*" in raw:
+        raise ValueError(f"not a valid origin: {value!r}")
+    parts = urlsplit(raw)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError(f"origin must be http(s), got {value!r}")
+    if not parts.netloc or "@" in parts.netloc:
+        raise ValueError(f"origin must be scheme://host[:port] with no credentials: {value!r}")
+    if parts.path or parts.query or parts.fragment:
+        raise ValueError(f"origin must carry no path/query/fragment: {value!r}")
+    host = parts.hostname or ""
+    if not host:
+        raise ValueError(f"origin has no host: {value!r}")
+    port = f":{parts.port}" if parts.port is not None else ""
+    return f"{parts.scheme}://{host}{port}"
+
+
+def _env_trusted_origins(app_env: str) -> tuple[str, ...]:
+    """Read CSRF_TRUSTED_ORIGINS (comma-separated); dev/test/staging default to localhost."""
+    raw = os.environ.get("CSRF_TRUSTED_ORIGINS")
+    if raw is None or raw.strip() == "":
+        return () if app_env == "prod" else _DEV_TRUSTED_ORIGINS
+    return tuple(parse_origin(part) for part in raw.split(",") if part.strip())
+
 
 def validate_runtime_settings(settings: Settings) -> None:
     """Refuse invalid or production-unsafe runtime settings (SEC-01/02) — fail closed.
@@ -160,6 +203,8 @@ def validate_runtime_settings(settings: Settings) -> None:
         raise ValueError(
             f"AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {settings.auth_mode!r}"
         )
+    for origin in settings.csrf_trusted_origins:
+        parse_origin(origin)  # every configured value must be a plain origin in any env
     if settings.app_env == "prod":
         if settings.auth_mode != "session":
             raise ValueError(
@@ -170,6 +215,17 @@ def validate_runtime_settings(settings: Settings) -> None:
                 "production requires SESSION_COOKIE_SECURE=true (HTTPS-only session cookie); "
                 "there is no break-glass override"
             )
+        if not settings.csrf_enforce:
+            raise ValueError(
+                "production requires CSRF_ENFORCE=true — the Origin check cannot be disabled"
+            )
+        if not settings.csrf_trusted_origins:
+            raise ValueError(
+                "production requires an explicit CSRF_TRUSTED_ORIGINS (HTTPS origins only)"
+            )
+        for origin in settings.csrf_trusted_origins:
+            if not origin.startswith("https://"):
+                raise ValueError(f"production trusted origins must be HTTPS, got {origin!r}")
 
 
 def _default_database_url(app_env: str) -> str:
@@ -238,6 +294,8 @@ def get_settings() -> Settings:
         session_ttl_minutes=_env_int("SESSION_TTL_MINUTES", 720),
         session_cookie_name=os.environ.get("SESSION_COOKIE_NAME", "clarionpi_session"),
         session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", app_env == "prod"),
+        csrf_enforce=_env_bool("CSRF_ENFORCE", os.environ.get("AUTH_MODE", "stub") == "session"),
+        csrf_trusted_origins=_env_trusted_origins(app_env),
         treatment_gap_max_days=_env_int("TREATMENT_GAP_MAX_DAYS", 30),
         low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
         risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),

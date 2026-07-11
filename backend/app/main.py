@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.csrf import OriginCsrfMiddleware
 from app.api.deps import seed_dev_users
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.auth import router as auth_router
@@ -62,6 +63,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="ClarionPI", lifespan=lifespan)
+# CSRF boundary (SEC-03): runs before every route handler for unsafe methods; enforcement
+# is settings-gated per request (ON in session mode, OFF in stub, refused-OFF in prod).
+app.add_middleware(OriginCsrfMiddleware)
 app.include_router(auth_router)
 app.include_router(matters_router)
 app.include_router(gates_router)

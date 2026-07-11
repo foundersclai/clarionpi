@@ -67,6 +67,8 @@ def test_module_construction_accepts_valid_production_config() -> None:
         "APP_ENV": "prod",
         "AUTH_MODE": "session",
         "SESSION_COOKIE_SECURE": "true",
+        "CSRF_ENFORCE": "true",
+        "CSRF_TRUSTED_ORIGINS": "https://app.example.com",
         # Prod refuses on-disk SQLite defaults nowhere yet; keep the default database URL.
     }
     proc = subprocess.run(

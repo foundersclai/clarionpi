@@ -159,7 +159,11 @@ a slot PUT crossing the per-file cap → the same `413` with `limit: max_file_by
 and stopped mid-body (the body is never read whole into memory); an actual-vs-declared byte
 mismatch → `422 {error: upload_size_mismatch}`; a non-OPEN session →
 `409 {error: upload_session_not_open, status}` (pre-checked before the body is consumed) —
-on every refusal the slot's prior object and `received` state are untouched ·
+on every refusal the slot's prior object and `received` state are untouched · **CSRF
+refusal** (SEC-03): every unsafe-method request (`POST`/`PUT`/`PATCH`/`DELETE`, login and
+logout included) under session-mode enforcement requires exactly ONE `Origin` header
+exactly matching a configured trusted origin — missing/duplicate/malformed/`null`/untrusted
+→ `403 {error: csrf_failed}` from the ASGI middleware before any route handler ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

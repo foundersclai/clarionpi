@@ -165,7 +165,11 @@ def test_secure_cookie_round_trip_over_https(
     try:
         # `client` (fixture) installed the DB override on the shared app; this second client
         # reuses it with an HTTPS base URL so httpx agrees to send the Secure cookie back.
-        https_client = TestClient(app, base_url="https://testserver")
+        https_client = TestClient(
+            app,
+            base_url="https://testserver",
+            headers={"Origin": "http://localhost:3400"},
+        )
         resp = https_client.post(
             "/api/auth/login",
             json={"email": DEV_USER_EMAIL, "password": DEV_USER_PASSWORD},
@@ -213,7 +217,7 @@ def _probe_client(session_factory: sessionmaker[Session]) -> TestClient:
             db.close()
 
     app.dependency_overrides[get_db_session] = _override_db_session
-    return TestClient(app)
+    return TestClient(app, headers={"Origin": "http://localhost:3400"})  # trusted default
 
 
 @pytest.fixture
