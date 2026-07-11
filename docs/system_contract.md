@@ -74,6 +74,16 @@ decide strategy, skip a gate, or retry until a proxy judge is satisfied.
   guard (`no_blocking_findings`, fed by `compliance.open_blocking_count`) refuses a draft
   with any open blocking finding. Bounded correction (span-patch / single-section regen) is
   narrow structural repair with a mandatory re-verify, never a strategy decision.
+- **Enforced (WI-2):** the v1 pilot box is checked where effort starts — matter creation
+  REQUIRES four explicit tri-state intake answers (`public_entity_involved`,
+  `plaintiff_is_minor`, `wrongful_death`, `coverage_dispute`; `IntakeFlagAnswer`, no silent
+  defaults) and `app/rules/eligibility.py` refuses any answer other than `no` with a typed
+  `matter_out_of_scope` 422 carrying per-flag attorney-readable reasons (`unknown` refuses
+  CONSERVATIVELY: resolve the question, then create). The refusal copy is a scope boundary
+  ("outside v1 supported scope — handle in your existing workflow"), never a system error
+  and never legal advice. Creation-time check ONLY: stored answers (including the
+  `unknown` backfilled onto pre-preflight rows by migration 0014) display read-only on the
+  matter header as audit story and never gate later transitions.
 
 ### 2. Provenance Or It Doesn't Ship
 

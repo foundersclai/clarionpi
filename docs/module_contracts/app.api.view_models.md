@@ -43,6 +43,13 @@ lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-spa
 the FE viewer (the deferred M5 line): the compliance panel's BARE-id `spans` click through to
 this route.
 
+**Extended @ WI-2 (pilot intake preflight).** Matter creation is gated by the v1
+eligibility box: `MatterCreate` REQUIRES the four tri-state intake flags (no silent
+defaults — a missing flag is a plain validation 422), any answer other than `no` is the
+typed refusal below, and `MatterView` returns the stored answers read-only (the matter
+header's audit story). The eligibility decision itself lives in `app.rules.eligibility`
+(the rules layer owns "supported scope"); the route stays thin.
+
 **Deferred:** SSE journal / `Last-Event-ID` replay is still deferred — the gates wire is
 request/response, and the analysis/ingest/demand/package streams are fire-and-forward (no
 journal). The scanner is applied **explicitly** per response (every gate envelope AND every
@@ -186,6 +193,15 @@ gains `status` state `registry_bumped` `{effect, from_gate_state, to_gate_state,
 from_registry_version, to_registry_version}`; the package SSE gains
 `exhibit_tokens_unsettled`; `GET /matters/{id}/manifest` is READ-ONLY at every gate (the
 `?mint=true` write-on-GET is gone) ·
+**matter-creation intake refusal (WI-2)**: `POST /api/matters` with any intake flag ≠ `no`
+→ `422 {error: matter_out_of_scope, detail, reasons[]}` where each reason is
+`{flag, answer, reason}` (`answer` ∈ {`yes`, `unknown`}; `reason` is the attorney-readable
+scope-boundary copy, rendered verbatim — never a system error, never legal advice; `detail`
+names flags only, no client facts) — checked BEFORE the jurisdiction refusal and before any
+write; `MatterView` carries the four stored `IntakeFlagAnswer` fields
+(`public_entity_involved` / `plaintiff_is_minor` / `wrongful_death` / `coverage_dispute`;
+`unknown` = a matter predating the preflight — creation-time check only, never a gate
+blocker) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

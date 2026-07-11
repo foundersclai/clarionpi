@@ -30,6 +30,12 @@ the review implied.
 > `5326d3f..` on main; ADRs 0010–0012; migrations 0010–0013). ADR-0009 numbering stays
 > RESERVED for WI-1's package_review design, which remains ON HOLD per founder
 > direction; WI-3's attestation wording remains with the legal cofounder.
+>
+> **WI-2 is SHIPPED** (2026-07-11, same day — pulled ahead of the held WI-1 per the
+> sequencing note): migration 0014, `app/rules/eligibility.py` + `matter_out_of_scope`,
+> create-form intake box + SOL-on-create panel, read-only header flags; refusal copy
+> pending counsel review before pilot. Next: WI-3 once the legal cofounder confirms the
+> six attestation keys + wording; WI-4 stays behind WI-3.
 
 `docs/audit/plans/01–05` ship FIRST. They are the launch blockers this plan builds on:
 

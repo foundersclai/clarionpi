@@ -137,6 +137,11 @@ def test_m3_exit_full_gate_flow_with_audit_trail(
             "claim_type": "mva",
             "incident_date": "2026-01-15",
             "jurisdiction": "AZ",
+            # WI-2: the four intake flags are REQUIRED; all-"no" is the in-box matter.
+            "public_entity_involved": "no",
+            "plaintiff_is_minor": "no",
+            "wrongful_death": "no",
+            "coverage_dispute": "no",
         },
     )
     assert created.status_code == 201, created.text

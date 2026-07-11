@@ -114,6 +114,7 @@ def test_gate_event_has_exactly_fifteen_values() -> None:
             },
         ),
         (enums.ClaimType, {"mva"}),
+        (enums.IntakeFlagAnswer, {"yes", "no", "unknown"}),
         (
             enums.LedgerCategory,
             {"er", "ambulance", "imaging", "pt_chiro", "ortho", "surgery", "pharmacy", "other"},

@@ -57,6 +57,11 @@ def test_matter_roundtrips_with_real_enums(session: Session) -> None:
     assert isinstance(model.claim_type, enums.ClaimType)
     assert model.claim_type is enums.ClaimType.MVA
     assert model.jurisdiction == "CA"
+    # WI-2: a directly-constructed row carries the pre-preflight default on every flag.
+    assert model.public_entity_involved is enums.IntakeFlagAnswer.UNKNOWN
+    assert model.plaintiff_is_minor is enums.IntakeFlagAnswer.UNKNOWN
+    assert model.wrongful_death is enums.IntakeFlagAnswer.UNKNOWN
+    assert model.coverage_dispute is enums.IntakeFlagAnswer.UNKNOWN
 
 
 def test_fact_token_roundtrips_with_real_enums(session: Session) -> None:
@@ -117,6 +122,15 @@ def test_gate_record_roundtrips_with_real_enums(session: Session) -> None:
     assert model.idempotency_key == "idem-1"
 
 
+# WI-2: the four intake flags are REQUIRED on MatterCreate — tests supply them explicitly.
+_INTAKE_NO = {
+    "public_entity_involved": enums.IntakeFlagAnswer.NO,
+    "plaintiff_is_minor": enums.IntakeFlagAnswer.NO,
+    "wrongful_death": enums.IntakeFlagAnswer.NO,
+    "coverage_dispute": enums.IntakeFlagAnswer.NO,
+}
+
+
 def test_matter_create_accepts_valid_input() -> None:
     payload = schemas.MatterCreate(
         client_display_name="Jane Roe",
@@ -124,8 +138,10 @@ def test_matter_create_accepts_valid_input() -> None:
         incident_date=date(2025, 1, 15),
         jurisdiction="CA",
         venue_county=None,
+        **_INTAKE_NO,
     )
     assert payload.claim_type is enums.ClaimType.MVA
+    assert payload.coverage_dispute is enums.IntakeFlagAnswer.NO
 
 
 def test_matter_create_rejects_unsupported_claim_type() -> None:
@@ -135,6 +151,7 @@ def test_matter_create_rejects_unsupported_claim_type() -> None:
             claim_type="slipfall",  # type: ignore[arg-type]
             incident_date=date(2025, 1, 15),
             jurisdiction="CA",
+            **_INTAKE_NO,
         )
 
 
@@ -145,6 +162,27 @@ def test_matter_create_rejects_bad_jurisdiction_type() -> None:
             claim_type=enums.ClaimType.MVA,
             incident_date=date(2025, 1, 15),
             jurisdiction=["not", "a", "string"],  # type: ignore[arg-type]
+            **_INTAKE_NO,
+        )
+
+
+def test_matter_create_requires_every_intake_flag() -> None:
+    """No silent defaults (WI-2): omitting a flag is a validation error, and an answer
+    outside the tri-state vocabulary is rejected by the enum."""
+    with pytest.raises(ValidationError):
+        schemas.MatterCreate(  # type: ignore[call-arg]
+            client_display_name="Jane Roe",
+            claim_type=enums.ClaimType.MVA,
+            incident_date=date(2025, 1, 15),
+            jurisdiction="AZ",
+        )
+    with pytest.raises(ValidationError):
+        schemas.MatterCreate(
+            client_display_name="Jane Roe",
+            claim_type=enums.ClaimType.MVA,
+            incident_date=date(2025, 1, 15),
+            jurisdiction="AZ",
+            **(_INTAKE_NO | {"wrongful_death": "maybe"}),  # type: ignore[dict-item]
         )
 
 

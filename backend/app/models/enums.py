@@ -391,6 +391,20 @@ class ClaimType(StrEnum):
     MVA = "mva"
 
 
+class IntakeFlagAnswer(StrEnum):
+    """Tri-state answer to a pilot-intake eligibility question (WI-2).
+
+    Creation accepts a matter only when every flag is ``NO`` — ``YES`` is out of the v1
+    box and ``UNKNOWN`` refuses conservatively (resolve the question, then create).
+    ``UNKNOWN`` is also the migration backfill for rows that predate the preflight; the
+    check is creation-time ONLY, so a stored ``UNKNOWN`` never blocks gate progress.
+    """
+
+    YES = "yes"
+    NO = "no"
+    UNKNOWN = "unknown"
+
+
 class LedgerCategory(StrEnum):
     """Fixed v1 specials-ledger category taxonomy (money_engine)."""
 

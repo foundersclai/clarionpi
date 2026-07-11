@@ -166,6 +166,29 @@ export interface DeadlineCandidate {
   confirmed: boolean;
 }
 
+/**
+ * IntakeFlagAnswer — tri-state pilot-intake answer (WI-2). Creation accepts a matter only
+ * when every flag is "no"; "unknown" marks a matter that predates the preflight.
+ */
+export type IntakeFlagAnswer = "yes" | "no" | "unknown";
+
+/** The four pilot-intake eligibility flags, in canonical (request/display) order. */
+export const INTAKE_FLAG_KEYS = [
+  "public_entity_involved",
+  "plaintiff_is_minor",
+  "wrongful_death",
+  "coverage_dispute",
+] as const;
+
+export type IntakeFlagKey = (typeof INTAKE_FLAG_KEYS)[number];
+
+/** One per-flag reason in a `matter_out_of_scope` 422 refusal body. */
+export interface IntakeScopeReason {
+  flag: IntakeFlagKey;
+  answer: IntakeFlagAnswer;
+  reason: string;
+}
+
 /** MatterView — returned by POST /api/matters and GET /api/matters/{id}. */
 export interface MatterView {
   id: string;
@@ -177,6 +200,10 @@ export interface MatterView {
   gate_state: GateState;
   registry_version: number;
   deadline_candidates: DeadlineCandidate[];
+  public_entity_involved: IntakeFlagAnswer;
+  plaintiff_is_minor: IntakeFlagAnswer;
+  wrongful_death: IntakeFlagAnswer;
+  coverage_dispute: IntakeFlagAnswer;
 }
 
 /** UploadSlotView — one file slot; `upload_url` is where the client PUTs the bytes. */

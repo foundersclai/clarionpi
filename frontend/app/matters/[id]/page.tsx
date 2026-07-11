@@ -39,6 +39,7 @@ import { DocumentsPanel } from "@/components/documents-panel";
 import { EvidenceWorkbench } from "@/components/evidence-workbench";
 import { FactsReviewCard } from "@/components/facts-review-card";
 import { GateStepper } from "@/components/gate-stepper";
+import { IntakeFlags } from "@/components/intake-flags";
 import { PackageCard } from "@/components/package-card";
 import { PlanReviewCard } from "@/components/plan-review-card";
 import { StrategyIntakeCard } from "@/components/strategy-intake-card";
@@ -111,7 +112,7 @@ export default function MatterDashboardPage({
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="flex flex-col gap-1.5">
           <h1 className="text-xl font-semibold text-ink">
             {matter.client_display_name}
           </h1>
@@ -119,6 +120,8 @@ export default function MatterDashboardPage({
             {matter.claim_type.toUpperCase()} · {matter.jurisdiction} · incident{" "}
             {matter.incident_date}
           </p>
+          {/* WI-2: the stored intake answers, read-only — the file's audit story. */}
+          <IntakeFlags matter={matter} />
         </div>
         <Badge variant="secondary">registry v{matter.registry_version}</Badge>
       </div>

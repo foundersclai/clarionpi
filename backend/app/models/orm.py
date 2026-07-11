@@ -191,6 +191,16 @@ class Matter(Base, FirmScoped):
     invalidation_applied_registry_version: Mapped[int | None] = mapped_column(
         sa.Integer, nullable=True
     )
+    # WI-2 pilot-intake eligibility flags (IntakeFlagAnswer). Creation-time gate ONLY: the
+    # create API refuses any answer other than "no"; "unknown" marks a row created before
+    # the preflight existed (migration backfill / direct ORM construction) and never blocks
+    # gate progress. Part of the file's audit story — shown read-only on the matter header.
+    public_entity_involved: Mapped[str] = mapped_column(
+        sa.String(8), nullable=False, default="unknown"
+    )
+    plaintiff_is_minor: Mapped[str] = mapped_column(sa.String(8), nullable=False, default="unknown")
+    wrongful_death: Mapped[str] = mapped_column(sa.String(8), nullable=False, default="unknown")
+    coverage_dispute: Mapped[str] = mapped_column(sa.String(8), nullable=False, default="unknown")
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

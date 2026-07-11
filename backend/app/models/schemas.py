@@ -35,6 +35,7 @@ from app.models.enums import (
     FlagSeverity,
     GateAction,
     GateState,
+    IntakeFlagAnswer,
     LedgerCategory,
     RuleVerifyStatus,
     SectionValidation,
@@ -246,6 +247,12 @@ class Matter(_ORMModel):
     gate_state: GateState
     registry_version: int
     sol_candidates: list[DeadlineCandidate] = Field(default_factory=list)
+    # WI-2 pilot-intake flags; "unknown" = the row predates the preflight (creation-time
+    # check only — see app.rules.eligibility).
+    public_entity_involved: IntakeFlagAnswer = IntakeFlagAnswer.UNKNOWN
+    plaintiff_is_minor: IntakeFlagAnswer = IntakeFlagAnswer.UNKNOWN
+    wrongful_death: IntakeFlagAnswer = IntakeFlagAnswer.UNKNOWN
+    coverage_dispute: IntakeFlagAnswer = IntakeFlagAnswer.UNKNOWN
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -445,13 +452,22 @@ class MatterBudget(_ORMModel):
 
 
 class MatterCreate(BaseModel):
-    """Create-matter input. Enum validation rejects unsupported claim types."""
+    """Create-matter input. Enum validation rejects unsupported claim types.
+
+    The four pilot-intake flags (WI-2) are REQUIRED — no silent defaults: the attorney
+    answers every eligibility question explicitly, and the route refuses any answer other
+    than ``no`` with a typed ``matter_out_of_scope`` 422 (``app.rules.eligibility``).
+    """
 
     client_display_name: str
     claim_type: ClaimType
     incident_date: date
     jurisdiction: str
     venue_county: str | None = None
+    public_entity_involved: IntakeFlagAnswer
+    plaintiff_is_minor: IntakeFlagAnswer
+    wrongful_death: IntakeFlagAnswer
+    coverage_dispute: IntakeFlagAnswer
 
 
 # --------------------------------------------------------------------------------------

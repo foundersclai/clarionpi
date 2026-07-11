@@ -29,6 +29,7 @@ from app.models.enums import (
     FindingBucket,
     FindingStatus,
     GateState,
+    IntakeFlagAnswer,
     TextSource,
     UploadSessionStatus,
 )
@@ -64,6 +65,8 @@ class MatterView(BaseModel):
 
     ``deadline_candidates`` are the rules-computed SOL / notice-of-claim deadlines the FE renders
     as a non-dismissible banner until the attorney confirms them at G1 (invariant 4).
+    The four pilot-intake flags (WI-2) are read-only display — part of the file's audit
+    story; ``unknown`` marks a matter that predates the preflight.
     """
 
     id: uuid.UUID
@@ -74,6 +77,10 @@ class MatterView(BaseModel):
     gate_state: GateState
     registry_version: int
     deadline_candidates: list[DeadlineCandidate] = Field(default_factory=list)
+    public_entity_involved: IntakeFlagAnswer
+    plaintiff_is_minor: IntakeFlagAnswer
+    wrongful_death: IntakeFlagAnswer
+    coverage_dispute: IntakeFlagAnswer
 
 
 def matter_to_view(matter: Matter) -> MatterView:
@@ -93,6 +100,10 @@ def matter_to_view(matter: Matter) -> MatterView:
         gate_state=GateState(matter.gate_state),
         registry_version=matter.registry_version,
         deadline_candidates=candidates,
+        public_entity_involved=IntakeFlagAnswer(matter.public_entity_involved),
+        plaintiff_is_minor=IntakeFlagAnswer(matter.plaintiff_is_minor),
+        wrongful_death=IntakeFlagAnswer(matter.wrongful_death),
+        coverage_dispute=IntakeFlagAnswer(matter.coverage_dispute),
     )
 
 

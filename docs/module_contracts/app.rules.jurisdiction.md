@@ -15,6 +15,13 @@ default `billed`) is what `app.money.assemble.compute_matter_ledger` consumes. T
 `HybridEngine` deadline lookup + LLM fallback remain later work. **v1 = Arizona
 only.**
 
+**Extended @ WI-2.** The rules layer's "supported scope" ownership (the
+`UnsupportedJurisdiction` precedent) now also covers the pilot-intake eligibility box:
+`eligibility.py::check_pilot_eligibility` — engineer-owned Python, NO YAML and no
+lawyer-audited law — refuses (typed `MatterOutOfScope`) any matter whose four tri-state
+intake answers are not all `no`. Creation-time check only; the copy is a scope boundary
+("outside v1 supported scope"), pending counsel review before pilot.
+
 ## Responsibility
 
 The **lawyer-audited rules layer**: schema-validated YAML rule packs → typed,
@@ -72,7 +79,12 @@ cite, `verify_status`) — a typed pack row like every other; AZ v1 = `billed`,
 `source = Lopez v. Safeway Stores, Inc., 212 Ariz. 198 (App. 2006)`,
 `verify_status: unverified` (the collateral-source basis is a computation candidate
 for counsel audit, not confirmed law). A pack omitting the block falls back to the
-conservative `billed` default via `RulePack.billed_vs_paid_basis`.
+conservative `billed` default via `RulePack.billed_vs_paid_basis`. ·
+**`check_pilot_eligibility`** (WI-2 — `eligibility.py`: the four `IntakeFlagAnswer`
+flags `public_entity_involved`/`plaintiff_is_minor`/`wrongful_death`/`coverage_dispute`;
+any `yes`/`unknown` → `MatterOutOfScope` with `diagnostic_kind: matter_out_of_scope`
+carrying ONE `IntakeScopeReason` per offending flag — `unknown` refuses conservatively
+with resolve-then-create copy; the exception message names flags only, never client facts).
 
 ## Change rule
 

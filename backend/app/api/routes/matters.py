@@ -3,9 +3,11 @@
 Thin by design (api_and_wire §4): validate the request, do tenancy/rules work through the owning
 modules, return a view-model. Business rules live in ``rules``/``core``, not here.
 
-* ``POST /api/matters`` — load the jurisdiction's rule pack (non-AZ → typed ``422``, per flow_01
-  §6: non-AZ creation is refused, typed), compute deadline candidates, create the matter in
-  ``corpus_processing``, write a ``matter_created`` audit event, return ``201`` + ``MatterView``.
+* ``POST /api/matters`` — check the pilot-intake eligibility box (any flag ≠ ``no`` → typed
+  ``422`` with per-flag reasons, WI-2), load the jurisdiction's rule pack (non-AZ → typed
+  ``422``, per flow_01 §6: non-AZ creation is refused, typed), compute deadline candidates,
+  create the matter in ``corpus_processing``, write a ``matter_created`` audit event, return
+  ``201`` + ``MatterView``.
 * ``GET /api/matters/{matter_id}`` — ``200`` + ``MatterView`` in tenant scope, else ``404``
   (never ``403`` — a cross-firm id must not leak the row's existence).
 """
@@ -26,7 +28,8 @@ from app.models.enums import GateState
 from app.models.orm import Matter, User
 from app.models.schemas import MatterCreate
 from app.rules.deadlines import compute_deadline_candidates
-from app.rules.errors import UnsupportedJurisdiction
+from app.rules.eligibility import check_pilot_eligibility
+from app.rules.errors import MatterOutOfScope, UnsupportedJurisdiction
 from app.rules.loader import load_pack
 
 router = APIRouter(prefix="/api/matters", tags=["matters"])
@@ -48,9 +51,31 @@ def create_matter(
 ) -> MatterView | JSONResponse:
     """Create a matter and return it with its rules-computed deadline candidates.
 
+    The pilot-intake eligibility box is checked FIRST (WI-2): any flag answered other than
+    ``no`` refuses with a typed ``422`` (``matter_out_of_scope``) carrying one
+    attorney-readable reason per offending flag — a v1 scope boundary, not a system error.
     A non-AZ jurisdiction is refused with a typed ``422`` body (``jurisdiction_unsupported``)
-    rather than a silent fallback — the rules layer owns the "supported jurisdiction" decision.
+    rather than a silent fallback — the rules layer owns both "supported scope" decisions.
     """
+    try:
+        check_pilot_eligibility(
+            public_entity_involved=body.public_entity_involved,
+            plaintiff_is_minor=body.plaintiff_is_minor,
+            wrongful_death=body.wrongful_death,
+            coverage_dispute=body.coverage_dispute,
+        )
+    except MatterOutOfScope as exc:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": exc.diagnostic_kind,
+                "detail": str(exc),
+                "reasons": [
+                    {"flag": r.flag, "answer": r.answer, "reason": r.reason} for r in exc.reasons
+                ],
+            },
+        )
+
     try:
         pack = load_pack(body.jurisdiction)
     except UnsupportedJurisdiction as exc:
@@ -79,6 +104,12 @@ def create_matter(
         # audit flip cannot retroactively authorize work done under this version.
         rule_pack_version=pack.version,
         rule_pack_fingerprint=pack.fingerprint,
+        # WI-2: the attorney's explicit intake answers (all "no" past this point) — part of
+        # the file's audit story, shown read-only on the matter header.
+        public_entity_involved=body.public_entity_involved.value,
+        plaintiff_is_minor=body.plaintiff_is_minor.value,
+        wrongful_death=body.wrongful_death.value,
+        coverage_dispute=body.coverage_dispute.value,
     )
     tenant_add(session, matter, user.firm_id)
     session.flush()  # assign matter.id before it goes into the audit payload
@@ -88,7 +119,16 @@ def create_matter(
         firm_id=user.firm_id,
         actor_id=user.id,
         event_kind="matter_created",
-        payload={"matter_id": str(matter.id), "jurisdiction": body.jurisdiction},
+        payload={
+            "matter_id": str(matter.id),
+            "jurisdiction": body.jurisdiction,
+            "intake_flags": {
+                "public_entity_involved": body.public_entity_involved.value,
+                "plaintiff_is_minor": body.plaintiff_is_minor.value,
+                "wrongful_death": body.wrongful_death.value,
+                "coverage_dispute": body.coverage_dispute.value,
+            },
+        },
     )
     session.commit()
     return matter_to_view(matter)

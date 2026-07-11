@@ -7,6 +7,9 @@ so an unknown jurisdiction is a typed refusal — not a guess, not a silent fall
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 
 class RulesError(Exception):
     """Base class for rules-layer errors; all carry a typed ``diagnostic_kind``."""
@@ -26,6 +29,34 @@ class UnsupportedJurisdiction(RulesError):
     def __init__(self, jurisdiction: str) -> None:
         self.jurisdiction = jurisdiction
         super().__init__(f"no rule pack for jurisdiction {jurisdiction!r} (v1 supports AZ only)")
+
+
+@dataclass(frozen=True)
+class IntakeScopeReason:
+    """One per-flag refusal reason riding a :class:`MatterOutOfScope` (WI-2).
+
+    ``reason`` is attorney-readable scope-boundary copy ("outside v1 supported scope"),
+    never a system error and never legal advice — it travels to the wire verbatim.
+    """
+
+    flag: str  # the intake-flag field name, e.g. "public_entity_involved"
+    answer: str  # the IntakeFlagAnswer value that triggered the refusal ("yes" | "unknown")
+    reason: str
+
+
+class MatterOutOfScope(RulesError):
+    """Raised at matter creation when an intake answer places the matter outside the v1 box.
+
+    A v1 scope boundary, not an error state: the message carries flag NAMES only (no client
+    facts, no legal text) — the per-flag attorney copy rides ``reasons`` to the wire.
+    """
+
+    diagnostic_kind = "matter_out_of_scope"
+
+    def __init__(self, reasons: Sequence[IntakeScopeReason]) -> None:
+        self.reasons = list(reasons)
+        flags = ", ".join(r.flag for r in self.reasons)
+        super().__init__(f"matter is outside v1 supported scope ({flags})")
 
 
 class RulePackInvalid(RulesError):

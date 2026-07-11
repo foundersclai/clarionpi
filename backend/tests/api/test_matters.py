@@ -1,13 +1,23 @@
-"""Matter endpoints: create happy path, typed non-AZ refusal, tenant-scoped fetch + 404."""
+"""Matter endpoints: create happy path, typed non-AZ + out-of-scope refusals, tenant-scoped
+fetch + 404, intake-flag persistence (WI-2)."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.orm import Matter
+
+_INTAKE_FLAGS = (
+    "public_entity_involved",
+    "plaintiff_is_minor",
+    "wrongful_death",
+    "coverage_dispute",
+)
 
 
 def _valid_body() -> dict[str, str]:
@@ -16,6 +26,11 @@ def _valid_body() -> dict[str, str]:
         "claim_type": "mva",
         "incident_date": "2026-01-15",
         "jurisdiction": "AZ",
+        # WI-2: all four intake flags REQUIRED; only all-"no" is in the v1 box.
+        "public_entity_involved": "no",
+        "plaintiff_is_minor": "no",
+        "wrongful_death": "no",
+        "coverage_dispute": "no",
     }
 
 
@@ -76,6 +91,127 @@ def test_get_unknown_matter_returns_404(client: TestClient, firm_b_matter_id: uu
     assert resp.status_code == 404
 
 
+# --------------------------------------------------------------------------------------
+# WI-2 — pilot-intake eligibility box
+# --------------------------------------------------------------------------------------
+
+
+def _matter_count(session_factory: sessionmaker[Session]) -> int:
+    db = session_factory()
+    try:
+        return db.query(Matter).count()
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("flag", _INTAKE_FLAGS)
+def test_create_matter_flag_yes_returns_typed_422_and_writes_nothing(
+    client: TestClient, session_factory: sessionmaker[Session], flag: str
+) -> None:
+    before = _matter_count(session_factory)
+    resp = client.post("/api/matters", json=_valid_body() | {flag: "yes"})
+
+    assert resp.status_code == 422
+    payload = resp.json()
+    assert payload["error"] == "matter_out_of_scope"
+    assert flag in payload["detail"]
+    (reason,) = payload["reasons"]
+    assert reason["flag"] == flag
+    assert reason["answer"] == "yes"
+    # v1 scope-boundary copy — never a system error, never legal advice.
+    assert "outside v1 supported scope" in reason["reason"]
+    assert "existing workflow" in reason["reason"]
+    assert _matter_count(session_factory) == before  # refused before any write
+
+
+def test_create_matter_unknown_refuses_with_resolve_copy(client: TestClient) -> None:
+    resp = client.post("/api/matters", json=_valid_body() | {"coverage_dispute": "unknown"})
+
+    assert resp.status_code == 422
+    (reason,) = resp.json()["reasons"]
+    assert reason["answer"] == "unknown"
+    # The refusal says exactly what unblocks creation: resolve, answer 'no', create.
+    assert "then create the matter" in reason["reason"]
+    assert "answered 'no'" in reason["reason"]
+
+
+def test_create_matter_multiple_flags_report_every_reason(client: TestClient) -> None:
+    body = _valid_body() | {"public_entity_involved": "yes", "plaintiff_is_minor": "unknown"}
+    resp = client.post("/api/matters", json=body)
+
+    assert resp.status_code == 422
+    reasons = resp.json()["reasons"]
+    assert [(r["flag"], r["answer"]) for r in reasons] == [
+        ("public_entity_involved", "yes"),
+        ("plaintiff_is_minor", "unknown"),
+    ]
+
+
+def test_create_matter_missing_flag_is_a_validation_422(client: TestClient) -> None:
+    """The flags are REQUIRED — omitting one is a schema validation error (no silent
+    default), which is FastAPI's standard 422 shape, not the typed scope refusal."""
+    body = _valid_body()
+    del body["wrongful_death"]
+    resp = client.post("/api/matters", json=body)
+
+    assert resp.status_code == 422
+    payload = resp.json()
+    assert "error" not in payload  # pydantic validation shape, not a typed refusal
+    assert any("wrongful_death" in str(item.get("loc", [])) for item in payload["detail"])
+
+
+def test_create_matter_persists_flags_and_returns_them(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    created = client.post("/api/matters", json=_valid_body()).json()
+    for flag in _INTAKE_FLAGS:
+        assert created[flag] == "no"
+
+    fetched = client.get(f"/api/matters/{created['id']}").json()
+    for flag in _INTAKE_FLAGS:
+        assert fetched[flag] == "no"
+
+    db = session_factory()
+    try:
+        row = db.get(Matter, uuid.UUID(created["id"]))
+        assert row is not None
+        assert all(getattr(row, flag) == "no" for flag in _INTAKE_FLAGS)
+    finally:
+        db.close()
+
+
+def test_legacy_unknown_matter_is_served_not_blocked(
+    client: TestClient, session_factory: sessionmaker[Session], firm_b_matter_id: uuid.UUID
+) -> None:
+    """Eligibility is a CREATION-TIME check only: a pre-preflight row (ORM/backfill default
+    'unknown') is read back fine — the flags never gate the read path or later transitions."""
+    from app.api.deps import DEV_FIRM_ID  # the caller's firm (Firm A, seeded by the fixture)
+
+    db = session_factory()
+    try:
+        legacy = Matter(
+            firm_id=DEV_FIRM_ID,
+            client_display_name="Legacy Row",
+            claim_type="mva",
+            incident_date=date(2025, 12, 1),
+            jurisdiction="AZ",
+            gate_state="facts_review",
+            registry_version=0,
+            sol_candidates=[],
+        )
+        db.add(legacy)
+        db.commit()
+        legacy_id = legacy.id
+    finally:
+        db.close()
+
+    resp = client.get(f"/api/matters/{legacy_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    for flag in _INTAKE_FLAGS:
+        assert body[flag] == "unknown"
+
+
 def test_create_matter_pins_the_rule_pack(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
@@ -83,15 +219,7 @@ def test_create_matter_pins_the_rule_pack(
     matter's deadline/ledger/drafting work will attest to."""
     from app.rules.loader import load_pack
 
-    resp = client.post(
-        "/api/matters",
-        json={
-            "client_display_name": "Pin Client",
-            "claim_type": "mva",
-            "incident_date": "2026-01-15",
-            "jurisdiction": "AZ",
-        },
-    )
+    resp = client.post("/api/matters", json=_valid_body() | {"client_display_name": "Pin Client"})
     assert resp.status_code == 201, resp.text
     pack = load_pack("AZ")
     db = session_factory()
