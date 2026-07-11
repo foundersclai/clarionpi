@@ -26,8 +26,14 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.matters import router as matters_router
 from app.api.routes.provenance import router as provenance_router
 from app.api.routes.uploads import router as uploads_router
-from app.core.config import get_settings
+from app.core.config import get_settings, validate_runtime_settings
 from app.core.db import create_all_for_tests, get_engine, get_session_factory
+
+# Fail-closed production boot (SEC-01): refuse invalid auth settings BEFORE the FastAPI
+# instance is exposed. ASGI lifespan execution can be disabled (`uvicorn --lifespan off`),
+# so the construction-time check is the guarantee; the lifespan re-check below covers any
+# process that mutates/refreshes settings before startup.
+validate_runtime_settings(get_settings())
 
 
 def _seed_dev_environment() -> None:
@@ -49,7 +55,8 @@ def _seed_dev_environment() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """App lifespan: seed the dev environment on startup (non-prod only)."""
+    """App lifespan: re-validate runtime settings, then seed the dev environment (non-prod)."""
+    validate_runtime_settings(get_settings())
     _seed_dev_environment()
     yield
 

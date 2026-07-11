@@ -155,6 +155,11 @@ def get_current_user(request: Request, session: Session = _DbSession) -> User:
             raise HTTPException(status_code=401, detail={"error": "unauthenticated"})
         return user
 
+    if settings.auth_mode != "stub":
+        # Startup validation refuses this, but a hot-mutated env must not silently
+        # fall through to the dev-attorney stub (SEC-01: fail closed, never open).
+        raise RuntimeError(f"invalid AUTH_MODE {settings.auth_mode!r}; expected stub|session")
+
     # stub mode: a valid session cookie (if present) wins, so stub-backend FE dev can exercise real
     # logins; otherwise fall back to the seeded dev attorney exactly as at M0.
     if raw_token:

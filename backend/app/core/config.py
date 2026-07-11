@@ -70,6 +70,10 @@ class Settings:
     auth_mode: str = "stub"
     session_ttl_minutes: int = 720
     session_cookie_name: str = "clarionpi_session"
+    # HTTPS-only session cookie (SEC-02). Defaults True in prod, False elsewhere; production
+    # refuses an explicit false override (validate_runtime_settings — fail closed, no
+    # break-glass).
+    session_cookie_secure: bool = False
     # Risk flags (M4). GapDetectorConfig threshold: a treatment gap wider than this many days
     # (pre-MMI) flags. Firm-configurable later; a plain int day count, not money.
     treatment_gap_max_days: int = 30
@@ -113,6 +117,59 @@ def _positive_int(name: str, value: int) -> int:
     if value <= 0:
         raise ValueError(f"{name} must be a positive integer, got {value}")
     return value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    """Read a bool env var STRICTLY: true/false/1/0/yes/no (case-insensitive), else raise.
+
+    Python truthiness on env strings is a security hazard (``bool("false") is True``), so an
+    unrecognized value is refused at settings load rather than silently coerced.
+    """
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    lowered = raw.strip().lower()
+    if lowered in ("true", "1", "yes"):
+        return True
+    if lowered in ("false", "0", "no"):
+        return False
+    raise ValueError(f"{name} must be true/false/1/0/yes/no, got {raw!r}")
+
+
+# The full supported environment set. `test` is code-supported (config defaults +
+# tests/api/conftest); `staging` receives dev-tier defaults today (seeding, cookie posture).
+_VALID_APP_ENVS = frozenset({"dev", "test", "staging", "prod"})
+_VALID_AUTH_MODES = frozenset({"stub", "session"})
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    """Refuse invalid or production-unsafe runtime settings (SEC-01/02) — fail closed.
+
+    Called from ``app.main`` at module construction (so a production process refuses to
+    build the app even when ASGI lifespan is disabled, e.g. ``uvicorn --lifespan off``) and
+    again from the FastAPI lifespan before any startup work. Deliberately NOT called inside
+    :func:`get_settings`, which stays side-effect free so tests can construct invalid
+    settings on purpose.
+    """
+    if settings.app_env not in _VALID_APP_ENVS:
+        raise ValueError(
+            f"APP_ENV must be one of {sorted(_VALID_APP_ENVS)}, got {settings.app_env!r} — "
+            "a typo (e.g. 'production') must not silently select dev security defaults"
+        )
+    if settings.auth_mode not in _VALID_AUTH_MODES:
+        raise ValueError(
+            f"AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {settings.auth_mode!r}"
+        )
+    if settings.app_env == "prod":
+        if settings.auth_mode != "session":
+            raise ValueError(
+                "production cannot boot in stub auth: APP_ENV=prod requires AUTH_MODE=session"
+            )
+        if not settings.session_cookie_secure:
+            raise ValueError(
+                "production requires SESSION_COOKIE_SECURE=true (HTTPS-only session cookie); "
+                "there is no break-glass override"
+            )
 
 
 def _default_database_url(app_env: str) -> str:
@@ -180,6 +237,7 @@ def get_settings() -> Settings:
         auth_mode=os.environ.get("AUTH_MODE", "stub"),
         session_ttl_minutes=_env_int("SESSION_TTL_MINUTES", 720),
         session_cookie_name=os.environ.get("SESSION_COOKIE_NAME", "clarionpi_session"),
+        session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", app_env == "prod"),
         treatment_gap_max_days=_env_int("TREATMENT_GAP_MAX_DAYS", 30),
         low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
         risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),

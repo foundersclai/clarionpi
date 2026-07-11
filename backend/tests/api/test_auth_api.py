@@ -81,6 +81,10 @@ def test_login_sets_httponly_cookie_and_returns_user(
     set_cookie = resp.headers["set-cookie"]
     assert "clarionpi_session=" in set_cookie
     assert "httponly" in set_cookie.lower()
+    # Dev/test posture: the cookie must NOT require Secure (no HTTPS locally) but is rooted
+    # at path=/ so logout's deletion matches it.
+    assert "secure" not in set_cookie.lower()
+    assert "path=/" in set_cookie.lower()
 
     events = _audit_events(seeded)
     assert any(e.event_kind == "auth" and e.payload.get("event") == "login" for e in events)
@@ -136,11 +140,41 @@ def test_logout_revokes_session_and_clears_cookie(
     logout = client.post("/api/auth/logout")
     assert logout.status_code == 200
     assert logout.json() == {"ok": True}
+    # Deletion targets the configured cookie name at the shared path=/ (cookie identity is
+    # name+domain+path — a mismatched path would strand the login cookie).
+    clearing = logout.headers["set-cookie"].lower()
+    assert "clarionpi_session=" in clearing
+    assert "path=/" in clearing
     # The revoked session no longer authenticates.
     assert client.get("/api/auth/me").status_code == 401
 
     events = _audit_events(seeded)
     assert any(e.payload.get("event") == "logout" for e in events)
+
+
+def test_secure_cookie_round_trip_over_https(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With SESSION_COOKIE_SECURE=true (the prod posture), Set-Cookie carries Secure and the
+    cookie round-trips over an HTTPS base URL — an HTTP client correctly will NOT resend it."""
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    get_settings.cache_clear()
+    try:
+        # `client` (fixture) installed the DB override on the shared app; this second client
+        # reuses it with an HTTPS base URL so httpx agrees to send the Secure cookie back.
+        https_client = TestClient(app, base_url="https://testserver")
+        resp = https_client.post(
+            "/api/auth/login",
+            json={"email": DEV_USER_EMAIL, "password": DEV_USER_PASSWORD},
+        )
+        assert resp.status_code == 200
+        assert "secure" in resp.headers["set-cookie"].lower()
+        assert https_client.get("/api/auth/me").status_code == 200
+    finally:
+        get_settings.cache_clear()
 
 
 # ------------------------------------------------------------------------------------------

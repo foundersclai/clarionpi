@@ -96,10 +96,11 @@ def login(
     resp.set_cookie(
         key=settings.session_cookie_name,
         value=raw_token,
+        path="/",  # explicit: cookie identity is name+domain+path — must match logout
         httponly=True,
         samesite="lax",
         max_age=settings.session_ttl_minutes * 60,
-        secure=False,  # dev; set secure=True at prod deploy (HTTPS-only cookie).
+        secure=settings.session_cookie_secure,  # env-derived; True in prod (SEC-02)
     )
     return resp
 
@@ -129,7 +130,15 @@ def logout(
             )
             session.commit()
     resp = JSONResponse(status_code=200, content={"ok": True})
-    resp.delete_cookie(key=settings.session_cookie_name)
+    # Cookie identity is name+domain+path, so the shared path="/" is what guarantees the
+    # deletion matches the login cookie; the other attributes keep the policy consistent.
+    resp.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=settings.session_cookie_secure,
+    )
     return resp
 
 

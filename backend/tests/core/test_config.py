@@ -10,7 +10,7 @@ import tempfile
 
 import pytest
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -155,3 +155,75 @@ def test_test_env_defaults_on_disk_roots_under_tempdir(monkeypatch: pytest.Monke
     assert "clarionpi-test-storage" in s.storage_root
     assert s.matter_logs_dir.startswith(tmp)
     assert "clarionpi-test-matter-logs" in s.matter_logs_dir
+
+
+# ---------------------------------------------------------------------------------------
+# Production runtime validation (auth-hardening audit SEC-01/02)
+# ---------------------------------------------------------------------------------------
+
+
+def _settings(**overrides: object) -> Settings:
+    base: dict[str, object] = {
+        "app_env": "prod",
+        "database_url": "sqlite:///x.db",
+        "matter_budget_default_cents": 2500,
+    }
+    base.update(overrides)
+    return Settings(**base)  # type: ignore[arg-type]
+
+
+def test_prod_with_stub_auth_is_refused() -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="AUTH_MODE=session"):
+        validate_runtime_settings(_settings(auth_mode="stub", session_cookie_secure=True))
+
+
+def test_prod_with_session_auth_passes() -> None:
+    from app.core.config import validate_runtime_settings
+
+    validate_runtime_settings(_settings(auth_mode="session", session_cookie_secure=True))
+
+
+def test_test_env_with_stub_default_passes() -> None:
+    from app.core.config import validate_runtime_settings
+
+    validate_runtime_settings(_settings(app_env="test", auth_mode="stub"))
+
+
+def test_prod_with_insecure_cookie_is_refused() -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="SESSION_COOKIE_SECURE"):
+        validate_runtime_settings(_settings(auth_mode="session", session_cookie_secure=False))
+
+
+def test_invalid_auth_mode_is_refused() -> None:
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="AUTH_MODE"):
+        validate_runtime_settings(_settings(app_env="dev", auth_mode="jwt"))
+
+
+def test_invalid_app_env_is_refused() -> None:
+    """An APP_ENV typo (e.g. 'production') must not silently bypass every exact-'prod' guard."""
+    from app.core.config import validate_runtime_settings
+
+    with pytest.raises(ValueError, match="APP_ENV"):
+        validate_runtime_settings(_settings(app_env="production", auth_mode="session"))
+
+
+def test_session_cookie_secure_defaults_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+    monkeypatch.setenv("APP_ENV", "dev")
+    assert get_settings().session_cookie_secure is False
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "prod")
+    assert get_settings().session_cookie_secure is True
+
+
+def test_strict_bool_parsing_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """bool('false') is True — the strict parser must refuse anything non-canonical."""
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "definitely")
+    with pytest.raises(ValueError, match="SESSION_COOKIE_SECURE"):
+        get_settings()
