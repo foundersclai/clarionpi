@@ -13,6 +13,9 @@ shape.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -22,7 +25,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from app.models.enums import DeadlineKind, RuleVerifyStatus, TokenKind
 from app.rules.errors import (
     LetterStructureMissing,
+    RulePackChanged,
     RulePackInvalid,
+    RulePackUnaudited,
+    RulePackUnpinned,
     UnsupportedJurisdiction,
 )
 
@@ -114,9 +120,13 @@ class LetterStructureRule(BaseModel):
 class RulePack(BaseModel):
     """A jurisdiction's validated rule pack.
 
-    ``audited`` is informational at M0 (the stub pack ships ``audited: false``); the invariant-4
-    guard is that every produced :class:`~app.models.schemas.DeadlineCandidate` carries the
-    row's ``verify_status`` and assumptions for attorney confirmation.
+    ``audited`` alone never makes a pack authoritative (BUS-02): flipping it to ``true``
+    REQUIRES the counsel-audit provenance (``audited_by``, timezone-aware ``audited_at``,
+    ``audit_reference``) — enforced by the model validator — and
+    :attr:`is_authoritative` additionally requires every legal input drafting/package
+    assembly consumes to be ``verified``. The invariant-4 guard remains: every produced
+    :class:`~app.models.schemas.DeadlineCandidate` carries the row's ``verify_status`` and
+    assumptions for attorney confirmation.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -124,6 +134,11 @@ class RulePack(BaseModel):
     pack: str
     version: str
     audited: bool = False
+    # Counsel-audit provenance (nullable while audited is false; REQUIRED once true).
+    audited_by: str | None = None
+    audited_at: datetime | None = None
+    audit_reference: str | None = None
+    audit_notes: str | None = None
     deadline_rules: list[RuleRow] = []
     # Optional: a pack without this block falls back to the documented conservative basis via the
     # accessor below (money_engine reads the basis, never the raw block).
@@ -132,6 +147,58 @@ class RulePack(BaseModel):
     # the ``letter_sections`` accessor raises ``LetterStructureMissing`` when absent rather than
     # substituting a default skeleton (Brain-2 fails loud, never drafts against invented sections).
     letter_structure: LetterStructureRule | None = None
+
+    @model_validator(mode="after")
+    def _audited_requires_provenance(self) -> RulePack:
+        if not self.audited:
+            return self
+        if not (self.audited_by and self.audited_by.strip()):
+            raise ValueError("audited: true requires a non-empty audited_by")
+        if self.audited_at is None or self.audited_at.tzinfo is None:
+            raise ValueError("audited: true requires a timezone-aware audited_at")
+        if not (self.audit_reference and self.audit_reference.strip()):
+            raise ValueError("audited: true requires a non-empty audit_reference")
+        return self
+
+    @property
+    def is_authoritative(self) -> bool:
+        """Whether this pack may back a PRODUCTION demand package (BUS-02).
+
+        Requires the counsel-audit flag + provenance AND that every legal input the
+        pipeline consumes is ``verified``: a non-empty verified deadline-rule set, a
+        present verified ``billed_vs_paid`` (the conservative fallback is fine for
+        non-authoritative computation but cannot support a production package), and a
+        present verified ``letter_structure`` (the drafted sections derive from it).
+        """
+        if not self.audited:
+            return False
+        # audited=True guarantees the provenance fields via the model validator.
+        if not self.deadline_rules:
+            return False
+        if any(r.verify_status is not RuleVerifyStatus.VERIFIED for r in self.deadline_rules):
+            return False
+        if self.billed_vs_paid is None:
+            return False
+        if self.billed_vs_paid.verify_status is not RuleVerifyStatus.VERIFIED:
+            return False
+        if self.letter_structure is None:
+            return False
+        if self.letter_structure.verify_status is not RuleVerifyStatus.VERIFIED:
+            return False
+        return True
+
+    @property
+    def fingerprint(self) -> str:
+        """Deterministic SHA-256 over the COMPLETE validated model (canonical JSON).
+
+        The provenance pin for matters: it changes when audit metadata, any verification
+        status, or any behavior-affecting legal input changes — a mutable YAML path or the
+        version string alone is not sufficient provenance.
+        """
+        canonical = json.dumps(
+            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @property
     def letter_sections(self) -> list[LetterSectionRule]:
@@ -180,3 +247,36 @@ def load_pack(jurisdiction: str) -> RulePack:
         return RulePack.model_validate(raw)
     except ValidationError as exc:
         raise RulePackInvalid(f"pack {path.name} failed schema validation: {exc}") from exc
+
+
+def load_pack_for_pin(
+    jurisdiction: str,
+    version: str | None,
+    fingerprint: str | None,
+    *,
+    require_authoritative: bool,
+) -> RulePack:
+    """Load a pack and verify it against a matter's pin (BUS-02) — the ONE door every
+    post-create rules consumer that can feed the package goes through.
+
+    - A pinned matter (``version`` + ``fingerprint`` set) requires the CURRENT pack to match
+      both exactly; drift raises :class:`~app.rules.errors.RulePackChanged` — a pack edited
+      after matter creation cannot be consumed mid-pipeline and quietly reverted before
+      package build, and later audit flips cannot retroactively authorize earlier work.
+    - An unpinned legacy matter passes when ``require_authoritative`` is false (dev/test
+      behavior) and raises :class:`~app.rules.errors.RulePackUnpinned` when true — the
+      package guard fails closed on missing pins.
+    - ``require_authoritative=True`` additionally requires :attr:`RulePack.is_authoritative`
+      (:class:`~app.rules.errors.RulePackUnaudited` otherwise). Earlier pipeline stages pass
+      ``False``: they need pin CONSISTENCY but may exercise an unaudited pinned pack so
+      local/demo workflows stay usable.
+    """
+    pack = load_pack(jurisdiction)
+    if version is None and fingerprint is None:
+        if require_authoritative:
+            raise RulePackUnpinned(jurisdiction)
+    elif pack.version != version or pack.fingerprint != fingerprint:
+        raise RulePackChanged(jurisdiction, pinned_version=version, current_version=pack.version)
+    if require_authoritative and not pack.is_authoritative:
+        raise RulePackUnaudited(jurisdiction, version=pack.version)
+    return pack

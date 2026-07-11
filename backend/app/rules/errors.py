@@ -37,6 +37,62 @@ class RulePackInvalid(RulesError):
     diagnostic_kind = "rule_pack_invalid"
 
 
+class RulePackUnaudited(RulesError):
+    """Raised when a consumer requires an AUTHORITATIVE pack and the pack is not (BUS-02).
+
+    Carries jurisdiction + pack version only — deliberately no legal-source text, audit
+    notes, or file paths (nothing sensitive rides the refusal to the wire).
+    """
+
+    diagnostic_kind = "rule_pack_unaudited"
+
+    def __init__(self, jurisdiction: str, *, version: str) -> None:
+        self.jurisdiction = jurisdiction
+        self.version = version
+        super().__init__(
+            f"rule pack {jurisdiction!r} v{version} requires counsel audit before it can back "
+            "a production package"
+        )
+
+
+class RulePackUnpinned(RulesError):
+    """Raised when the audited-package guard is enabled and the matter carries no pack pin.
+
+    A legacy matter processed before pinning existed cannot be silently attested against
+    today's YAML — the guard fails closed (BUS-02).
+    """
+
+    diagnostic_kind = "rule_pack_unpinned"
+
+    def __init__(self, jurisdiction: str) -> None:
+        self.jurisdiction = jurisdiction
+        super().__init__(
+            f"matter has no rule-pack pin for {jurisdiction!r}; the audited-package guard "
+            "refuses unpinned matters"
+        )
+
+
+class RulePackChanged(RulesError):
+    """Raised when the current pack's version/fingerprint no longer matches a matter's pin.
+
+    The matter's deadline, ledger, and drafting work attested to the PINNED pack; a changed
+    (or changed-and-reverted) YAML cannot be consumed against that pin (BUS-02).
+    """
+
+    diagnostic_kind = "rule_pack_changed"
+
+    def __init__(
+        self, jurisdiction: str, *, pinned_version: str | None, current_version: str
+    ) -> None:
+        self.jurisdiction = jurisdiction
+        self.pinned_version = pinned_version
+        self.current_version = current_version
+        super().__init__(
+            f"rule pack {jurisdiction!r} drifted from the matter's pin "
+            f"(pinned {pinned_version!r}, current {current_version!r})"
+        )
+
+
 class LetterStructureMissing(RulesError):
     """Raised when a pack lacks the ``letter_structure`` block Brain-2 drafting requires.
 

@@ -8,6 +8,13 @@
 pack: AZ
 version: 0.1.0
 audited: false
+# Counsel-audit provenance — REQUIRED (non-null; audited_at timezone-aware) the moment
+# `audited` flips to true. Filled by the legal-audit PR after counsel review; see
+# docs/audit/rule-pack-audit-checklist.md.
+audited_by: null
+audited_at: null
+audit_reference: null
+audit_notes: null
 
 deadline_rules:
   - kind: sol
