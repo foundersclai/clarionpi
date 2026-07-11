@@ -29,6 +29,7 @@ from app.core.llm_provider import LLMProvider, get_llm_provider
 from app.core.storage import ObjectStorage
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import OcrEngine, get_ocr_engine
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.orm import Matter, User
 
 router = APIRouter(prefix="/api", tags=["ingest"])
@@ -82,6 +83,9 @@ def run_ingest(
             storage=storage,
             ocr=ocr,
             provider=provider,
+            # BUS-05: gate decisions are orchestrator-owned; the API layer composes them in
+            # so corpus never imports engine for gate work.
+            on_complete=handle_phase0_completion,
         ),
         media_type="text/event-stream",
     )

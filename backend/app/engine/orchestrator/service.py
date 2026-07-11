@@ -337,6 +337,8 @@ def build_guard_context(
         open_blocking_count(db, matter=matter, draft=draft) if draft is not None else 0
     )
 
+    from app.engine.orchestrator.registry_bump import packaged_registry_version
+
     return GuardContext(
         actor_role=UserRole(user.role),
         deadlines_confirmed=deadlines_confirmed,
@@ -346,6 +348,7 @@ def build_guard_context(
         open_high_severity_flags=open_high,
         override_reason=override_reason,
         blocking_findings=blocking_findings,
+        packaged_draft_registry_version=packaged_registry_version(db, matter=matter),
     )
 
 
@@ -385,6 +388,24 @@ def dry_run_approve_blockers(db: Session, *, matter: Matter, user: User) -> list
 # --------------------------------------------------------------------------------------
 # Side-effect registry (design D4: same transaction as the transition)
 # --------------------------------------------------------------------------------------
+
+
+def _settle_exhibits_then_freeze(db: Session, *, matter: Matter, user: User) -> None:
+    """G2a confirm (BUS-05): settle ALL manifest EX tokens, advance the cursor, THEN freeze.
+
+    Exhibit tokens used to mint during package assembly, which bumped the registry AFTER
+    the freeze — making a normal first build self-drift. Settlement now happens here,
+    inside the gate-action transaction (the tokenizer path runs with ``commit=False``): the
+    mint's bump is incorporated BEFORE any downstream plan exists, the invalidation cursor
+    advances to the settled version (the bump is not a late-document event), and the freeze
+    pins that FINAL version.
+    """
+    from app.package.manifest import settle_exhibit_tokens
+
+    settle_exhibit_tokens(db, matter=matter)
+    db.flush()
+    matter.invalidation_applied_registry_version = matter.registry_version
+    _freeze_registry_version(db, matter=matter, user=user)
 
 
 def _freeze_registry_version(db: Session, *, matter: Matter, user: User) -> None:
@@ -447,6 +468,11 @@ def _approve_plan_version(db: Session, *, matter: Matter, user: User) -> None:
     plan = _latest_plan(db, matter=matter)
     if plan is None:
         raise PlanMissing()
+    if plan.invalidated_by_registry_version is not None:
+        # BUS-05: an invalidated approval is never reusable — the plan regens after rework.
+        raise PlanRegistryDrift(
+            plan_version=plan.registry_version, matter_version=matter.registry_version
+        )
     if plan.registry_version != matter.registry_version:
         raise PlanRegistryDrift(
             plan_version=plan.registry_version, matter_version=matter.registry_version
@@ -458,7 +484,7 @@ def _approve_plan_version(db: Session, *, matter: Matter, user: User) -> None:
 
 
 _SIDE_EFFECTS: Mapping[tuple[GateState, GateEvent], Callable[..., None]] = {
-    (GateState.EVIDENCE_REVIEW, GateEvent.G2A_CONFIRMED): _freeze_registry_version,
+    (GateState.EVIDENCE_REVIEW, GateEvent.G2A_CONFIRMED): _settle_exhibits_then_freeze,
     (GateState.PLAN_REVIEW, GateEvent.G25_APPROVED): _approve_plan_version,
 }
 
@@ -736,13 +762,48 @@ def apply_gate_action(
 def _apply_gate_action_inner(
     db: Session, *, matter: Matter, user: User, gate: str, submit: GateSubmit
 ) -> GateActionResult:
+    # -- 0. row-lock + REFRESH the matter (BUS-05 serialization discipline) ---------------
+    # Human gate submissions participate in the SAME serialization as the registry-bump
+    # service: without this, a bump can commit evidence_review after this request loaded the
+    # old row, and the unlocked approve would overwrite the back-edge with a forward state.
+    # populate_existing refreshes stale identity-map values; the lock is held through the
+    # single commit at the end. Pinned in the orchestrator contract + ADR-0012.
+    matter = db.execute(
+        select(Matter)
+        .where(Matter.id == matter.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+
+    # Key format check (reuses the M0 idempotency module; raises InvalidIdempotencyKey -> 422).
+    validate_client_key(submit.idempotency_key)
+
+    # -- 1a. START_CYCLE replay runs BEFORE the gate-state check (BUS-05): a successful
+    # cycle start MOVES the matter to evidence_review, so a duplicate would otherwise be
+    # answered gate_state_mismatch and a retrying client could not distinguish success.
+    # The global order below is unchanged for every other action (deliberate: their replay
+    # serves only duplicates that did not move the state).
+    if submit.action is GateAction.START_CYCLE:
+        replay = db.execute(
+            select(GateRecord).where(
+                GateRecord.matter_id == matter.id,
+                GateRecord.idempotency_key == submit.idempotency_key,
+            )
+        ).scalar_one_or_none()
+        if replay is not None:
+            return GateActionResult(
+                matter=matter,
+                record=replay,
+                transitioned=False,
+                from_state=matter.gate_state,
+                to_state=matter.gate_state,
+                replayed=True,
+            )
+
     # -- 1. the submitted gate must be the matter's current gate (stale-tab guard) --------
     if gate != matter.gate_state:
         raise GateStateMismatch(submitted=gate, current=matter.gate_state)
     state = GateState(matter.gate_state)
-
-    # Key format check (reuses the M0 idempotency module; raises InvalidIdempotencyKey -> 422).
-    validate_client_key(submit.idempotency_key)
 
     # -- 2. idempotent replay (D3): the first outcome's record, the CURRENT state ---------
     # NOTE deliberate consequence of the pinned step order: a duplicate of an approve that
@@ -781,7 +842,21 @@ def _apply_gate_action_inner(
     transitioned = False
 
     # -- 5. action dispatch ----------------------------------------------------------------
-    if submit.action in (GateAction.APPROVE, GateAction.OVERRIDE):
+    if submit.action is GateAction.START_CYCLE:
+        # BUS-05: the explicit post-delivery replacement cycle. Attorney-only + registry
+        # newer than the packaged draft (both table guards); routes through the SAME
+        # GateRecord + audit + single-commit machinery as every other action. The prior
+        # ArtifactSet rows are never touched.
+        if state is not GateState.PACKAGE_READY:
+            raise IllegalGateAction(state=state.value, action=submit.action.value)
+        transition = machine.advance(state, GateEvent.NEW_CYCLE_STARTED)
+        ctx = build_guard_context(
+            db, matter=matter, user=user, override_reason=submit.override_reason
+        )
+        _evaluate_approve_guards(transition=transition, ctx=ctx, action=submit.action)
+        matter.gate_state = transition.to.value
+        transitioned = True
+    elif submit.action in (GateAction.APPROVE, GateAction.OVERRIDE):
         event = GATE_EVENT_BY_APPROVE.get(state)
         if event is None:
             # Only the five human gates are approvable; auto states advance on system events.

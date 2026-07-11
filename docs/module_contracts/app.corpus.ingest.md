@@ -51,8 +51,17 @@ The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-stor
   the expiry sweep uses `SKIP LOCKED` (a row held by an active upload is retried next
   sweep) and commits per row. Proven on Postgres by the `integration`-marked concurrency
   suite; SQLite ignores `FOR UPDATE`, so the unit suite does not claim lock semantics.
-- **Late-document runs (M4): the `evidence_review` rework edge is live; other states still leave
-  the gate untouched.** `run_phase0` processes newly-`uploaded` documents for a matter already past
+- **Late-document runs (BUS-05): gate consequences are decided by the INJECTED completion
+  handler** (`app.engine.orchestrator.phase0_completion.handle_phase0_completion`, composed
+  in by the API layer — `run_phase0(on_complete=...)`), which locks + refreshes the matter
+  and compares the run's final registry version against the DURABLE cursor: at
+  `corpus_processing` → `facts_review`; at `evidence_review` (docs processed or cursor
+  lagging) → the analysis rework route; at any OTHER post-corpus state with a lagging
+  cursor → the registry-bump invalidation service (stale plans/drafts marked, gate
+  back-edged per the flow_04 matrix, SSE `status` `registry_bumped` with
+  effect/from/to states + versions); a covered cursor records `late_documents_processed`.
+  This removed the old direct `machine` import (the recorded breach shrank: only the
+  tokenizer/registry import remains). Superseded wording follows (historical):** `run_phase0` processes newly-`uploaded` documents for a matter already past
   `corpus_processing` — extracting them and re-syncing the fact registry + specials ledger. At
   `evidence_review` a late run now **fires the guardless `EVIDENCE_REVIEW -> ANALYSIS_RUNNING`
   rework edge** (`advance` on `DOCUMENTS_UPLOADED`, audited `late_documents_rework`, SSE state

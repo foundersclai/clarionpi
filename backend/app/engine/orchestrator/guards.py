@@ -46,6 +46,9 @@ class GuardContext:
     open_high_severity_flags: int
     override_reason: str | None
     blocking_findings: int
+    # BUS-05: the registry version of the matter's latest PACKAGED artifact set (None when
+    # nothing has been packaged) — feeds the cycle-start guard at package_ready.
+    packaged_draft_registry_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,34 @@ def _no_blocking_findings(ctx: GuardContext) -> GuardResult:
     )
 
 
+def _registry_newer_than_packaged_draft(ctx: GuardContext) -> GuardResult:
+    """The cycle-start guard (BUS-05): new records must exist beyond the packaged draft.
+
+    Refuses when nothing was packaged (no artifact set — package_ready without one is a
+    data defect, fail closed) and when the matter registry still equals the packaged
+    version (nothing new arrived; there is nothing to re-cycle for).
+    """
+    packaged = ctx.packaged_draft_registry_version
+    current = ctx.registry_version_current
+    if packaged is None:
+        return GuardResult(
+            False,
+            "no_packaged_draft",
+            "no packaged artifact set exists to start a replacement cycle from",
+        )
+    if current > packaged:
+        return GuardResult(
+            True,
+            "registry_newer",
+            f"registry v{current} is newer than the packaged draft (v{packaged})",
+        )
+    return GuardResult(
+        False,
+        "registry_not_newer",
+        f"no new records since packaging (registry v{current}, packaged v{packaged})",
+    )
+
+
 REGISTRY: Mapping[str, Callable[[GuardContext], GuardResult]] = {
     "role_attorney": _role_attorney,
     "deadlines_confirmed": _deadlines_confirmed,
@@ -150,6 +181,7 @@ REGISTRY: Mapping[str, Callable[[GuardContext], GuardResult]] = {
     "registry_version_match": _registry_version_match,
     "high_severity_dispositioned_or_override": _high_severity_dispositioned_or_override,
     "no_blocking_findings": _no_blocking_findings,
+    "registry_newer_than_packaged_draft": _registry_newer_than_packaged_draft,
 }
 
 

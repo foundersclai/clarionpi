@@ -24,9 +24,9 @@ def test_gate_state_has_exactly_ten_values_in_order() -> None:
     ]
 
 
-def test_gate_event_has_exactly_fourteen_values() -> None:
+def test_gate_event_has_exactly_fifteen_values() -> None:
     values = [e.value for e in enums.GateEvent]
-    assert len(values) == 14
+    assert len(values) == 15
     assert values == [
         "documents_uploaded",
         "corpus_ready",
@@ -42,6 +42,7 @@ def test_gate_event_has_exactly_fourteen_values() -> None:
         "picks_changed",
         "strategy_revised",
         "semantic_finding_regen",
+        "new_cycle_started",  # BUS-05: the explicit package_ready -> evidence_review cycle
     ]
 
 
@@ -49,7 +50,7 @@ def test_gate_event_has_exactly_fourteen_values() -> None:
     ("enum_cls", "expected"),
     [
         (enums.UserRole, {"paralegal", "attorney", "admin"}),
-        (enums.GateAction, {"approve", "reject", "edit", "override"}),
+        (enums.GateAction, {"approve", "reject", "edit", "override", "start_cycle"}),
         (enums.TokenKind, {"fact", "amount", "citation", "exhibit"}),
         (enums.TokenStatus, {"verified", "unverified", "disputed"}),
         (enums.TokenSource, {"extractor", "attorney", "rules"}),

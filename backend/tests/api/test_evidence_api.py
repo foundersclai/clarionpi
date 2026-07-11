@@ -275,8 +275,23 @@ def test_pick_then_manifest_flow_with_mint(
     # just the document_id — so the UI can drive PHI actions straight from the manifest view.
     assert entry["exhibit_id"] == exhibit_id
 
-    # Manifest WITH mint: bare EX id, never token-shaped.
-    minted = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
+    # The GET is READ-ONLY at every gate (BUS-05): ?mint=true no longer mints — tokens
+    # settle ONLY inside the G2a confirm side effect. The registry must not move on a GET.
+    unminted_again = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
+    assert unminted_again.status_code == 200, unminted_again.text
+    assert unminted_again.json()["entries"][0]["exhibit_token_id"] is None
+
+    # Settle the tokens the sanctioned way (the G2a side-effect path), then re-read.
+    db = seeded()
+    try:
+        from app.models.orm import Matter as _Matter
+        from app.package.manifest import settle_exhibit_tokens
+
+        settle_exhibit_tokens(db, matter=db.get(_Matter, matter_id))
+        db.commit()
+    finally:
+        db.close()
+    minted = client.get(f"/api/matters/{matter_id}/manifest")
     assert minted.status_code == 200, minted.text
     minted_entry = minted.json()["entries"][0]
     assert minted_entry["exhibit_token_id"] == "EX_1"
@@ -296,7 +311,17 @@ def test_manifest_response_survives_wire_guard(
     exhibit_id = put.json()["id"]
     client.post(f"/api/exhibits/{exhibit_id}/phi", json={"disposition": "cleared"})
 
-    minted = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
+    # Settle the token the sanctioned way (the G2a side-effect path) — the GET never mints.
+    db = seeded()
+    try:
+        from app.models.orm import Matter as _Matter
+        from app.package.manifest import settle_exhibit_tokens
+
+        settle_exhibit_tokens(db, matter=db.get(_Matter, matter_id))
+        db.commit()
+    finally:
+        db.close()
+    minted = client.get(f"/api/matters/{matter_id}/manifest")
     assert minted.status_code == 200, minted.text
     # The raw response text carries the bare id but NEVER a token-shaped [[EX_n]] string.
     assert "EX_1" in minted.text

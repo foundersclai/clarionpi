@@ -469,17 +469,23 @@ def open_blocking_count(db: Session, *, matter: Matter, draft: DemandDraft) -> i
 
 
 def latest_draft(db: Session, *, matter: Matter) -> DemandDraft | None:
-    """The matter's highest-version :class:`DemandDraft`, or ``None`` (no draft yet).
+    """THE shared current-draft selector: the highest-version draft ONLY if not superseded.
 
-    The G3 guard reads blocking findings over this draft; a matter with no draft has zero blocking
-    findings (nothing has been drafted to find fault with).
+    BUS-05 semantics: inspect the highest version and return it only when its status is not
+    ``superseded``; when the highest version IS superseded, return ``None`` — NEVER fall
+    back to an older draft (a stale v1 must not become current again after v2 was
+    invalidated). Every current-draft consumer (the G3 guard feed, the compliance panel,
+    the package view/build path) goes through this one function.
     """
     drafts = list(
         db.execute(select(DemandDraft).where(DemandDraft.matter_id == matter.id)).scalars()
     )
     if not drafts:
         return None
-    return max(drafts, key=lambda d: d.version)
+    top = max(drafts, key=lambda d: d.version)
+    if top.status == DraftStatus.SUPERSEDED.value:
+        return None
+    return top
 
 
 def compliance_post_draft_hook(

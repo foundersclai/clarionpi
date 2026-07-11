@@ -1,7 +1,9 @@
 # Matter Lifecycle — the Gate Machine
 
 One matter moves through **ten states**: four run automatically (gray), five are
-attorney gates (amber), and `package_ready` is terminal and immutable. Every
+attorney gates (amber), and `package_ready` holds the immutable ArtifactSet — its ONLY
+exit is the attorney's explicit `new_cycle_started` back-edge (BUS-05; the artifacts
+never change, the matter can re-cycle). Every
 edge below is a row in `backend/app/engine/orchestrator/machine.py::TRANSITIONS`;
 guards are named in brackets and evaluated by `guards.evaluate` (a failed gate
 returns **all** failed guards, not just the first).
@@ -19,7 +21,7 @@ flowchart TB
     dr["drafting<br/>Brain-2 writes sections<br/>(tokens only)"]:::auto
     cr["compliance_review — G3<br/>attorney disposes findings,<br/>approves the letter"]:::gate
     pa["package_assembly<br/>docx, binder, xlsx,<br/>provenance report"]:::auto
-    rdy["package_ready<br/>immutable ArtifactSet"]:::terminal
+    rdy["package_ready<br/>immutable ArtifactSet"]:::ready
 
     cp -- "corpus_ready" --> fr
     fr -- "g1_approved<br/>[role_attorney, deadlines_confirmed]" --> si
@@ -30,10 +32,11 @@ flowchart TB
     dr -- "draft_complete" --> cr
     cr -- "g3_approved<br/>[role_attorney, registry_version_match, no_blocking_findings]" --> pa
     pa -- "artifacts_built" --> rdy
+    rdy -. "new_cycle_started<br/>[role_attorney, registry_newer_than_packaged_draft]<br/>artifacts stay immutable" .-> er
 
     classDef gate fill:#fff3cd,stroke:#b58900,stroke-width:2px,color:#333
     classDef auto fill:#eceff1,stroke:#78909c,color:#333
-    classDef terminal fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#333
+    classDef ready fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#333
 ```
 
 ## Rework edges (attorney-driven do-overs)
@@ -56,11 +59,18 @@ edges):
 
 | While in | On `registry_bumped` | Why |
 | --- | --- | --- |
-| `plan_review`, `drafting`, `compliance_review` | **cascade → `evidence_review`** | plan/draft cite a stale registry; attorney re-confirms the evidence delta |
-| `corpus_processing`, `analysis_running`, `package_assembly` | self-loop (absorb) | a running build folds the new facts in |
+| `plan_review`, `drafting`, `compliance_review`, `package_assembly` | **cascade → `evidence_review`** | plan/draft (and the in-flight build's FIXED approved draft) cite a stale registry; the stale plan is marked invalidated, the stale draft superseded, and the attorney re-confirms the evidence delta (BUS-05) |
+| `corpus_processing`, `analysis_running` | self-loop (absorb) | a running ingest/analysis re-reads the registry as it runs |
 | `facts_review`, `strategy_intake` | self-loop (pre-freeze) | nothing approved yet exists to invalidate |
 | `evidence_review` | self-loop (re-present) | the gate re-renders at the new version |
-| `package_ready` | **refused** (`IllegalTransition`) | the package is immutable — new records start a new draft cycle |
+| `package_ready` | **refused** (`IllegalTransition`) → effect `immutable_new_cycle` | the package is immutable — the attorney starts the explicit `new_cycle_started` replacement cycle |
+
+The bump is applied by ONE owner — `orchestrator/registry_bump.py::apply_registry_bump` —
+under the shared matter row lock, driven by the durable
+`Matter.invalidation_applied_registry_version` cursor (a crash between registry sync and
+invalidation is recovered by the next no-pending-doc retry). Human gate submissions take
+the same row lock first, so a bump and an approve serialize instead of overwriting each
+other; demand/package completions re-check under that lock before advancing.
 
 ## Rules that make the gates trustworthy
 

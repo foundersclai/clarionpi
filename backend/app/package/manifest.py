@@ -280,8 +280,39 @@ def _integrity_for(*, include: tuple[int, ...], page_count: int, superseded: boo
     return _INTEGRITY_OK
 
 
+class ExhibitTokenUnsettled(Exception):
+    """Package assembly found an ok exhibit whose EX token is missing or drifted (BUS-05).
+
+    Exhibit tokens settle at G2a confirm (the registry freezes AFTER the settlement); the
+    package build consumes ONLY already-settled tokens and never mints. A missing/drifted
+    token here means picks changed after the freeze without re-confirming — fail visibly
+    before any artifact is stored.
+    """
+
+    def __init__(self, *, document_id: str, reason: str) -> None:
+        self.document_id = document_id
+        self.reason = reason
+        super().__init__(f"exhibit token unsettled for document {document_id}: {reason}")
+
+
+def settle_exhibit_tokens(db: Session, *, matter: Matter) -> DraftBinderManifest:
+    """Mint/update ALL valid manifest EX tokens WITHOUT committing (caller-owned txn).
+
+    The G2a confirm side effect calls this INSIDE the gate-action transaction: settle →
+    advance the invalidation cursor → freeze — one atomic act (BUS-05). The registry bump
+    the mint causes is therefore incorporated BEFORE the freeze and before any downstream
+    plan exists.
+    """
+    return build_draft_manifest(db, matter=matter, mint_tokens=True, mint_commit=False)
+
+
 def build_draft_manifest(
-    db: Session, *, matter: Matter, mint_tokens: bool = False
+    db: Session,
+    *,
+    matter: Matter,
+    mint_tokens: bool = False,
+    require_settled_tokens: bool = False,
+    mint_commit: bool = True,
 ) -> DraftBinderManifest:
     """Assemble the matter's draft binder manifest, ordered ``(sort_order, filename)``.
 
@@ -351,7 +382,15 @@ def build_draft_manifest(
             blocking.append(f"pending PHI disposition: {filename or ex.document_id}")
 
     if mint_tokens:
-        entries = _mint_and_stamp(db, matter=matter, entries=entries)
+        entries = _mint_and_stamp(db, matter=matter, entries=entries, commit=mint_commit)
+    elif require_settled_tokens:
+        # Package assembly (BUS-05): READ-ONLY stamping of already-settled tokens — no
+        # mint, no registry bump; a missing/drifted token fails the build visibly.
+        entries = _stamp_settled(db, matter=matter, entries=entries, strict=True)
+    else:
+        # Plain reads stamp whatever is ALREADY settled (best-effort, never minting): the
+        # G2a workbench shows the bare EX ids after the confirm settled them.
+        entries = _stamp_settled(db, matter=matter, entries=entries, strict=False)
 
     return DraftBinderManifest(
         matter_id=matter.id,
@@ -361,7 +400,7 @@ def build_draft_manifest(
 
 
 def _mint_and_stamp(
-    db: Session, *, matter: Matter, entries: list[ManifestEntry]
+    db: Session, *, matter: Matter, entries: list[ManifestEntry], commit: bool = True
 ) -> list[ManifestEntry]:
     """Mint EX tokens for the ok entries (in manifest order) and stamp the token onto each.
 
@@ -385,7 +424,7 @@ def _mint_and_stamp(
                 ],
             }
         )
-    registry.mint_exhibits(db, matter=matter, entries=mint_specs)
+    registry.mint_exhibits(db, matter=matter, entries=mint_specs, commit=commit)
 
     # Read back the minted token string per document_id (source_ref exhibit:<document_id>).
     token_by_doc: dict[str, str] = {}
@@ -445,3 +484,70 @@ __all__ = [
     "set_phi_disposition",
     "upsert_exhibit_pick",
 ]
+
+
+def _stamp_settled(
+    db: Session, *, matter: Matter, entries: list[ManifestEntry], strict: bool
+) -> list[ManifestEntry]:
+    """Stamp ALREADY-settled EX tokens onto the ok entries — lookup only, never mint.
+
+    ``strict=True`` (the package-build path) raises :class:`ExhibitTokenUnsettled` when an
+    ok entry has no token (picks changed after the G2a settlement) or when the token's
+    recorded ``included_pages`` no longer match the manifest entry (content drift since
+    settlement). ``strict=False`` (plain reads) stamps what exists and leaves the rest
+    ``None`` — display only, never a gate.
+    """
+    stamped: list[ManifestEntry] = []
+    for entry in entries:
+        if entry.integrity != _INTEGRITY_OK:
+            stamped.append(entry)
+            continue
+        if (
+            strict
+            and entry.included_pages
+            and entry.phi_disposition == PhiDisposition.PENDING.value
+        ):
+            # A pending-PHI entry cannot ship regardless — the binder gate (BinderBlocked)
+            # owns that refusal; the token fence must not preempt it with noise.
+            stamped.append(entry)
+            continue
+        document_id = str(entry.document_id)
+        token = _latest_exhibit_token(db, matter=matter, document_id=document_id)
+        if token is None:
+            if not strict:
+                stamped.append(entry)
+                continue
+            raise ExhibitTokenUnsettled(
+                document_id=document_id,
+                reason="no settled EX token (picks changed after G2a confirm?)",
+            )
+        row = db.scalars(
+            select(FactToken)
+            .where(
+                FactToken.matter_id == matter.id,
+                FactToken.source_ref == f"exhibit:{document_id}",
+            )
+            .order_by(FactToken.registry_version.desc())
+        ).first()
+        raw_value = row.value if row is not None else None
+        value_map = raw_value if isinstance(raw_value, dict) else {}
+        recorded_pages = tuple(value_map.get("included_pages", ()))
+        if strict and tuple(entry.included_pages) != tuple(recorded_pages):
+            raise ExhibitTokenUnsettled(
+                document_id=document_id,
+                reason="included pages drifted since the G2a settlement",
+            )
+        stamped.append(
+            ManifestEntry(
+                exhibit_token=token,
+                document_id=entry.document_id,
+                filename=entry.filename,
+                included_pages=entry.included_pages,
+                excluded_pages=entry.excluded_pages,
+                phi_disposition=entry.phi_disposition,
+                sort_order=entry.sort_order,
+                page_count=entry.page_count,
+                integrity=entry.integrity,
+            )
+        )
+    return stamped

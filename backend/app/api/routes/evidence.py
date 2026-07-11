@@ -242,19 +242,20 @@ def post_phi_disposition(
 @router.get("/matters/{matter_id}/manifest", response_model=None)
 def get_manifest(
     matter_id: uuid.UUID,
-    mint: bool = False,
     session: Session = _TenantSession,
     user: User = _CurrentUser,
 ) -> JSONResponse:
-    """Return the draft binder manifest (the M4-exit read). ``?mint=true`` mints EX tokens first.
+    """Return the draft binder manifest — READ-ONLY at every gate (BUS-05).
 
-    Minting is derived bookkeeping (attorney or paralegal is fine). The response exposes each EX
+    The old ``?mint=true`` write-on-GET is gone: exhibit tokens settle ONLY inside the G2a
+    confirm side effect, so no GET can bump the registry after plan/draft/package approval
+    outside the locked settlement or Phase-0 invalidation. The response exposes each EX
     token as a bare id (``exhibit_token_id``), never a token-shaped string (inv 11).
     """
     matter = session.get(Matter, matter_id)
     if matter is None:
         return _matter_not_found(matter_id)
-    m = manifest_service.build_draft_manifest(session, matter=matter, mint_tokens=mint)
+    m = manifest_service.build_draft_manifest(session, matter=matter, mint_tokens=False)
     exhibit_ids = _exhibit_id_by_document(session, matter)
     return JSONResponse(
         status_code=200,

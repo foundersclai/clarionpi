@@ -37,6 +37,7 @@ from app.core.storage import LocalDiskStorage
 from app.core.tenancy import tenant_add
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import FakeOcr
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.enums import DedupStatus, DocStatus, DocType, UserRole
 from app.models.orm import AuditEvent, CaseDocument, GateRecord, Matter, StrategyInputs, User
 from tests.corpus.pdf_builders import build_text_pdf
@@ -114,6 +115,7 @@ def _mini_phase0(db: Session, matter: Matter, attorney: User, tmp_path: Path) ->
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([classify]),
+            on_complete=handle_phase0_completion,
             run_logger=MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path),
         )
     )

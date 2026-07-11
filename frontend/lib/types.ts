@@ -279,7 +279,7 @@ export interface CommitResponse {
 // ---------------------------------------------------------------------------------------
 
 /** GateAction — the closed set of gate submit actions (mirror GateAction in enums.py). */
-export type GateAction = "approve" | "reject" | "edit" | "override";
+export type GateAction = "approve" | "reject" | "edit" | "override" | "start_cycle";
 
 /**
  * DeadlineCandidateVM — the deadline candidate as the GATES view-model projects it. This
@@ -713,6 +713,8 @@ export interface PlanView {
   demand_type: DemandType;
   sections: PlannedSectionView[];
   emphasis_directives: string[];
+  /** BUS-05: non-null when a registry bump invalidated this plan's approval. */
+  invalidated_by_registry_version?: number | null;
   approved: boolean;
   approved_by?: string | null;
   approved_at?: string | null;
@@ -848,6 +850,9 @@ export interface ArtifactSetView {
   registry_version: number;
   /** ISO datetime string (or null). */
   created_at: string | null;
+  /** BUS-05: true ONLY for the current (non-superseded) draft at the current registry
+   *  version — historical sets stay downloadable but are never labeled current. */
+  current: boolean;
   artifacts: ArtifactView[];
 }
 
@@ -858,6 +863,10 @@ export interface ArtifactSetView {
 export interface PackageVM {
   artifact_sets: ArtifactSetView[];
   buildable: boolean;
+  /** BUS-05: the latest packaged set matches the matter registry (no late records since). */
+  registry_version_current: boolean;
+  /** BUS-05: at package_ready with new records, the attorney must start a NEW cycle. */
+  new_cycle_required: boolean;
 }
 
 /** GET /api/matters/{id}/artifacts → `{ sets: [...] }` (the artifact-sets list). */

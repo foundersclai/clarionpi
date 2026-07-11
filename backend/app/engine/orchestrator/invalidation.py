@@ -15,12 +15,17 @@ diff / hard-block copy). They are consistent by construction:
 | plan_review        | -> evidence_review    | plan_stale_back_to_evidence |
 | drafting           | -> evidence_review    | draft_stale_g3_blocked      |
 | compliance_review  | -> evidence_review    | draft_stale_g3_blocked      |
-| package_ready      | (none; refused)       | immutable_new_cycle         |
+| package_assembly   | -> evidence_review    | draft_stale_g3_blocked      |
+| package_ready      | (refused; explicit    | immutable_new_cycle         |
+|                    |  NEW_CYCLE_STARTED)   |                             |
 | corpus_processing  | self-loop             | absorb_in_progress          |
 | analysis_running   | self-loop             | absorb_in_progress          |
-| package_assembly   | self-loop             | absorb_in_progress          |
 | facts_review       | self-loop             | absorb_in_progress          |
 | strategy_intake    | self-loop             | absorb_in_progress          |
+
+``package_assembly`` cascades (BUS-05): the live package builder consumes a FIXED approved
+draft (``package/build.py`` keys artifacts to the draft's old version) and does not absorb
+a newer registry — a self-loop there could publish a stale package.
 """
 
 from __future__ import annotations
@@ -50,12 +55,15 @@ INVALIDATION: Mapping[GateState, Effect] = {
     # Draft bound to the old version is stale; G3 is hard-blocked on version mismatch.
     GateState.DRAFTING: Effect.DRAFT_STALE_G3_BLOCKED,
     GateState.COMPLIANCE_REVIEW: Effect.DRAFT_STALE_G3_BLOCKED,
+    # The in-progress build consumes a FIXED approved draft — same stale-draft cascade
+    # (BUS-05); the build-completion fence refuses the stale forward advance.
+    GateState.PACKAGE_ASSEMBLY: Effect.DRAFT_STALE_G3_BLOCKED,
     # Delivered artifacts are frozen — a bump starts a fresh (v2) draft cycle.
     GateState.PACKAGE_READY: Effect.IMMUTABLE_NEW_CYCLE,
-    # Auto/in-progress build states — fold the new facts into the running build.
+    # Auto/in-progress ingest/analysis states — fold the new facts into the running build
+    # (these genuinely absorb: they re-read the registry as they run).
     GateState.CORPUS_PROCESSING: Effect.ABSORB_IN_PROGRESS,
     GateState.ANALYSIS_RUNNING: Effect.ABSORB_IN_PROGRESS,
-    GateState.PACKAGE_ASSEMBLY: Effect.ABSORB_IN_PROGRESS,
     # Pre-freeze gates: facts arrive before any approval exists, so nothing to invalidate.
     GateState.FACTS_REVIEW: Effect.ABSORB_IN_PROGRESS,
     GateState.STRATEGY_INTAKE: Effect.ABSORB_IN_PROGRESS,

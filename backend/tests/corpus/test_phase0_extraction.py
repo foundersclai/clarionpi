@@ -29,6 +29,7 @@ from app.core.tenancy import tenant_add
 from app.corpus.ingest.classify import reclassify_document
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import FakeOcr
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.enums import DedupStatus, DocStatus, DocType, GateState, SseEvent, TokenKind
 from app.models.orm import (
     BillingLine,
@@ -217,6 +218,7 @@ def test_happy_path_medical_and_bill_extract_merge_sync(
             storage=storage,
             ocr=FakeOcr(),
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -315,6 +317,7 @@ def test_provider_unavailable_degrades_and_skips_extraction(
             storage=storage,
             ocr=FakeOcr(),
             provider=NullProvider(),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -368,6 +371,7 @@ def test_resume_extraction_only_after_provider_dies_mid_run(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify("medical_record")]),  # no extractor replies
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -401,6 +405,7 @@ def test_resume_extraction_only_after_provider_dies_mid_run(
             provider=ScriptedProvider(
                 [_encounter(2), _encounter(9, provider="Dr. Jones", dos="2026-03-01")]
             ),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -454,6 +459,7 @@ def test_reclassify_other_to_medical_then_rerun_extracts(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify("other")]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -481,6 +487,7 @@ def test_reclassify_other_to_medical_then_rerun_extracts(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_encounter(1)]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )

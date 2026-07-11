@@ -199,6 +199,11 @@ def _seed_shippable(
             mani.set_phi_disposition(
                 db, user=attorney, exhibit=ex, disposition=PhiDisposition.CLEARED
             )
+        # Settle the exhibit tokens (the G2a-confirm side effect's job, BUS-05): the build
+        # consumes ONLY settled tokens. Blocked entries (pending PHI) mint nothing — the
+        # binder gate catches them first, exactly as before.
+        mani.build_draft_manifest(db, matter=matter, mint_tokens=True)
+        db.refresh(matter)
         _approved_draft(db, matter)
         matter.gate_state = GateState.PACKAGE_ASSEMBLY.value
         db.commit()

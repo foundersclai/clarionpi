@@ -43,6 +43,9 @@ class GateEvent(StrEnum):
     PICKS_CHANGED = "picks_changed"
     STRATEGY_REVISED = "strategy_revised"
     SEMANTIC_FINDING_REGEN = "semantic_finding_regen"
+    # BUS-05: the attorney-only package_ready -> evidence_review cycle start (new records
+    # after delivery require an explicit NEW draft cycle; artifacts stay immutable).
+    NEW_CYCLE_STARTED = "new_cycle_started"
 
 
 class UserRole(StrEnum):
@@ -60,6 +63,8 @@ class GateAction(StrEnum):
     REJECT = "reject"
     EDIT = "edit"
     OVERRIDE = "override"
+    # BUS-05: starts the post-delivery replacement cycle at package_ready (attorney-only).
+    START_CYCLE = "start_cycle"
 
 
 class TokenKind(StrEnum):

@@ -29,6 +29,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 const READY_SET: ArtifactSetView = {
+  current: true,
   id: "set-1",
   draft_version: 1,
   registry_version: 3,
@@ -61,7 +62,7 @@ describe("PackageCard — package_assembly build", () => {
       <PackageCard
         matterId="m1"
         gate="package_assembly"
-        vm={{ artifact_sets: [], buildable: true }}
+        vm={{ artifact_sets: [], buildable: true, registry_version_current: true, new_cycle_required: false }}
         onGateReady={onGateReady}
       />,
     );
@@ -99,7 +100,7 @@ describe("PackageCard — package_assembly build", () => {
       <PackageCard
         matterId="m1"
         gate="package_assembly"
-        vm={{ artifact_sets: [], buildable: true }}
+        vm={{ artifact_sets: [], buildable: true, registry_version_current: true, new_cycle_required: false }}
         onGateReady={onGateReady}
       />,
     );
@@ -135,7 +136,7 @@ describe("PackageCard — package_assembly build", () => {
       <PackageCard
         matterId="m1"
         gate="package_assembly"
-        vm={{ artifact_sets: [], buildable: true }}
+        vm={{ artifact_sets: [], buildable: true, registry_version_current: true, new_cycle_required: false }}
         onGateReady={onGateReady}
       />,
     );
@@ -170,7 +171,7 @@ describe("PackageCard — package_assembly build", () => {
       <PackageCard
         matterId="m1"
         gate="package_assembly"
-        vm={{ artifact_sets: [], buildable: true }}
+        vm={{ artifact_sets: [], buildable: true, registry_version_current: true, new_cycle_required: false }}
         onGateReady={onGateReady}
       />,
     );
@@ -193,7 +194,7 @@ describe("PackageCard — package_assembly build", () => {
 
 describe("PackageCard — package_ready downloads", () => {
   it("lists artifact sets with exact download hrefs and a SHORT sha", async () => {
-    const vm: PackageVM = { artifact_sets: [READY_SET], buildable: false };
+    const vm: PackageVM = { artifact_sets: [READY_SET], buildable: false, registry_version_current: true, new_cycle_required: false };
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { sets: [READY_SET] }));
 
     const { container } = renderWithQuery(
@@ -220,12 +221,76 @@ describe("PackageCard — package_ready downloads", () => {
   });
 
   it("falls back to the VM's artifact sets when the query has not resolved", () => {
-    const vm: PackageVM = { artifact_sets: [READY_SET], buildable: false };
+    const vm: PackageVM = { artifact_sets: [READY_SET], buildable: false, registry_version_current: true, new_cycle_required: false };
     // No fetch resolution needed — the VM already carries the sets.
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { sets: [] }));
 
     renderWithQuery(<PackageCard matterId="m1" gate="package_ready" vm={vm} />);
     // The VM set renders immediately (before/without the query).
     expect(screen.getAllByTestId("artifact-row").length).toBeGreaterThan(0);
+  });
+});
+
+describe("PackageCard — new cycle required (BUS-05)", () => {
+  it("labels sets historical and posts start_cycle through the gate submit", async () => {
+    const user = userEvent.setup();
+    const vm: PackageVM = {
+      artifact_sets: [READY_SET],
+      buildable: false,
+      registry_version_current: false,
+      new_cycle_required: true,
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (method === "GET" && url.includes("/artifacts")) {
+          return jsonResponse(200, { sets: [READY_SET] });
+        }
+        if (method === "GET" && url.includes("/gates/current")) {
+          return jsonResponse(200, {
+            gate: "package_ready",
+            payload_version: 7,
+            view_model: vm,
+            role_affordances: { can_edit: false, can_approve: false, approve_blockers: [] },
+          });
+        }
+        if (method === "POST" && url.includes("/gates/package_ready/submit")) {
+          return jsonResponse(200, {
+            result: {
+              transitioned: true,
+              from_state: "package_ready",
+              to_state: "evidence_review",
+              replayed: false,
+            },
+          });
+        }
+        throw new Error(`unexpected fetch: ${method} ${url}`);
+      });
+
+    renderWithQuery(<PackageCard matterId="m1" gate="package_ready" vm={vm} />);
+
+    // The banner + the historical label (never "current" once new records outran the set).
+    await screen.findByTestId("new-cycle-required");
+    expect(screen.getByTestId("historical-badge")).toBeInTheDocument();
+    expect(screen.queryByText(/^current$/)).not.toBeInTheDocument();
+    // Downloads stay available.
+    expect(screen.getAllByTestId("artifact-download").length).toBeGreaterThan(0);
+
+    // The button posts the typed start_cycle action with the live payload_version fence.
+    const button = screen.getByTestId("start-new-cycle");
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    await waitFor(() => {
+      const submitCall = fetchMock.mock.calls.find(([url, init]) =>
+        String(url).includes("/submit") && init?.method === "POST",
+      );
+      expect(submitCall).toBeTruthy();
+      const body = JSON.parse(String(submitCall![1]?.body));
+      expect(body.action).toBe("start_cycle");
+      expect(body.payload_version).toBe(7);
+      expect(typeof body.idempotency_key).toBe("string");
+    });
   });
 });

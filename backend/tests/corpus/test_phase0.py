@@ -34,6 +34,7 @@ from app.core.tenancy import tenant_add
 from app.corpus.ingest import phase0 as phase0_module
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import FakeOcr
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.enums import DedupStatus, DocStatus, DocType, GateState, SseEvent
 from app.models.orm import AuditEvent, CaseDocument, DedupDecision, DocumentPage, Matter, User
 
@@ -179,6 +180,7 @@ def test_happy_path_direct_call(
             storage=storage,
             ocr=FakeOcr(),
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -265,6 +267,7 @@ def test_every_frame_is_valid_sse_shape(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path),
         )
     )
@@ -293,6 +296,7 @@ def test_degraded_classify_still_ingests_and_advances(
             storage=storage,
             ocr=FakeOcr(),
             provider=NullProvider(),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -343,6 +347,7 @@ def test_failed_doc_does_not_kill_run(
             storage=storage,
             ocr=FakeOcr(),
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path),
         )
     )
@@ -393,6 +398,7 @@ def test_dedup_quarantine_surfaces(
             storage=storage,
             ocr=FakeOcr(),
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=MatterRunLogger(matter.id, "ingest", logs_dir=tmp_path),
         )
     )
@@ -435,6 +441,7 @@ def test_reentrancy_late_documents(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -462,6 +469,7 @@ def test_reentrancy_late_documents(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -519,6 +527,7 @@ def test_late_documents_at_evidence_review_route_to_analysis_rework(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -539,6 +548,7 @@ def test_late_documents_at_evidence_review_route_to_analysis_rework(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -584,6 +594,7 @@ def test_zero_pending_repost(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_medical_classify_result(), _medical_encounter_result(1)]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -601,6 +612,7 @@ def test_zero_pending_repost(
             storage=storage,
             ocr=FakeOcr(),
             provider=NullProvider(),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )
@@ -703,6 +715,7 @@ def test_unexpected_error_emits_error_frame(
             storage=storage,
             ocr=FakeOcr(),
             provider=ScriptedProvider([_classify_result()]),
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )

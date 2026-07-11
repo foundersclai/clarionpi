@@ -79,13 +79,14 @@ from app.engine.compliance.engine import (
 )
 from app.engine.compliance.judge import SnapshotDrift
 from app.engine.orchestrator.machine import advance
-from app.models.enums import ArtifactKind, GateEvent, GateState, SseEvent
+from app.models.enums import ArtifactKind, DraftStatus, GateEvent, GateState, SseEvent
 from app.models.orm import ArtifactSet, ComplianceFinding, DemandDraft, Firm, Matter, User
 from app.models.schemas import ComplianceFindingView, FindingActionRequest
 from app.models.schemas import StrategyPlan as StrategyPlanView
 from app.package.artifacts import ArtifactTokenLeak
 from app.package.binder import BinderBlocked, BinderPageMissing
 from app.package.build import build_artifact_set
+from app.package.manifest import ExhibitTokenUnsettled
 from app.rules.errors import (
     LetterStructureMissing,
     RulePackChanged,
@@ -480,6 +481,18 @@ def _package_stream(
             {"phase": "package", "error": "rule_pack_invalid"},
         )
         return
+    except ExhibitTokenUnsettled as exc:
+        # BUS-05: picks changed after the G2a settlement — fail visibly, build nothing.
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "exhibit_tokens_unsettled",
+                "document_id": exc.document_id,
+            },
+        )
+        return
     except BinderBlocked as exc:
         session.rollback()
         yield format_sse(
@@ -522,6 +535,34 @@ def _package_stream(
                 "url": f"/api/matters/{matter.id}/artifacts/{artifact_set.id}/{kind}",
             },
         )
+
+    # Completion fence (BUS-05): refresh + lock the matter IMMEDIATELY before the advance —
+    # if a registry-bump invalidation won the race during the build, the artifact set stays
+    # immutable HISTORICAL output and is not presented as current; the stale forward advance
+    # is refused. (Package work mints nothing: the manifest consumed already-settled tokens,
+    # so Matter.registry_version cannot have moved on our account.)
+    locked_matter = session.execute(
+        select(Matter)
+        .where(Matter.id == matter.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+    session.refresh(draft)
+    if (
+        locked_matter.gate_state != GateState.PACKAGE_ASSEMBLY.value
+        or draft.status == DraftStatus.SUPERSEDED.value
+        or draft.registry_version != locked_matter.registry_version
+    ):
+        session.rollback()
+        yield format_sse(
+            SseEvent.ERROR,
+            {
+                "phase": "package",
+                "error": "draft_registry_drift",
+                "detail": "invalidation superseded this draft during package assembly",
+            },
+        )
+        return
 
     # Advance the gate (guardless ARTIFACTS_BUILT edge) + audit, in one commit.
     transition = advance(GateState.PACKAGE_ASSEMBLY, GateEvent.ARTIFACTS_BUILT)
@@ -662,10 +703,11 @@ def _artifact_not_found(set_id: uuid.UUID, kind: str) -> JSONResponse:
 
 
 def _latest_draft(session: Session, *, matter: Matter) -> DemandDraft | None:
-    """The matter's highest-version :class:`DemandDraft`, or ``None`` (as compliance.engine)."""
-    drafts = list(
-        session.execute(select(DemandDraft).where(DemandDraft.matter_id == matter.id)).scalars()
-    )
-    if not drafts:
-        return None
-    return max(drafts, key=lambda d: d.version)
+    """The shared current-draft selector (compliance.engine.latest_draft) — one rule, one place.
+
+    A superseded highest version returns ``None`` (BUS-05): the package-build path must
+    never fall back to (or package) a draft a registry bump invalidated.
+    """
+    from app.engine.compliance.engine import latest_draft
+
+    return latest_draft(session, matter=matter)

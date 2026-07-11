@@ -111,3 +111,26 @@ mapping, or the side-effect registry). A change to any of these lands with a new
 [ADR-0005](../adr/0005-m3-gate-service-decisions.md),
 [ADR-0007](../adr/0007-m5-drafting-decisions.md)). Update this file **and**
 [`system_contract.md`](../system_contract.md) §1/4/8/9/12 in the same PR.
+
+
+## BUS-05 addendum (ADR-0012): invalidation service, lock discipline, cycle start
+
+- **One bump owner.** `registry_bump.apply_registry_bump` applies the flow_04 matrix:
+  row-lock + refresh the matter, mark stale plans (`invalidated_by_registry_version`) and
+  supersede stale drafts BEFORE the gate moves, apply the `REGISTRY_BUMPED` edge (or record
+  `immutable_new_cycle` at `package_ready` with NO transition), audit, advance the durable
+  cursor `Matter.invalidation_applied_registry_version`, commit — one transaction. A NULL
+  cursor (legacy) is reconciled via `reconcile_matter_cursor`, never grandfathered.
+- **Lock discipline.** `apply_gate_action` acquires the SAME matter row lock (with
+  `populate_existing`) as its FIRST step — human approvals and registry bumps serialize;
+  the Phase-0 completion handler (`phase0_completion.py`, injected into `run_phase0` by the
+  API layer) branches on the state that actually serialized.
+- **Machine changes.** `PACKAGE_ASSEMBLY + REGISTRY_BUMPED` cascades to `evidence_review`
+  (the builder consumes a FIXED approved draft); `package_ready` exits ONLY via the
+  attorney-only `NEW_CYCLE_STARTED` edge guarded by `registry_newer_than_packaged_draft`;
+  `terminal_states` is EMPTY. `GateAction.START_CYCLE` routes through the shared submit
+  service with a START_CYCLE-scoped replay that runs BEFORE the gate-state check (a
+  post-transition retry replays rather than mismatching); every other action keeps the
+  pinned step order.
+- **G2a side effect.** Confirm settles ALL manifest EX tokens (tokenizer `commit=False` —
+  caller-owned transaction), advances the cursor to the settled version, THEN freezes.

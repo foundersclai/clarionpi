@@ -190,6 +190,15 @@ def run_demand_generation(
         return
 
     # ---- Create the draft row (versioned; a resume is a NEW version) ----------------------
+    # At most ONE current draft (BUS-05): creating a new version supersedes every prior
+    # non-superseded draft in the same transaction.
+    for prior in db.scalars(
+        select(DemandDraft).where(
+            DemandDraft.matter_id == matter.id,
+            DemandDraft.status != DraftStatus.SUPERSEDED.value,
+        )
+    ):
+        prior.status = DraftStatus.SUPERSEDED.value
     draft = DemandDraft(
         matter_id=matter.id,
         version=_next_draft_version(db, matter=matter),
@@ -253,6 +262,41 @@ def run_demand_generation(
         # The compliance wave injects its G3 pre-check between validation and advance; None here.
         if post_draft is not None:
             post_draft(db, matter, draft)
+        # Completion fence (BUS-05): refresh + lock the matter and draft IMMEDIATELY before
+        # the advance — a registry-bump invalidation that serialized during generation must
+        # not be overwritten by a stale forward state. Drift emits the existing typed error.
+        locked_matter = db.execute(
+            select(Matter)
+            .where(Matter.id == matter.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one()
+        db.refresh(draft)
+        plan_stale = getattr(plan, "invalidated_by_registry_version", None) is not None
+        if (
+            locked_matter.gate_state != GateState.DRAFTING.value
+            or draft.status == DraftStatus.SUPERSEDED.value
+            or plan_stale
+            or draft.registry_version != locked_matter.registry_version
+            or plan.registry_version != locked_matter.registry_version
+        ):
+            db.rollback()
+            logger.log(
+                "draft_completion_fenced",
+                gate_state=locked_matter.gate_state,
+                draft_status=draft.status,
+                draft_registry_version=draft.registry_version,
+                matter_registry_version=locked_matter.registry_version,
+            )
+            yield format_sse(
+                SseEvent.ERROR,
+                {
+                    "phase": _PHASE,
+                    "error": "draft_registry_drift",
+                    "detail": "invalidation superseded this draft during generation",
+                },
+            )
+            return
         transition = advance(GateState.DRAFTING, GateEvent.DRAFT_COMPLETE)
         matter.gate_state = transition.to.value
         record_event(

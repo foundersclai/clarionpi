@@ -90,3 +90,11 @@ semantics, or token-id stability; changing the `[[AMT]]` re-verification
 policy. **Only `app.engine.tokenizer` mints tokens** — a mint anywhere else is a
 boundary breach. Update this file **and**
 [`system_contract.md`](../system_contract.md) §2/5/10/11 in the same PR.
+
+
+## BUS-05 addendum (ADR-0012): caller-owned EX settlement
+
+`mint_exhibits` (and `_apply_desired`) accept `commit=False` for caller-owned
+transactions: the G2a confirm side effect settles ALL manifest EX tokens INSIDE the
+gate-action transaction (settle → cursor advance → freeze, one atomic act). Package
+assembly never mints — it consumes settled tokens read-only via the manifest.

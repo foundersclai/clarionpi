@@ -8,7 +8,7 @@ answerable (`backend/app/package/`).
 ```mermaid
 flowchart TB
     g3["g3_approved -> package_assembly"]:::auto
-    man["Draft manifest — manifest.py<br/>exhibits + integrity verdicts,<br/>EX tokens minted via the registry,<br/>bare ids on the wire"]:::auto
+    man["Draft manifest — manifest.py<br/>exhibits + integrity verdicts,<br/>EX tokens READ-ONLY (settled at G2a confirm;<br/>build never mints or bumps the registry),<br/>bare ids on the wire"]:::auto
     blocked["BinderBlocked<br/>pending PHI disposition or<br/>failed integrity verdict<br/>-> build refuses, gate shows why"]:::guard
 
     subgraph artifacts["Artifacts (each token-leak-scanned before write)"]
@@ -51,3 +51,22 @@ flowchart TB
 - The letter itself contains **no tokens and no sentinels** — an
   `ArtifactTokenLeak` or an unresolved fact fails the build loudly instead of
   shipping a placeholder to an adjuster.
+
+
+## BUS-05: settlement, fences, and the replacement cycle
+
+- **EX tokens settle at G2a confirm**, inside the gate-action transaction
+  (`service._settle_exhibits_then_freeze`): mint → advance the invalidation cursor →
+  FREEZE the settled version. Package assembly consumes settled tokens read-only
+  (`build_draft_manifest(require_settled_tokens=True)`) and fails typed
+  (`exhibit_tokens_unsettled`) if a pick changed after settlement. The manifest GET is
+  read-only at every gate — no write-on-GET mint exists.
+- **Completion fence:** immediately before `artifacts_built` advances, the stream re-locks
+  the matter and requires the gate still `package_assembly`, the draft non-superseded, and
+  draft/matter registry equality — a registry-bump invalidation that won the race leaves
+  the built set as immutable HISTORICAL output (`draft_registry_drift` error, no advance).
+- **Replacement cycle:** at `package_ready` with a newer registry, the package view flags
+  `new_cycle_required`; the attorney's `start_cycle` gate action
+  (`new_cycle_started` edge, guarded `role_attorney` +
+  `registry_newer_than_packaged_draft`) re-enters `evidence_review` without touching any
+  prior artifact bytes or rows.

@@ -15,7 +15,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "@/lib/api";
 import { runPackageBuild, useArtifacts } from "@/lib/drafting";
+import { useGate, useSubmitGate } from "@/lib/gates";
 import type { ArtifactSetView, ArtifactView, GateState, PackageVM } from "@/lib/types";
 import type { SseFrame } from "@/lib/sse";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +72,7 @@ function humanBytes(bytes: number): string {
 
 export function PackageCard({ matterId, gate, vm, onGateReady }: PackageCardProps) {
   const isReady = gate === "package_ready";
+  const newCycleRequired = isReady && vm.new_cycle_required;
 
   // On package_ready, read the authoritative artifact sets (the VM already carries them, but the
   // query keeps the download list fresh across a refetch and is the single source for the list).
@@ -93,9 +96,57 @@ export function PackageCard({ matterId, gate, vm, onGateReady }: PackageCardProp
           <BuildSection matterId={matterId} buildable={vm.buildable} onGateReady={onGateReady} />
         )}
 
-        {isReady && <ArtifactSetsList sets={sets} />}
+        {newCycleRequired && <NewCycleSection matterId={matterId} />}
+
+        {isReady && <ArtifactSetsList sets={sets} historical={newCycleRequired} />}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+// package_ready + new records (BUS-05): the explicit attorney-only replacement cycle.
+// ---------------------------------------------------------------------------------------
+
+function NewCycleSection({ matterId }: { matterId: string }) {
+  // The submit needs the CURRENT payload_version fence — read the live envelope.
+  const envelope = useGate(matterId);
+  const submit = useSubmitGate(matterId);
+  const payloadVersion = envelope.data?.payload_version;
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3"
+      data-testid="new-cycle-required"
+    >
+      <p className="text-sm text-ink">
+        New records arrived after this package was built. The artifacts below remain
+        downloadable as historical output; a new draft cycle is required to incorporate the
+        new records.
+      </p>
+      {submit.isError && (
+        <p role="alert" className="text-sm text-danger">
+          {submit.error instanceof ApiError
+            ? (submit.error.body.error ?? "Could not start the new cycle.")
+            : "Could not start the new cycle."}
+        </p>
+      )}
+      <div>
+        <Button
+          size="sm"
+          data-testid="start-new-cycle"
+          disabled={submit.isPending || payloadVersion === undefined}
+          onClick={() =>
+            payloadVersion !== undefined &&
+            submit.mutate({
+              gate: "package_ready",
+              body: { action: "start_cycle", payload_version: payloadVersion },
+            })
+          }
+        >
+          {submit.isPending ? "Starting…" : "Start new cycle"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -255,7 +306,13 @@ function buildErrorText(code: string, data: Record<string, unknown>): string {
 // package_ready — the artifact-sets list + downloads + immutability note.
 // ---------------------------------------------------------------------------------------
 
-function ArtifactSetsList({ sets }: { sets: ArtifactSetView[] }) {
+function ArtifactSetsList({
+  sets,
+  historical = false,
+}: {
+  sets: ArtifactSetView[];
+  historical?: boolean;
+}) {
   if (sets.length === 0) {
     return <p className="text-sm text-ink-muted">No artifact sets.</p>;
   }
@@ -272,6 +329,14 @@ function ArtifactSetsList({ sets }: { sets: ArtifactSetView[] }) {
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="secondary">draft v{set.draft_version}</Badge>
               <Badge variant="secondary">registry v{set.registry_version}</Badge>
+              {/* BUS-05: never label a set current once new records outran it. */}
+              {set.current && !historical ? (
+                <Badge variant="success">current</Badge>
+              ) : (
+                <Badge variant="secondary" data-testid="historical-badge">
+                  historical
+                </Badge>
+              )}
               {set.created_at && (
                 <span className="text-xs text-ink-muted">built {set.created_at}</span>
               )}

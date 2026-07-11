@@ -220,9 +220,15 @@ def _draft(db: Session, matter: Matter) -> DemandDraft:
 def _happy_matter(
     db: Session, storage: LocalDiskStorage, matter: Matter, attorney: User
 ) -> DemandDraft:
-    """A matter with one cleared exhibit + one passed section — a shippable package."""
+    """A matter with one cleared exhibit + one passed section — a shippable package.
+
+    Settles the exhibit tokens after the picks (the G2a-confirm side effect's job, BUS-05):
+    package assembly consumes ONLY already-settled tokens and never mints.
+    """
     doc = _doc_with_pdf(db, storage, matter, filename="bill.pdf", page_texts=["p1", "p2"])
     _cleared_pick(db, matter, attorney, doc, pages=[1, 2], sort_order=1)
+    mani.build_draft_manifest(db, matter=matter, mint_tokens=True)
+    db.refresh(matter)  # the settle bumped registry_version; the draft must bind to it
     draft = _draft(db, matter)
     _passed_section(
         db, matter, draft, section_id="liability", preview="The defendant is liable.", sort_order=1

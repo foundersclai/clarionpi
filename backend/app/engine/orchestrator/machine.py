@@ -13,13 +13,15 @@ Edge list is the authoritative one from 01 §4 (state diagram + gate table) plus
 - **self-loop (absorb in place)** — ``corpus_processing`` / ``analysis_running`` fold new
   facts into the running build; ``facts_review`` / ``strategy_intake`` are pre-freeze (no
   approval exists yet to invalidate); ``evidence_review`` re-presents the gate at the new
-  version. ``package_assembly`` also self-loops: it is a short-lived auto build state that
-  runs *after* G3 and before immutability, and flow_04 maps it to ``absorb_in_progress``
-  (see ``invalidation.INVALIDATION``) — folding the bump into the in-progress build is the
-  edge that matches that effect. (Not named explicitly in the 01/flow_04 prose; inferred
-  to keep the machine total and consistent with the invalidation matrix.)
-- **no edge** — ``package_ready`` is immutable; a bump there is refused with a reason that
-  says so (new records start a new draft cycle).
+  version. ``package_assembly`` CASCADES like drafting/compliance (BUS-05): the live
+  builder consumes a FIXED approved draft and does not absorb a newer registry, so a
+  self-loop there could publish a stale package — a bump back-edges to ``evidence_review``
+  and the in-flight build's completion fence refuses to advance.
+- **no registry_bumped edge** — ``package_ready`` artifacts are immutable; a bump there is
+  refused with a reason that says so. New records require the EXPLICIT attorney-only
+  ``NEW_CYCLE_STARTED`` edge (``package_ready -> evidence_review``, guarded on the registry
+  being newer than the packaged draft) — so ``package_ready`` is no longer terminal
+  (``terminal_states`` is empty), while the prior ``ArtifactSet`` rows stay untouched.
 """
 
 from __future__ import annotations
@@ -89,13 +91,20 @@ TRANSITIONS: Mapping[tuple[GateState, GateEvent], Transition] = {
     (_S.FACTS_REVIEW, _E.REGISTRY_BUMPED): Transition(_S.FACTS_REVIEW, ()),
     (_S.STRATEGY_INTAKE, _E.REGISTRY_BUMPED): Transition(_S.STRATEGY_INTAKE, ()),
     (_S.EVIDENCE_REVIEW, _E.REGISTRY_BUMPED): Transition(_S.EVIDENCE_REVIEW, ()),
-    (_S.PACKAGE_ASSEMBLY, _E.REGISTRY_BUMPED): Transition(_S.PACKAGE_ASSEMBLY, ()),
-    # package_ready: NO registry_bumped edge — immutable, new records start a new cycle.
+    # package_assembly consumes a FIXED approved draft — a bump cascades like drafting/
+    # compliance (BUS-05); the build-completion fence refuses the stale forward advance.
+    (_S.PACKAGE_ASSEMBLY, _E.REGISTRY_BUMPED): Transition(_S.EVIDENCE_REVIEW, ()),
+    # package_ready: NO registry_bumped edge — immutable; the explicit cycle start below is
+    # the ONLY way out (attorney-only, and only when the registry outran the packaged draft).
+    (_S.PACKAGE_READY, _E.NEW_CYCLE_STARTED): Transition(
+        _S.EVIDENCE_REVIEW, ("role_attorney", "registry_newer_than_packaged_draft")
+    ),
 }
 
 
-# Terminal states have no outgoing edge; the machine cannot advance out of them.
-terminal_states: frozenset[GateState] = frozenset({GateState.PACKAGE_READY})
+# No state is terminal anymore (BUS-05): package_ready exits ONLY via the guarded
+# NEW_CYCLE_STARTED edge — its artifacts stay immutable; the matter does not.
+terminal_states: frozenset[GateState] = frozenset()
 
 # System-driven states: the orchestrator advances these on a background-job signal, not an
 # attorney action. The FE keys on the ``isRunning`` pattern here (orchestrator_gates §4:

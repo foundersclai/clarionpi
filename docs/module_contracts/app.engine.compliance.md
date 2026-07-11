@@ -134,3 +134,13 @@ snapshot-neutral regen channel, or the snapshot-symmetry / fail-visible-TONE con
 change to any of these lands with a new ADR (cf.
 [ADR-0007](../adr/0007-m5-drafting-decisions.md)). Update this file **and**
 [`system_contract.md`](../system_contract.md) §2/3/6/11/13 in the same PR.
+
+
+## BUS-05 addendum (ADR-0012): the current-draft selector
+
+`latest_draft` is THE shared current-draft selector and changed semantics: the
+highest-version draft is returned ONLY when not `superseded`; a superseded highest
+version returns `None` — never an older draft (a stale v1 must not become current after
+v2 was invalidated). `open_blocking_count` and every consumer (the G3 guard feed,
+`compliance_review_vm`, `package_vm` buildability, the drafting/package routes — whose
+duplicate `_latest_draft` now delegates here) inherit this rule.

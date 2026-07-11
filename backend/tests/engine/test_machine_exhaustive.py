@@ -1,4 +1,4 @@
-"""Exhaustive grid over the 10×14 (state, event) product.
+"""Exhaustive grid over the 10×15 (state, event) product.
 
 Locks the transition table against silent edits: every pair either maps to a ``Transition``
 or raises ``IllegalTransition`` — no third outcome, no crash. The mapped-edge count is
@@ -16,17 +16,18 @@ from app.engine.orchestrator.errors import IllegalTransition
 from app.engine.orchestrator.machine import TRANSITIONS, advance, terminal_states
 from app.models.enums import GateEvent, GateState
 
-# 13 core (01 §4 forward + rework) + 9 registry_bumped (all states but package_ready) = 22.
-EXPECTED_MAPPED_EDGES = 22
+# 13 core (01 §4 forward + rework) + 9 registry_bumped (all states but package_ready)
+# + the BUS-05 guarded cycle start (package_ready -> evidence_review) = 23.
+EXPECTED_MAPPED_EDGES = 23
 
 ALL_PAIRS = list(itertools.product(GateState, GateEvent))
 
 
-def test_grid_is_ten_by_fourteen() -> None:
-    # Guards the premise of this file: 10 states × 14 events.
+def test_grid_is_ten_by_fifteen() -> None:
+    # Guards the premise of this file: 10 states × 15 events.
     assert len(GateState) == 10
-    assert len(GateEvent) == 14
-    assert len(ALL_PAIRS) == 140
+    assert len(GateEvent) == 15
+    assert len(ALL_PAIRS) == 150
 
 
 def test_mapped_edge_count_is_exact() -> None:
@@ -56,12 +57,16 @@ def test_every_mapped_guard_name_exists_in_registry() -> None:
     assert used <= set(guards.REGISTRY)
 
 
-def test_package_ready_is_terminal_no_outgoing_edges() -> None:
+def test_package_ready_has_only_the_guarded_cycle_start_edge() -> None:
+    # BUS-05: package_ready is no longer terminal — its ONLY exit is the attorney-only
+    # cycle start, guarded on the registry being newer than the packaged draft. The prior
+    # artifacts stay immutable; the MATTER does not.
     outgoing = [pair for pair in TRANSITIONS if pair[0] is GateState.PACKAGE_READY]
-    assert outgoing == []
-    assert GateState.PACKAGE_READY in terminal_states
-    # And it is the ONLY terminal state.
-    assert terminal_states == frozenset({GateState.PACKAGE_READY})
+    assert outgoing == [(GateState.PACKAGE_READY, GateEvent.NEW_CYCLE_STARTED)]
+    edge = TRANSITIONS[(GateState.PACKAGE_READY, GateEvent.NEW_CYCLE_STARTED)]
+    assert edge.to is GateState.EVIDENCE_REVIEW
+    assert edge.guards == ("role_attorney", "registry_newer_than_packaged_draft")
+    assert terminal_states == frozenset()
 
 
 def test_package_ready_registry_bump_reason_mentions_immutable() -> None:

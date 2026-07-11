@@ -41,6 +41,7 @@ from app.corpus.ingest.dedup import resolve_dedup_decision
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import FakeOcr
 from app.engine.brain1.chronology import ChronologyBuildOutcome, build_chronology
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.enums import DedupResolution, DedupStatus, DocStatus, DocType, GateState
 from app.models.orm import CaseDocument, DedupDecision, LlmCall, Matter, MatterBudget, User
 from tests.evals.gold_fixtures import GoldMatter, build_gm1, build_gm2, scripted_provider_for
@@ -228,6 +229,7 @@ def _drive_matter(
             storage=storage,
             ocr=FakeOcr(),
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )

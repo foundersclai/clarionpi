@@ -38,6 +38,7 @@ from app.core.storage import LocalDiskStorage
 from app.core.tenancy import tenant_add
 from app.corpus.ingest.phase0 import run_phase0
 from app.corpus.ocr import FakeOcr
+from app.engine.orchestrator.phase0_completion import handle_phase0_completion
 from app.models.enums import DedupResolution, DedupStatus, DocStatus, DocType, GateState, TextSource
 from app.models.orm import CaseDocument, DedupDecision, DocumentPage, Matter, PageText, User
 
@@ -110,6 +111,7 @@ def test_m1_exit_phase0_at_scale(
             storage=storage,
             ocr=FakeOcr(),  # default_text="" -> image-only pages stay zero_text via OCR
             provider=provider,
+            on_complete=handle_phase0_completion,
             run_logger=logger,
         )
     )

@@ -29,11 +29,16 @@ def test_pre_freeze_and_auto_states_absorb() -> None:
     for state in (
         GateState.CORPUS_PROCESSING,
         GateState.ANALYSIS_RUNNING,
-        GateState.PACKAGE_ASSEMBLY,
         GateState.FACTS_REVIEW,
         GateState.STRATEGY_INTAKE,
     ):
         assert INVALIDATION[state] == Effect.ABSORB_IN_PROGRESS
+
+
+def test_package_assembly_cascades_like_drafting() -> None:
+    # BUS-05: the live builder consumes a FIXED approved draft — it cannot absorb a newer
+    # registry, so a bump there is the stale-draft cascade, not a self-loop.
+    assert INVALIDATION[GateState.PACKAGE_ASSEMBLY] == Effect.DRAFT_STALE_G3_BLOCKED
 
 
 def test_survives_and_never_survives_are_disjoint() -> None:

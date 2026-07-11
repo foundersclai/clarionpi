@@ -344,6 +344,21 @@ distinct stores; derived state is always rebuildable from the first two.
 - **Deferred:** the rebuild paths (ledger recompute, registry rebuild) land
   with `app/money` and `app/engine/tokenizer` (**M2**).
 
+- **Enforced (late-document audit, BUS-05/ADR-0012):** derived state can never stay
+  SILENTLY stale — one bump owner (`orchestrator/registry_bump.py`) applies the flow_04
+  matrix under the shared matter row lock (gate actions take the same lock first), marks
+  stale plans (`invalidated_by_registry_version` — approval survives as history, never
+  reusable) and supersedes stale drafts, and is driven by the durable
+  `Matter.invalidation_applied_registry_version` cursor (crash-recoverable; legacy NULL
+  cursors reconciled, never grandfathered). `package_assembly` cascades like drafting;
+  demand/package completions re-lock and refuse stale advances (`draft_registry_drift`).
+  EX tokens settle at G2a confirm (settle → cursor → freeze, one transaction; tokenizer
+  runs caller-owned `commit=False`); the package build consumes settled tokens READ-ONLY
+  and the manifest GET can never mint. `package_ready` is non-terminal: the attorney-only
+  `start_cycle` action (guarded `registry_newer_than_packaged_draft`) re-enters
+  `evidence_review` with every prior artifact byte/row untouched, and the package view
+  carries explicit `registry_version_current` / `new_cycle_required` / per-set `current`.
+
 ### 11. The UI Displays State; It Does Not Invent It
 
 AI overlays exist only in view-models on the wire; frontend submissions never

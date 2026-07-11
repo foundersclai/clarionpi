@@ -259,6 +259,7 @@ def _apply_desired(
     matter: Matter,
     desired: Sequence[_Desired],
     reason: str,
+    commit: bool = True,
 ) -> RegistrySyncOutcome:
     """Shared mint/supersede engine for every source kind.
 
@@ -330,7 +331,10 @@ def _apply_desired(
             ledger_hash=item.ledger_hash,
         )
         tenant_add(db, row, matter.firm_id)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()  # caller-owned transaction (BUS-05: the G2a settle side effect)
     return RegistrySyncOutcome(
         minted=minted,
         updated=updated,
@@ -492,7 +496,11 @@ def mint_amounts(
 
 
 def mint_exhibits(
-    db: Session, *, matter: Matter, entries: Sequence[Mapping[str, object]]
+    db: Session,
+    *,
+    matter: Matter,
+    entries: Sequence[Mapping[str, object]],
+    commit: bool = True,
 ) -> RegistrySyncOutcome:
     """Register ``[[EX]]`` exhibit tokens for a matter's collated picks — mint, never resolve order.
 
@@ -523,7 +531,7 @@ def mint_exhibits(
                 status=TokenStatus.VERIFIED,
             )
         )
-    return _apply_desired(db, matter=matter, desired=desired, reason=_REASON_EXHIBIT)
+    return _apply_desired(db, matter=matter, desired=desired, reason=_REASON_EXHIBIT, commit=commit)
 
 
 def mint_attorney_fact(

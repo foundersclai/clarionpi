@@ -385,6 +385,9 @@ class StrategyPlan(_ORMModel):
     demand_type: str
     sections: list[PlannedSection] = Field(default_factory=list)
     emphasis_directives: list[str] = Field(default_factory=list)
+    # BUS-05: set when a registry bump made this plan stale; `approved` stays as historical
+    # evidence — the plan is currently usable only when approved AND this is None.
+    invalidated_by_registry_version: int | None = None
     approved: bool
     # G2.5-approve audit denorm (the GateRecord stays authoritative).
     approved_by: uuid.UUID | None = None

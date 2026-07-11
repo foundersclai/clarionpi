@@ -610,6 +610,8 @@ def artifact_sets_view(db: Session, matter: Matter) -> list[dict]:
     as ``{kind, sha256, byte_count, url}`` — the ``object_key`` is INTERNAL (a storage path) and is
     NOT surfaced; the wire exposes only the kind-keyed download ``url`` the artifact route serves.
     """
+    from app.engine.compliance.engine import latest_draft
+
     sets = list(
         db.execute(
             select(ArtifactSet)
@@ -617,6 +619,7 @@ def artifact_sets_view(db: Session, matter: Matter) -> list[dict]:
             .order_by(ArtifactSet.created_at.desc(), ArtifactSet.id.desc())
         ).scalars()
     )
+    current_draft = latest_draft(db, matter=matter)
     out: list[dict] = []
     for s in sets:
         artifacts = [
@@ -634,6 +637,13 @@ def artifact_sets_view(db: Session, matter: Matter) -> list[dict]:
                 "draft_version": s.draft_version,
                 "registry_version": s.registry_version,
                 "created_at": s.created_at.isoformat() if s.created_at else None,
+                # BUS-05: current ONLY for the non-superseded current draft at the matter's
+                # current registry version — historical sets stay downloadable, never "current".
+                "current": (
+                    current_draft is not None
+                    and s.draft_version == current_draft.version
+                    and s.registry_version == matter.registry_version
+                ),
                 "artifacts": artifacts,
             }
         )
@@ -641,19 +651,29 @@ def artifact_sets_view(db: Session, matter: Matter) -> list[dict]:
 
 
 def package_vm(db: Session, matter: Matter) -> dict:
-    """The package_assembly / package_ready view-model — the artifact sets + a buildable flag.
+    """The package_assembly / package_ready view-model — sets + buildable + staleness (BUS-05).
 
     Shared across both states. ``artifact_sets`` is the serializer above (latest first).
-    ``buildable`` is only meaningful at ``package_assembly`` — ``True`` when the latest draft is
-    approved
-    (status ``approved``), i.e. G3 is behind us and a build is warranted; at ``package_ready`` it is
-    ``False`` (the package is built + immutable — nothing left to build).
+    ``buildable`` is only meaningful at ``package_assembly`` — ``True`` when the CURRENT
+    (non-superseded) draft is approved. Explicit staleness fields, never inferred from copy:
+    ``registry_version_current`` — whether the latest packaged set matches the matter
+    registry; ``new_cycle_required`` — at ``package_ready`` with a newer registry, the
+    attorney must START A NEW CYCLE (the artifacts stay downloadable as historical output).
     """
     from app.engine.compliance.engine import latest_draft
+    from app.engine.orchestrator.registry_bump import packaged_registry_version
 
     state = GateState(matter.gate_state)
     buildable = False
     if state is GateState.PACKAGE_ASSEMBLY:
         draft = latest_draft(db, matter=matter)
         buildable = draft is not None and draft.status == DraftStatus.APPROVED.value
-    return {"artifact_sets": artifact_sets_view(db, matter), "buildable": buildable}
+    packaged = packaged_registry_version(db, matter=matter)
+    registry_version_current = packaged is not None and packaged == matter.registry_version
+    new_cycle_required = state is GateState.PACKAGE_READY and not registry_version_current
+    return {
+        "artifact_sets": artifact_sets_view(db, matter),
+        "buildable": buildable,
+        "registry_version_current": registry_version_current,
+        "new_cycle_required": new_cycle_required,
+    }

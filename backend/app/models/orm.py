@@ -183,6 +183,14 @@ class Matter(Base, FirmScoped):
     # earlier work used today's pack); the package guard fails closed on a missing pin.
     rule_pack_version: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     rule_pack_fingerprint: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    # BUS-05: the durable invalidation cursor — the highest registry version whose
+    # downstream-staleness consequences have been APPLIED. Registry sync commits before the
+    # gate step, so a crash in between must be recoverable: a lagging cursor re-attempts
+    # invalidation on the next completion/retry. NULL = legacy row not yet reconciled
+    # (deliberately not backfilled — that would grandfather matters already left stale).
+    invalidation_applied_registry_version: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True
+    )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -637,6 +645,10 @@ class StrategyPlan(Base, FirmScoped):
     demand_type: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # open|time_limited
     sections: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     emphasis_directives: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # BUS-05: set when a registry bump made this plan stale. `approved` stays as
+    # HISTORICAL approval evidence; a plan is currently usable only when approved AND
+    # invalidated_by_registry_version IS NULL.
+    invalidated_by_registry_version: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     approved: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     # G2.5-approve audit denormalization: who approved this plan and when. The GateRecord
     # (actor_id + actor_role + created_at) remains the authoritative approval trail; these are a

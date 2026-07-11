@@ -420,3 +420,43 @@ def test_post_draft_hook_invoked_between_validation_and_advance(
     # After the run the gate DID advance.
     db.refresh(matter)
     assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
+
+
+def test_completion_fence_refuses_stale_advance_after_mid_run_bump(
+    db: Session, matter: Matter, user: User
+) -> None:
+    """Deterministic interleaving (BUS-05, no sleeps): a registry bump lands BETWEEN draft
+    validation and the gate advance (via the post_draft seam). The completion fence must
+    refuse the stale forward state — the matter stays where the INVALIDATION put it."""
+    from app.engine.orchestrator.registry_bump import apply_registry_bump
+
+    plan, fact_a, _ = _two_section_plan(db, matter, user)
+
+    def _bump_mid_run(session: Session, m: Matter, draft: DemandDraft) -> None:
+        # Simulates late documents arriving while generation ran: bump to a NEWER version.
+        m.registry_version = m.registry_version + 1
+        session.commit()
+        apply_registry_bump(session, matter=m, user=user, to_registry_version=m.registry_version)
+
+    provider = ScriptedProvider(
+        [
+            _memo(),
+            _section(f"Fault is clear from [[{fact_a}]]."),
+            _section("We represent the claimant and present this demand."),
+        ]
+    )
+    frames = list(
+        run_demand_generation(
+            db, matter=matter, user=user, provider=provider, post_draft=_bump_mid_run
+        )
+    )
+    joined = "\n".join(frames)
+    assert "draft_registry_drift" in joined  # the typed drift error, not a raw failure
+    db.refresh(matter)
+    # The invalidation's back-edge stands; the completion did NOT restore a forward state.
+    assert matter.gate_state == GateState.EVIDENCE_REVIEW.value
+    # The draft the bump superseded stays superseded (historical, never current).
+    drafts = list(
+        db.execute(select(DemandDraft).where(DemandDraft.matter_id == matter.id)).scalars()
+    )
+    assert all(d.status == DraftStatus.SUPERSEDED.value for d in drafts)

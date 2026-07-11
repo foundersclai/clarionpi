@@ -176,7 +176,16 @@ package SSE surfaces `rule_pack_unaudited` (+ `jurisdiction`, `pack_version`) /
 fingerprints, exception strings, file paths, or legal citations); ingest/analysis SSE
 refuse pin drift at entry with the same `error` codes; plan-emit and billing-edit REST
 refuse `409 {error: <diagnostic_kind>}` BEFORE any write; the read-only evidence VM renders
-a `None` ledger under drift ·
+a `None` ledger under drift · **invalidation surfaces (BUS-05/ADR-0012)**: the plan view
+carries `invalidated_by_registry_version`; `package_vm` carries explicit
+`registry_version_current` + `new_cycle_required` and each artifact set a derived
+`current` flag (true only for the non-superseded current draft at the current registry
+version); the gate submit accepts `action: start_cycle` at `package_ready`
+(attorney-only, post-transition retries REPLAY rather than mismatching); the ingest SSE
+gains `status` state `registry_bumped` `{effect, from_gate_state, to_gate_state,
+from_registry_version, to_registry_version}`; the package SSE gains
+`exhibit_tokens_unsettled`; `GET /matters/{id}/manifest` is READ-ONLY at every gate (the
+`?mint=true` write-on-GET is gone) ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

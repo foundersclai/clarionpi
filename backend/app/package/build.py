@@ -164,8 +164,11 @@ def build_artifact_set(
     if existing is not None:
         return BuildResult(artifact_set=existing, reused=True)
 
-    # -- 2. Manifest (mint EX tokens so the binder index + bookmarks resolve). --
-    manifest = build_draft_manifest(db, matter=matter, mint_tokens=True)
+    # -- 2. Manifest — READ-ONLY (BUS-05): exhibit tokens settled at G2a confirm; package
+    # assembly consumes them and NEVER mints or bumps the registry (a mint here would label
+    # the set stale on arrival and self-drift the version fence). A missing/drifted token
+    # raises ExhibitTokenUnsettled before any artifact work.
+    manifest = build_draft_manifest(db, matter=matter, require_settled_tokens=True)
 
     # -- 3. Build all four artifacts BEFORE any persistence (atomicity). --
     # Binder first: its build-time gate (BinderBlocked) / integrity checks (BinderPageMissing) must

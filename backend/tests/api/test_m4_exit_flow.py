@@ -485,17 +485,15 @@ def test_m4_exit_full_g2a_flow(
     assert disp.status_code == 200, disp.text
     assert disp.json()["disposition_role"] == "attorney"
 
-    # ---- manifest?mint=true: pending PHI on an entry WITH includes → blocking NON-empty ----
-    minted = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
-    assert minted.status_code == 200, minted.text
-    manifest = minted.json()
+    # ---- manifest: READ-ONLY at every gate (BUS-05) — no GET can mint. Pending PHI on an
+    # entry WITH includes → blocking NON-empty; the token settles at G2a confirm, not here.
+    manifest_resp = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
+    assert manifest_resp.status_code == 200, manifest_resp.text
+    manifest = manifest_resp.json()
     assert len(manifest["entries"]) == 1
     entry = manifest["entries"][0]
-    # A bare EX id (ordinal is shared with the FACT/AMT tokens already minted this run, so it is not
-    # EX_1 in a full pipeline — assert the SHAPE, and that NOTHING token-shaped leaked).
-    ex_token_id = entry["exhibit_token_id"]
-    assert re.fullmatch(r"EX_\d+", ex_token_id), ex_token_id
-    assert "[[" not in minted.text
+    assert entry["exhibit_token_id"] is None  # nothing minted by a GET (write-on-GET removed)
+    assert "[[" not in manifest_resp.text
     assert entry["included_pages"] == [1]
     assert entry["integrity"] == "ok"
     assert entry["exhibit_id"] == exhibit_id  # the manifest surfaces the PHI-endpoint key
@@ -506,13 +504,12 @@ def test_m4_exit_full_g2a_flow(
         f"/api/exhibits/{exhibit_id}/phi", json={"disposition": PhiDisposition.CLEARED.value}
     )
     assert phi.status_code == 200, phi.text
-    cleared = client.get(f"/api/matters/{matter_id}/manifest?mint=true")
+    cleared = client.get(f"/api/matters/{matter_id}/manifest")
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["blocking"] == []  # PHI cleared → nothing blocks the M5 build
-    # Minting is idempotent: the re-mint returns the SAME EX id (no new ordinal on the same picks).
-    assert cleared.json()["entries"][0]["exhibit_token_id"] == ex_token_id
 
-    # ---- G2a approve → plan_review + RegistryVersion frozen at the current version ---------
+    # ---- G2a approve → EX tokens SETTLE inside the confirm side effect, then the registry
+    # freezes at the settled version (BUS-05) → plan_review ---------------------------------
     version = _current(client, matter_id)["payload_version"]
     g2a = _submit(
         client,
@@ -522,6 +519,14 @@ def test_m4_exit_full_g2a_flow(
     )
     assert g2a.status_code == 200, g2a.text
     assert g2a.json()["result"]["to_state"] == GateState.PLAN_REVIEW.value
+
+    # The confirm settled the exhibit token: a plain read-only GET now shows the bare EX id
+    # (ordinal shared with the FACT/AMT tokens already minted this run — assert the SHAPE).
+    settled = client.get(f"/api/matters/{matter_id}/manifest")
+    assert settled.status_code == 200, settled.text
+    ex_token_id = settled.json()["entries"][0]["exhibit_token_id"]
+    assert re.fullmatch(r"EX_\d+", ex_token_id), ex_token_id
+    assert "[[" not in settled.text
 
     # ---- THE EXIT ASSERTIONS: state + records + flags + overlay + ledger + freeze ----------
     assert client.get(f"/api/matters/{matter_id}").json()["gate_state"] == "plan_review"

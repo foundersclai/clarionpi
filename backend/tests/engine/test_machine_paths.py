@@ -49,7 +49,9 @@ def test_registry_bump_from_drafting_cascades_to_evidence_review() -> None:
 
 
 def test_registry_bump_cascade_states_all_land_in_evidence_review() -> None:
-    for state in (S.PLAN_REVIEW, S.DRAFTING, S.COMPLIANCE_REVIEW):
+    # PACKAGE_ASSEMBLY joined the cascade (BUS-05): the live builder consumes a FIXED
+    # approved draft, so a bump there back-edges like drafting/compliance.
+    for state in (S.PLAN_REVIEW, S.DRAFTING, S.COMPLIANCE_REVIEW, S.PACKAGE_ASSEMBLY):
         assert advance(state, E.REGISTRY_BUMPED).to == S.EVIDENCE_REVIEW
 
 
@@ -60,6 +62,5 @@ def test_registry_bump_self_loop_states_stay_put() -> None:
         S.FACTS_REVIEW,
         S.STRATEGY_INTAKE,
         S.EVIDENCE_REVIEW,
-        S.PACKAGE_ASSEMBLY,
     ):
         assert advance(state, E.REGISTRY_BUMPED).to == state
