@@ -20,10 +20,23 @@ _ALLOWED_FLOAT_COLUMNS = {
 }
 
 
+# Deliberate, ADR-referenced exemptions from the tenancy invariant. auth_throttle_buckets
+# is PRE-AUTH state: login happens before tenancy is established, so bucket rows have no
+# firm to scope to (ADR-0010 — pre-auth security tables). Nothing else may join this set
+# without its own ADR.
+_TENANCY_EXEMPT_TABLES = {"auth_throttle_buckets"}
+
+
 def test_every_table_except_firms_is_firm_scoped() -> None:
     for table in Base.metadata.sorted_tables:
         if table.name == "firms":
             assert "firm_id" not in table.columns, "firms is the tenant root; it has no firm_id"
+            continue
+        if table.name in _TENANCY_EXEMPT_TABLES:
+            assert "firm_id" not in table.columns, (
+                f"{table.name} is ADR-exempt as pre-auth state; it must NOT quietly grow a "
+                "firm_id without revisiting the exemption"
+            )
             continue
         assert "firm_id" in table.columns, f"{table.name} is missing firm_id"
         col = table.columns["firm_id"]
@@ -67,3 +80,52 @@ def test_audit_events_is_append_only_no_updated_at() -> None:
     audit = Base.metadata.tables["audit_events"]
     assert "created_at" in audit.columns
     assert "updated_at" not in audit.columns, "audit_events is append-only by design"
+
+
+def test_cross_firm_canonical_email_duplicate_is_rejected() -> None:
+    """One canonical email = one login principal (ADR-0010): the global unique constraint
+    refuses a duplicate even across firms, and the ORM hook derives the canonical form."""
+    import uuid as _uuid
+
+    import pytest as _pytest
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import sessionmaker as _sessionmaker
+
+    from app.core.config import Settings as _Settings
+    from app.core.db import create_all_for_tests, create_db_engine
+    from app.models.orm import Firm as _Firm
+    from app.models.orm import User as _User
+
+    engine = create_db_engine(
+        _Settings(
+            app_env="test",
+            database_url="sqlite+pysqlite:///:memory:",
+            matter_budget_default_cents=2500,
+        )
+    )
+    create_all_for_tests(engine)
+    db = _sessionmaker(bind=engine)()
+    try:
+        firm_a = _Firm(id=_uuid.uuid4(), name="A")
+        firm_b = _Firm(id=_uuid.uuid4(), name="B")
+        db.add_all([firm_a, firm_b])
+        db.flush()
+        first = _User(
+            firm_id=firm_a.id, email="Shared@Example.com", display_name="a", role="attorney"
+        )
+        db.add(first)
+        db.flush()
+        assert first.normalized_email == "shared@example.com"  # ORM hook derived it
+        db.add(
+            _User(
+                firm_id=firm_b.id,
+                email="  SHARED@example.COM ",
+                display_name="b",
+                role="attorney",
+            )
+        )
+        with _pytest.raises(IntegrityError):
+            db.flush()
+    finally:
+        db.close()
+        engine.dispose()

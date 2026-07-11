@@ -24,3 +24,43 @@ jobs:
 
       - name: make verify
         run: make verify
+
+  integration:
+    # Postgres-locking guarantees (upload session serialization, auth-throttle
+    # no-undercount) cannot be proven on SQLite — this job runs the integration-marked
+    # suite against a real Postgres service (audit 01/02).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: clarionpi
+          POSTGRES_PASSWORD: clarionpi_dev
+          POSTGRES_DB: clarionpi
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U clarionpi -d clarionpi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create venv and install backend deps
+        run: |
+          cd backend
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e . --group dev
+
+      - name: Run integration-marked tests against Postgres
+        env:
+          DATABASE_URL: postgresql+psycopg://clarionpi:clarionpi_dev@localhost:5433/clarionpi
+        run: |
+          cd backend
+          .venv/bin/pytest -q -m integration

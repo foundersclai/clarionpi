@@ -25,7 +25,7 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.main import app
-from app.models.orm import AuditEvent, User
+from app.models.orm import AuditEvent, AuthThrottleBucket, User
 
 
 @pytest.fixture
@@ -90,19 +90,38 @@ def test_login_sets_httponly_cookie_and_returns_user(
     assert any(e.event_kind == "auth" and e.payload.get("event") == "login" for e in events)
 
 
-def test_login_bad_credentials_returns_typed_401_and_audits(
+def test_login_failures_are_uniform_for_known_and_unknown_emails(
     client: TestClient, seeded: sessionmaker[Session], session_mode: None
 ) -> None:
-    resp = client.post(
-        "/api/auth/login",
-        json={"email": DEV_USER_EMAIL, "password": "wrong-password"},
+    """Known and unknown emails follow the SAME failure persistence (SEC-04): identical
+    401 bodies, NO matched-user-only login_failed audit row (that existence-dependent write
+    was removed), and a throttle bucket row for each — the uniform security record."""
+    known = client.post(
+        "/api/auth/login", json={"email": DEV_USER_EMAIL, "password": "wrong-password"}
     )
-    assert resp.status_code == 401
-    assert resp.json() == {"error": "invalid_credentials"}
+    unknown = client.post(
+        "/api/auth/login", json={"email": "nobody@nowhere.example", "password": "wrong"}
+    )
+    assert known.status_code == unknown.status_code == 401
+    assert known.json() == unknown.json() == {"error": "invalid_credentials"}
 
-    # The email matched a real user → a login_failed audit row exists (scoped to that firm).
+    # No matched-user-only audit path: the login_failed AuditEvent kind is gone entirely.
     events = _audit_events(seeded)
-    assert any(e.payload.get("event") == "login_failed" for e in events)
+    assert not any(e.payload.get("event") == "login_failed" for e in events)
+
+    # Both failures produced throttle rows (2 buckets each: account + shared ip → 3 rows).
+    db = seeded()
+    try:
+        buckets = db.query(AuthThrottleBucket).all()
+        assert {b.scope for b in buckets} == {"account", "ip"}
+        assert len([b for b in buckets if b.scope == "account"]) == 2
+        ip_bucket = next(b for b in buckets if b.scope == "ip")
+        assert ip_bucket.failure_count == 2
+        # Digested keys only — no raw email/IP anywhere in the row.
+        for bucket in buckets:
+            assert DEV_USER_EMAIL not in bucket.key_digest
+    finally:
+        db.close()
 
 
 def test_me_without_cookie_is_401_unauthenticated(
@@ -274,3 +293,72 @@ def test_require_role_allows_attorney(
         assert resp.json()["ok"] == "attorney"
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def three_strikes(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Route-level throttle tests use a 3-failure account limit."""
+    monkeypatch.setenv("AUTH_LOGIN_MAX_FAILURES_PER_ACCOUNT", "3")
+    monkeypatch.setenv("AUTH_LOGIN_LOCKOUT_SECONDS", "120")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_repeated_bad_logins_return_429_with_retry_after(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    three_strikes: None,
+) -> None:
+    bad = {"email": DEV_USER_EMAIL, "password": "wrong-password"}
+    # Bodies stay indistinguishable 401s until the threshold is crossed...
+    for _ in range(3):
+        resp = client.post("/api/auth/login", json=bad)
+        assert resp.status_code == 401
+        assert resp.json() == {"error": "invalid_credentials"}
+    # ...then the door locks with a typed 429 + a correct Retry-After.
+    locked = client.post("/api/auth/login", json=bad)
+    assert locked.status_code == 429
+    assert locked.json() == {"error": "login_throttled"}
+    assert 1 <= int(locked.headers["Retry-After"]) <= 120
+    # The RIGHT password is also refused while locked (the throttle gates before verify).
+    good = client.post(
+        "/api/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_USER_PASSWORD}
+    )
+    assert good.status_code == 429
+
+
+def test_successful_login_resets_the_account_bucket(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    three_strikes: None,
+) -> None:
+    bad = {"email": DEV_USER_EMAIL, "password": "wrong-password"}
+    for _ in range(2):
+        assert client.post("/api/auth/login", json=bad).status_code == 401
+    good = client.post(
+        "/api/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_USER_PASSWORD}
+    )
+    assert good.status_code == 200
+    # The account bucket cleared: two more failures are again plain 401s, not a lockout.
+    for _ in range(2):
+        assert client.post("/api/auth/login", json=bad).status_code == 401
+
+
+def test_canonical_email_variants_share_one_login_identity(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    three_strikes: None,
+) -> None:
+    # Failures under case/whitespace variants aggregate into ONE account bucket...
+    for variant in (DEV_USER_EMAIL.upper(), f"  {DEV_USER_EMAIL} ", DEV_USER_EMAIL):
+        resp = client.post("/api/auth/login", json={"email": variant, "password": "wrong-password"})
+        assert resp.status_code == 401
+    locked = client.post(
+        "/api/auth/login", json={"email": DEV_USER_EMAIL, "password": "wrong-password"}
+    )
+    assert locked.status_code == 429
+    # ...and a variant spelling logs in fine once unlocked state allows (identity, not bytes).

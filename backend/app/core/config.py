@@ -24,6 +24,10 @@ _DEV_DATABASE_URL = "sqlite:///./clarionpi_dev.db"
 # these move under the system tempdir so the suite never writes into the repo tree.
 _DEV_STORAGE_ROOT = "./var/storage"
 _DEV_MATTER_LOGS_DIR = "./logs/matters"
+# Dev-only throttle-key HMAC secret + trusted proxies (loopback: the Next dev rewrite).
+# Production refuses the placeholder secret and requires an explicit proxy decision (SEC-04).
+_DEV_THROTTLE_HMAC_SECRET = "dev-throttle-hmac-secret-not-for-prod"
+_DEV_TRUSTED_PROXY_CIDRS = ("127.0.0.1/32", "::1/128")
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,19 @@ class Settings:
     # scheme://host[:port] ONLY — validated at settings load.
     csrf_enforce: bool = False
     csrf_trusted_origins: tuple[str, ...] = ()
+    # Login throttling (SEC-04). Windows/limits are positive bounded integers (validated at
+    # load). The HMAC secret keys the bucket digests — production requires a non-placeholder
+    # value and an EXPLICIT trusted-proxy setting (which may be explicitly empty for direct
+    # connections; it must never default to trusting arbitrary forwarders).
+    auth_login_window_seconds: int = 900
+    auth_login_max_failures_per_account: int = 10
+    auth_login_max_failures_per_ip: int = 50
+    auth_login_lockout_seconds: int = 900
+    auth_throttle_hmac_secret: str = _DEV_THROTTLE_HMAC_SECRET
+    auth_trusted_proxy_cidrs: tuple[str, ...] = _DEV_TRUSTED_PROXY_CIDRS
+    # Whether AUTH_TRUSTED_PROXY_CIDRS was explicitly present in the environment (prod
+    # requires an explicit decision, even if the decision is "no proxies").
+    auth_trusted_proxy_cidrs_explicit: bool = False
     # Risk flags (M4). GapDetectorConfig threshold: a treatment gap wider than this many days
     # (pre-MMI) flags. Firm-configurable later; a plain int day count, not money.
     treatment_gap_max_days: int = 30
@@ -185,6 +202,32 @@ def _env_trusted_origins(app_env: str) -> tuple[str, ...]:
     return tuple(parse_origin(part) for part in raw.split(",") if part.strip())
 
 
+def _parse_cidrs(raw: str) -> tuple[str, ...]:
+    """Parse a comma-separated CIDR list strictly (ipaddress), canonicalized."""
+    import ipaddress
+
+    values: list[str] = []
+    for part in raw.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        values.append(str(ipaddress.ip_network(item, strict=False)))
+    return tuple(values)
+
+
+def _env_trusted_proxy_cidrs(app_env: str) -> tuple[tuple[str, ...], bool]:
+    """Read AUTH_TRUSTED_PROXY_CIDRS; returns (cidrs, explicitly_set).
+
+    Unset → dev loopback defaults (the Next dev rewrite proxies via 127.0.0.1) and
+    explicit=False. Set-but-empty → no trusted proxies, explicit=True (a valid production
+    decision for direct connections). A malformed CIDR raises at load.
+    """
+    raw = os.environ.get("AUTH_TRUSTED_PROXY_CIDRS")
+    if raw is None:
+        return _DEV_TRUSTED_PROXY_CIDRS, False
+    return _parse_cidrs(raw), True
+
+
 def validate_runtime_settings(settings: Settings) -> None:
     """Refuse invalid or production-unsafe runtime settings (SEC-01/02) — fail closed.
 
@@ -205,6 +248,19 @@ def validate_runtime_settings(settings: Settings) -> None:
         )
     for origin in settings.csrf_trusted_origins:
         parse_origin(origin)  # every configured value must be a plain origin in any env
+    for name, value in (
+        ("AUTH_LOGIN_WINDOW_SECONDS", settings.auth_login_window_seconds),
+        ("AUTH_LOGIN_MAX_FAILURES_PER_ACCOUNT", settings.auth_login_max_failures_per_account),
+        ("AUTH_LOGIN_MAX_FAILURES_PER_IP", settings.auth_login_max_failures_per_ip),
+        ("AUTH_LOGIN_LOCKOUT_SECONDS", settings.auth_login_lockout_seconds),
+    ):
+        if value <= 0 or value > 10_000_000:
+            raise ValueError(f"{name} must be a positive bounded integer, got {value}")
+    if settings.auth_login_max_failures_per_ip < settings.auth_login_max_failures_per_account:
+        raise ValueError(
+            "AUTH_LOGIN_MAX_FAILURES_PER_IP must be >= the per-account limit — an IP bucket "
+            "smaller than the account bucket locks shared offices before a single account"
+        )
     if settings.app_env == "prod":
         if settings.auth_mode != "session":
             raise ValueError(
@@ -226,6 +282,19 @@ def validate_runtime_settings(settings: Settings) -> None:
         for origin in settings.csrf_trusted_origins:
             if not origin.startswith("https://"):
                 raise ValueError(f"production trusted origins must be HTTPS, got {origin!r}")
+        if (
+            settings.auth_throttle_hmac_secret == _DEV_THROTTLE_HMAC_SECRET
+            or len(settings.auth_throttle_hmac_secret) < 32
+        ):
+            raise ValueError(
+                "production requires a non-placeholder AUTH_THROTTLE_HMAC_SECRET "
+                "(>= 32 chars); preserve it across restarts/replicas so buckets stay effective"
+            )
+        if not settings.auth_trusted_proxy_cidrs_explicit:
+            raise ValueError(
+                "production requires an explicit AUTH_TRUSTED_PROXY_CIDRS decision — set it "
+                "to the reverse-proxy CIDRs, or to an empty value for direct connections"
+            )
 
 
 def _default_database_url(app_env: str) -> str:
@@ -255,6 +324,7 @@ def get_settings() -> Settings:
     the cache (``get_settings.cache_clear()``) after mutating ``os.environ``.
     """
     app_env = os.environ.get("APP_ENV", "dev")
+    _trusted_proxy_cidrs, _trusted_proxy_explicit = _env_trusted_proxy_cidrs(app_env)
     database_url = os.environ.get("DATABASE_URL") or _default_database_url(app_env)
     matter_budget_default_cents = _env_int(
         "MATTER_BUDGET_DEFAULT_CENTS", _DEFAULT_MATTER_BUDGET_CENTS
@@ -296,6 +366,15 @@ def get_settings() -> Settings:
         session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", app_env == "prod"),
         csrf_enforce=_env_bool("CSRF_ENFORCE", os.environ.get("AUTH_MODE", "stub") == "session"),
         csrf_trusted_origins=_env_trusted_origins(app_env),
+        auth_login_window_seconds=_env_int("AUTH_LOGIN_WINDOW_SECONDS", 900),
+        auth_login_max_failures_per_account=_env_int("AUTH_LOGIN_MAX_FAILURES_PER_ACCOUNT", 10),
+        auth_login_max_failures_per_ip=_env_int("AUTH_LOGIN_MAX_FAILURES_PER_IP", 50),
+        auth_login_lockout_seconds=_env_int("AUTH_LOGIN_LOCKOUT_SECONDS", 900),
+        auth_throttle_hmac_secret=os.environ.get(
+            "AUTH_THROTTLE_HMAC_SECRET", _DEV_THROTTLE_HMAC_SECRET
+        ),
+        auth_trusted_proxy_cidrs=_trusted_proxy_cidrs,
+        auth_trusted_proxy_cidrs_explicit=_trusted_proxy_explicit,
         treatment_gap_max_days=_env_int("TREATMENT_GAP_MAX_DAYS", 30),
         low_property_damage_threshold_cents=_env_int("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", 150000),
         risk_flag_per_kind_cap=_env_int("RISK_FLAG_PER_KIND_CAP", 12),

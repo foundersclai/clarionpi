@@ -69,6 +69,8 @@ def test_module_construction_accepts_valid_production_config() -> None:
         "SESSION_COOKIE_SECURE": "true",
         "CSRF_ENFORCE": "true",
         "CSRF_TRUSTED_ORIGINS": "https://app.example.com",
+        "AUTH_THROTTLE_HMAC_SECRET": "an-adequately-long-production-hmac-secret",
+        "AUTH_TRUSTED_PROXY_CIDRS": "",
         # Prod refuses on-disk SQLite defaults nowhere yet; keep the default database URL.
     }
     proc = subprocess.run(

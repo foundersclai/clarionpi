@@ -12,7 +12,7 @@ file wins.
 | Task | Command |
 |---|---|
 | Install deps (backend) | `cd backend && python3 -m venv .venv && .venv/bin/pip install -e . --group dev` |
-| Run locally (backend) | `make dev` (`cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400`) |
+| Run locally (backend) | `make dev` (`cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400 --no-proxy-headers`) |
 | Test (fast) | `make test` — run after every change |
 | Test (full) | `make verify` — run before claiming done |
 | Lint + format | `make lint` |

@@ -24,7 +24,7 @@ from datetime import date, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import ForeignKey, UniqueConstraint, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
 
 
 class Base(DeclarativeBase):
@@ -77,18 +77,67 @@ class Firm(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+def normalize_email(email: str) -> str:
+    """THE canonical login-email normalization: trim + casefold (auth-hardening audit SEC-04).
+
+    The wire login accepts only an email (no firm slug), so canonical email is the GLOBAL
+    login identity: lookup, throttling, and the ``users.normalized_email`` unique constraint
+    all go through this one function. Recorded in ADR-0010.
+    """
+    return email.strip().casefold()
+
+
 class User(Base, FirmScoped):
-    """A firm user; ``role`` drives server-side gate role guards (invariant 8)."""
+    """A firm user; ``role`` drives server-side gate role guards (invariant 8).
+
+    ``normalized_email`` is derived in the ORM (``@validates`` below) so every construction
+    path — production creation and the many direct test factories — populates it through
+    :func:`normalize_email` without changing call sites. It is GLOBALLY unique: login is by
+    email alone, so one canonical email must identify exactly one principal (ADR-0010).
+    """
 
     __tablename__ = "users"
+    __table_args__ = (sa.UniqueConstraint("normalized_email", name="uq_users_normalized_email"),)
 
     id: Mapped[uuid.UUID] = _pk()
     email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
+    # Canonical (trim+casefold) login identity — set by the @validates hook, never by hand.
+    normalized_email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     role: Mapped[str] = mapped_column(sa.String(32), nullable=False)  # UserRole
     # Argon2 hash of the user's password (M3 session auth). Nullable: a stub-mode seeded user
     # has no password until one is set, and the M0→M3 transition tolerates password-less rows.
     password_hash: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    @validates("email")
+    def _derive_normalized_email(self, _key: str, value: str) -> str:
+        self.normalized_email = normalize_email(value)
+        return value
+
+
+class AuthThrottleBucket(Base):
+    """A login-throttle bucket (auth-hardening audit SEC-04) — deliberately NOT firm-scoped.
+
+    Login happens BEFORE tenancy is established, so this table carries no ``firm_id`` — the
+    one sanctioned exception to the tenancy invariant, recorded in ADR-0010 and exempted by
+    name in ``tests/models/test_orm_tenancy_shape.py``. ``key_digest`` is a keyed HMAC of the
+    normalized identifier (canonical email or client IP), so a DB leak cannot be turned into
+    an offline enumeration list of low-entropy emails/IPs. Independent ``account`` and ``ip``
+    scopes: a pair-only bucket is bypassable by fanning out across IPs or usernames.
+    """
+
+    __tablename__ = "auth_throttle_buckets"
+    __table_args__ = (
+        sa.UniqueConstraint("scope", "key_digest", name="uq_auth_throttle_scope_key"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    scope: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # "account" | "ip"
+    key_digest: Mapped[str] = mapped_column(sa.String(64), nullable=False)  # HMAC-SHA256 hex
+    window_started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    failure_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 

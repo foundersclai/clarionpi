@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core import auth as auth_core
+from app.core import auth_throttle
 from app.core.audit import record_event
 from app.core.config import get_settings
 from app.core.db import get_db_session
@@ -54,34 +55,56 @@ def _user_public(user: User) -> dict[str, str]:
     }
 
 
+def _resolve_client_ip(request: Request) -> str:
+    """Resolve the throttle client identity via the app-owned trust helper (SEC-04)."""
+    settings = get_settings()
+    peer_host = request.client.host if request.client is not None else None
+    return auth_throttle.resolve_client_ip(
+        peer_host,
+        request.headers.getlist("x-forwarded-for"),
+        settings.auth_trusted_proxy_cidrs,
+    )
+
+
 @router.post("/login", response_model=None)
 def login(
     body: LoginRequest,
+    request: Request,
     session: Session = _DbSession,
 ) -> JSONResponse:
     """Authenticate, mint a session, set the HttpOnly cookie; return the user or a typed ``401``.
 
-    On success: ``create_session`` → set the session cookie → ``200`` ``{"user": {...}}`` + a
-    ``login`` audit event. On failure: ``401`` ``{"error": "invalid_credentials"}``; we audit
-    ``login_failed`` only when the email matched a user (so the event carries that user's firm) — an
-    anonymous miss has no firm to scope an audit row to, so it just 401s.
+    Throttled (SEC-04): independent account + IP failure buckets are checked BEFORE the
+    password verify (``429 login_throttled`` + ``Retry-After`` when locked) and BOTH record
+    every failure — known and unknown emails follow the SAME persistence path, so neither
+    the response, the timing, nor the database work reveals whether the user exists. The
+    uniform throttle row is the failure security record; there is deliberately NO
+    matched-user-only audit write in the failure path.
     """
     settings = get_settings()
+    try:
+        client_ip = _resolve_client_ip(request)
+    except auth_throttle.ForwardedChainInvalid:
+        # A TRUSTED proxy sent garbage — refuse rather than mis-bucket the client.
+        return JSONResponse(status_code=400, content={"error": "invalid_forwarded_chain"})
+
+    retry_after = auth_throttle.check_locked(session, email=body.email, client_ip=client_ip)
+    if retry_after is not None:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "login_throttled"},
+            headers={"Retry-After": str(retry_after)},
+        )
+
     user = auth_core.authenticate(session, email=body.email, password=body.password)
     if user is None:
-        # Audit the failure only when the email resolved to a real user (we have a firm to scope
-        # the row to). A fully anonymous miss leaves no audit trail by design — see docstring.
-        matched = session.query(User).filter(User.email.ilike(body.email)).one_or_none()
-        if matched is not None:
-            record_event(
-                session,
-                firm_id=matched.firm_id,
-                actor_id=None,
-                event_kind="auth",
-                payload={"event": "login_failed", "email": body.email},
-            )
-            session.commit()
+        auth_throttle.record_failure(session, email=body.email, client_ip=client_ip)
         return JSONResponse(status_code=401, content={"error": "invalid_credentials"})
+
+    # Success: the account bucket clears (the shared IP bucket survives — spray evidence),
+    # and stale buckets are pruned opportunistically so the pre-auth table stays bounded.
+    auth_throttle.clear_account_bucket(session, email=body.email)
+    auth_throttle.prune_stale_buckets(session)
 
     _row, raw_token = auth_core.create_session(session, user=user)
     record_event(

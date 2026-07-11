@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.tenancy import tenant_add
-from app.models.orm import AuthSession, User
+from app.models.orm import AuthSession, User, normalize_email
 
 # Module-level hasher — argon2-cffi's PasswordHasher is thread-safe, so one shared instance is
 # both correct and the intended usage.
@@ -140,12 +140,14 @@ def revoke_session(db: Session, *, raw_token: str) -> bool:
 def authenticate(db: Session, *, email: str, password: str) -> User | None:
     """Return the user for ``email`` if ``password`` verifies, else ``None``.
 
-    Case-insensitive email lookup on an **unscoped** session (auth precedes tenancy). Failure is
-    indistinguishable between "no such user" and "wrong password": both return ``None``, and the
-    no-user path still runs :func:`verify_password` (which burns a dummy verify) so neither the
-    result nor the timing leaks which failed.
+    Lookup is by the CANONICAL email (`normalized_email`, globally unique — ADR-0010) on an
+    **unscoped** session (auth precedes tenancy): one canonical email identifies exactly one
+    login principal, so the throttle's account bucket and this lookup agree. Failure is
+    indistinguishable between "no such user" and "wrong password": both return ``None``, and
+    the no-user path still runs :func:`verify_password` (which burns a dummy verify) so
+    neither the result nor the timing leaks which failed.
     """
-    user = db.query(User).filter(User.email.ilike(email)).one_or_none()
+    user = db.query(User).filter(User.normalized_email == normalize_email(email)).one_or_none()
     if user is None:
         # Burn a verify against the None path so timing matches the wrong-password case.
         verify_password(password, None)

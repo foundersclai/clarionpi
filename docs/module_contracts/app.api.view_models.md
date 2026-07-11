@@ -163,7 +163,13 @@ on every refusal the slot's prior object and `received` state are untouched · *
 refusal** (SEC-03): every unsafe-method request (`POST`/`PUT`/`PATCH`/`DELETE`, login and
 logout included) under session-mode enforcement requires exactly ONE `Origin` header
 exactly matching a configured trusted origin — missing/duplicate/malformed/`null`/untrusted
-→ `403 {error: csrf_failed}` from the ASGI middleware before any route handler ·
+→ `403 {error: csrf_failed}` from the ASGI middleware before any route handler · **login
+throttling refusals** (SEC-04): a locked account/IP bucket →
+`429 {error: login_throttled}` + a correct `Retry-After` header, body and timing
+independent of whether the email exists; a TRUSTED proxy presenting a malformed
+`X-Forwarded-For` chain → `400 {error: invalid_forwarded_chain}` (never mis-bucketed);
+the failure security record is the uniform throttle row — there is NO matched-user-only
+`login_failed` audit write ·
 `role_affordances` (`can_edit`, `can_approve`, `approve_blockers`) ·
 `scan_wire_payload(where=...)` → `TokenLeak` · closed submit schemas
 (`extra="forbid"`) · `payload_version` skew → `409` → refetch · **import rule:

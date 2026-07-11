@@ -286,14 +286,22 @@ UI state.
   the approved plan (any firm member); the attorney-only acts are the G3 approve guard and
   the finding **disposition** (`FindingDispositionForbidden -> 403`). The `ARTIFACTS_BUILT`
   advance moves only through `machine.advance` in the run.
-- **Enforced (auth-hardening audit, SEC-01/02/03):** production boots FAIL-CLOSED —
+- **Enforced (auth-hardening audit, SEC-01/02/03/04):** production boots FAIL-CLOSED —
   `validate_runtime_settings` (checked at `app.main` module construction, so `--lifespan
   off` cannot bypass it, and again in the lifespan) refuses `APP_ENV=prod` without
-  `AUTH_MODE=session`, an insecure session cookie, a disabled CSRF check, or a non-HTTPS
-  trusted-origin list, and refuses unknown `APP_ENV`/`AUTH_MODE` values outright. The
-  session cookie is HTTPS-only in prod (`Secure`, env-derived) rooted at `path=/`; every
-  unsafe-method request in session mode must carry exactly one `Origin` header matching a
-  configured trusted origin (`403 csrf_failed` otherwise — login/logout included).
+  `AUTH_MODE=session`, an insecure session cookie, a disabled CSRF check, a non-HTTPS
+  trusted-origin list, a placeholder throttle-HMAC secret, or an implicit trusted-proxy
+  posture, and refuses unknown `APP_ENV`/`AUTH_MODE` values outright. The session cookie
+  is HTTPS-only in prod (`Secure`, env-derived) rooted at `path=/`; every unsafe-method
+  request in session mode must carry exactly one `Origin` header matching a configured
+  trusted origin (`403 csrf_failed` otherwise — login/logout included). Login is
+  throttled by INDEPENDENT account (canonical-email) and IP HMAC-keyed buckets —
+  `429 login_throttled` + `Retry-After` when locked, uniform persistence for known and
+  unknown emails (no existence oracle), forwarded-client identity honored only from
+  configured proxy CIDRs with Uvicorn proxy parsing disabled everywhere
+  (`--no-proxy-headers`, launch-config regression-tested), and the global
+  `users.normalized_email` unique constraint making one canonical email one login
+  principal (ADR-0010).
 - **Deferred:** TOTP (second factor) is restated for **R2** (ADR-0004 decision 2).
 
 ### 9. Attorney Final + Auditable

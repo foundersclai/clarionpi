@@ -188,6 +188,9 @@ def test_prod_with_session_auth_passes() -> None:
             session_cookie_secure=True,
             csrf_enforce=True,
             csrf_trusted_origins=("https://app.example.com",),
+            auth_throttle_hmac_secret="x" * 48,
+            auth_trusted_proxy_cidrs=(),
+            auth_trusted_proxy_cidrs_explicit=True,
         )
     )
 
@@ -283,6 +286,9 @@ def test_prod_with_https_trusted_origin_passes() -> None:
             session_cookie_secure=True,
             csrf_enforce=True,
             csrf_trusted_origins=("https://app.example.com",),
+            auth_throttle_hmac_secret="x" * 48,
+            auth_trusted_proxy_cidrs=(),
+            auth_trusted_proxy_cidrs_explicit=True,
         )
     )
 

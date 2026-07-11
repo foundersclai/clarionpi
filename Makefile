@@ -16,4 +16,4 @@ hub-check:
 verify: lint typecheck test hub-check
 
 dev:
-	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400
+	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8400 --no-proxy-headers
