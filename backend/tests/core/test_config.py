@@ -44,12 +44,19 @@ def test_defaults_for_ingest_fields(monkeypatch: pytest.MonkeyPatch) -> None:
         "LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS",
         "RISK_FLAG_PER_KIND_CAP",
         "RISK_LABEL_MODEL",
+        "UPLOAD_MAX_FILES_PER_SESSION",
+        "UPLOAD_MAX_BYTES_PER_FILE",
+        "UPLOAD_MAX_BYTES_PER_SESSION",
     ):
         monkeypatch.delenv(name, raising=False)
     s = get_settings()
     assert s.storage_backend == "local"
     assert s.storage_root == "./var/storage"
     assert s.upload_session_ttl_minutes == 1440
+    # Upload registration limits (SEC-05): bounded defaults, never unlimited.
+    assert s.upload_max_files_per_session == 200
+    assert s.upload_max_bytes_per_file == 104_857_600
+    assert s.upload_max_bytes_per_session == 1_073_741_824
     assert s.ocr_engine == "none"
     assert s.text_density_floor == 32
     assert s.classifier_model == "claude-haiku-4-5"
@@ -95,6 +102,9 @@ def test_env_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOW_PROPERTY_DAMAGE_THRESHOLD_CENTS", "200000")
     monkeypatch.setenv("RISK_FLAG_PER_KIND_CAP", "20")
     monkeypatch.setenv("RISK_LABEL_MODEL", "claude-opus-4-8")
+    monkeypatch.setenv("UPLOAD_MAX_FILES_PER_SESSION", "10")
+    monkeypatch.setenv("UPLOAD_MAX_BYTES_PER_FILE", "1000")
+    monkeypatch.setenv("UPLOAD_MAX_BYTES_PER_SESSION", "5000")
     s = get_settings()
     assert s.storage_backend == "s3"
     assert s.storage_root == "/custom/root"
@@ -117,6 +127,22 @@ def test_env_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.low_property_damage_threshold_cents == 200000
     assert s.risk_flag_per_kind_cap == 20
     assert s.risk_label_model == "claude-opus-4-8"
+    assert s.upload_max_files_per_session == 10
+    assert s.upload_max_bytes_per_file == 1000
+    assert s.upload_max_bytes_per_session == 5000
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["UPLOAD_MAX_FILES_PER_SESSION", "UPLOAD_MAX_BYTES_PER_FILE", "UPLOAD_MAX_BYTES_PER_SESSION"],
+)
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_zero_or_negative_upload_limits_are_rejected_at_load(
+    monkeypatch: pytest.MonkeyPatch, name: str, bad: str
+) -> None:
+    monkeypatch.setenv(name, bad)
+    with pytest.raises(ValueError, match=name):
+        get_settings()
 
 
 def test_test_env_defaults_on_disk_roots_under_tempdir(monkeypatch: pytest.MonkeyPatch) -> None:

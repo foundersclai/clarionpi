@@ -43,6 +43,12 @@ class Settings:
     storage_backend: str = "local"
     storage_root: str = _DEV_STORAGE_ROOT
     upload_session_ttl_minutes: int = 1440
+    # Upload registration limits (upload-safety audit SEC-05): a PI case-file batch is large
+    # but bounded — 200 files, 100 MiB per file, 1 GiB per session. All three are validated
+    # positive at settings load; the service layer enforces them before minting slots.
+    upload_max_files_per_session: int = 200
+    upload_max_bytes_per_file: int = 104_857_600
+    upload_max_bytes_per_session: int = 1_073_741_824
     ocr_engine: str = "none"
     text_density_floor: int = 32
     classifier_model: str = "claude-haiku-4-5"
@@ -102,6 +108,13 @@ def _env_float(name: str, default: float) -> float:
     return float(raw)
 
 
+def _positive_int(name: str, value: int) -> int:
+    """Reject a zero/negative configured limit at settings load (fail at boot, not mid-upload)."""
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {value}")
+    return value
+
+
 def _default_database_url(app_env: str) -> str:
     """In-memory SQLite under ``APP_ENV=test``; file-backed dev database otherwise."""
     return _TEST_DATABASE_URL if app_env == "test" else _DEV_DATABASE_URL
@@ -140,6 +153,16 @@ def get_settings() -> Settings:
         storage_backend=os.environ.get("STORAGE_BACKEND", "local"),
         storage_root=os.environ.get("STORAGE_ROOT") or _default_storage_root(app_env),
         upload_session_ttl_minutes=_env_int("UPLOAD_SESSION_TTL_MINUTES", 1440),
+        upload_max_files_per_session=_positive_int(
+            "UPLOAD_MAX_FILES_PER_SESSION", _env_int("UPLOAD_MAX_FILES_PER_SESSION", 200)
+        ),
+        upload_max_bytes_per_file=_positive_int(
+            "UPLOAD_MAX_BYTES_PER_FILE", _env_int("UPLOAD_MAX_BYTES_PER_FILE", 104_857_600)
+        ),
+        upload_max_bytes_per_session=_positive_int(
+            "UPLOAD_MAX_BYTES_PER_SESSION",
+            _env_int("UPLOAD_MAX_BYTES_PER_SESSION", 1_073_741_824),
+        ),
         ocr_engine=os.environ.get("OCR_ENGINE", "none"),
         text_density_floor=_env_int("TEXT_DENSITY_FLOOR", 32),
         classifier_model=os.environ.get("CLASSIFIER_MODEL", "claude-haiku-4-5"),

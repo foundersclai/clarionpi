@@ -87,6 +87,18 @@ class UploadIncomplete(Exception):
         super().__init__(f"upload session incomplete; missing: {missing}")
 
 
+class UploadLimitExceeded(Exception):
+    """Raised when an upload registration exceeds a configured limit (SEC-05).
+
+    ``limit`` names the bound that tripped — ``max_files`` | ``max_file_bytes`` |
+    ``max_session_bytes`` — and is the routing key for the typed ``413`` refusal.
+    """
+
+    def __init__(self, limit: str) -> None:
+        self.limit = limit
+        super().__init__(f"upload registration exceeds configured limit: {limit}")
+
+
 def register_upload_session(
     db: Session,
     *,
@@ -104,7 +116,17 @@ def register_upload_session(
     defaults to ``settings.upload_session_ttl_minutes``. Writes an
     ``upload_session_registered`` audit event and commits.
     """
-    ttl = ttl_minutes if ttl_minutes is not None else get_settings().upload_session_ttl_minutes
+    settings = get_settings()
+    # Enforce the configured registration limits BEFORE minting any slot id, storage key,
+    # audit event, or row (SEC-05): a refused registration leaves zero persistent trace.
+    if len(files) > settings.upload_max_files_per_session:
+        raise UploadLimitExceeded("max_files")
+    if any(decl.size_bytes > settings.upload_max_bytes_per_file for decl in files):
+        raise UploadLimitExceeded("max_file_bytes")
+    if sum(decl.size_bytes for decl in files) > settings.upload_max_bytes_per_session:
+        raise UploadLimitExceeded("max_session_bytes")
+
+    ttl = ttl_minutes if ttl_minutes is not None else settings.upload_session_ttl_minutes
     session_id = uuid.uuid4()
 
     session = UploadSession(

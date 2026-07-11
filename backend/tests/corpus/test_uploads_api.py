@@ -155,6 +155,67 @@ def test_put_size_mismatch_is_logged_but_currently_accepted(
     assert "a.pdf" not in message  # filenames never logged
 
 
+@pytest.fixture
+def tiny_limits(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Shrink the configured registration limits so the 413 refusals are testable."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("UPLOAD_MAX_FILES_PER_SESSION", "2")
+    monkeypatch.setenv("UPLOAD_MAX_BYTES_PER_FILE", "10")
+    monkeypatch.setenv("UPLOAD_MAX_BYTES_PER_SESSION", "15")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _register_raw(client: TestClient, matter: Matter, files: list[dict]):  # noqa: ANN201
+    return client.post(f"/api/matters/{matter.id}/uploads", json={"files": files})
+
+
+def test_register_too_many_files_returns_413(
+    tiny_limits: None, client: TestClient, matter: Matter, db: Session
+) -> None:
+    resp = _register_raw(
+        client, matter, [{"filename": f"f{i}.pdf", "size_bytes": 1} for i in range(3)]
+    )
+    assert resp.status_code == 413, resp.text
+    assert resp.json() == {"error": "upload_limit_exceeded", "limit": "max_files"}
+    # Refused BEFORE minting anything: no session, no slots, no audit rows.
+    assert db.scalars(select(UploadSession)).all() == []
+    assert db.scalars(select(UploadSlot)).all() == []
+
+
+def test_register_declared_file_over_max_returns_413(
+    tiny_limits: None, client: TestClient, matter: Matter
+) -> None:
+    resp = _register_raw(client, matter, [{"filename": "big.pdf", "size_bytes": 11}])
+    assert resp.status_code == 413
+    assert resp.json() == {"error": "upload_limit_exceeded", "limit": "max_file_bytes"}
+
+
+def test_register_aggregate_session_size_over_max_returns_413(
+    tiny_limits: None, client: TestClient, matter: Matter
+) -> None:
+    resp = _register_raw(
+        client,
+        matter,
+        [{"filename": "a.pdf", "size_bytes": 8}, {"filename": "b.pdf", "size_bytes": 8}],
+    )
+    assert resp.status_code == 413
+    assert resp.json() == {"error": "upload_limit_exceeded", "limit": "max_session_bytes"}
+
+
+def test_register_within_limits_still_works(
+    tiny_limits: None, client: TestClient, matter: Matter
+) -> None:
+    resp = _register_raw(
+        client,
+        matter,
+        [{"filename": "a.pdf", "size_bytes": 5}, {"filename": "b.pdf", "size_bytes": 5}],
+    )
+    assert resp.status_code == 201, resp.text
+
+
 def test_register_unknown_matter_returns_404(client: TestClient) -> None:
     resp = client.post(
         f"/api/matters/{uuid.uuid4()}/uploads",

@@ -33,6 +33,7 @@ from app.api.view_models import (
 from app.core.storage import ObjectStorage, get_storage
 from app.corpus.ingest.sessions import (
     UploadIncomplete,
+    UploadLimitExceeded,
     UploadSessionNotOpen,
     commit_session,
     receive_slot_blob,
@@ -91,9 +92,16 @@ def register_uploads(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"error": "matter_not_found", "detail": f"no matter {matter_id}"},
         )
-    upload_session = register_upload_session(
-        session, user=user, matter=matter, files=body.files, storage=storage
-    )
+    try:
+        upload_session = register_upload_session(
+            session, user=user, matter=matter, files=body.files, storage=storage
+        )
+    except UploadLimitExceeded as exc:
+        # Expected client error, never a 500: the typed 413 names which bound tripped.
+        return JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={"error": "upload_limit_exceeded", "limit": exc.limit},
+        )
     slots = list(
         session.scalars(
             select(UploadSlot)
