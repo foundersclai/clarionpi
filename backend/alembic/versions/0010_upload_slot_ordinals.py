@@ -59,9 +59,7 @@ def upgrade() -> None:
 
     with op.batch_alter_table("upload_slots") as batch:
         batch.alter_column("ordinal", existing_type=sa.Integer(), nullable=False)
-        batch.create_unique_constraint(
-            "uq_upload_slot_session_ordinal", ["session_id", "ordinal"]
-        )
+        batch.create_unique_constraint("uq_upload_slot_session_ordinal", ["session_id", "ordinal"])
 
 
 def downgrade() -> None:

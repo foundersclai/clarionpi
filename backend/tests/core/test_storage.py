@@ -6,6 +6,7 @@ repo writes. ``get_storage`` wiring is exercised with monkeypatched env + cache 
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
@@ -100,3 +101,116 @@ def test_get_storage_unknown_backend_raises_typed_error(
     finally:
         get_storage.cache_clear()
         get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------------------
+# Staged file-object replacement (upload-safety audit SEC-05)
+# ---------------------------------------------------------------------------------------
+
+
+def _litter(tmp_path: Path) -> list[Path]:
+    """Every staging/backup remnant under the storage root (must be empty after each op)."""
+    return [
+        p
+        for p in tmp_path.rglob("*")
+        if p.is_file() and (".staging-" in p.name or ".backup-" in p.name)
+    ]
+
+
+def test_stage_promote_finalize_first_write(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    staged = store.stage_fileobj("a/b.bin", io.BytesIO(b"NEW"))
+    # Staging alone does not create the live object.
+    assert store.exists("a/b.bin") is False
+    staged.promote()
+    assert store.get("a/b.bin") == b"NEW"
+    staged.finalize()
+    assert store.get("a/b.bin") == b"NEW"
+    assert _litter(tmp_path) == []
+
+
+def test_stage_promote_replaces_and_finalize_discards_backup(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    store.put("k.bin", b"OLD")
+    staged = store.stage_fileobj("k.bin", io.BytesIO(b"NEW"))
+    assert store.get("k.bin") == b"OLD"  # live object untouched while staged
+    staged.promote()
+    assert store.get("k.bin") == b"NEW"  # atomic swap
+    assert len(_litter(tmp_path)) == 1  # the backup survives until finalize
+    staged.finalize()
+    assert _litter(tmp_path) == []
+
+
+def test_rollback_before_promote_discards_staging_only(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    store.put("k.bin", b"OLD")
+    staged = store.stage_fileobj("k.bin", io.BytesIO(b"NEW"))
+    staged.rollback()
+    assert store.get("k.bin") == b"OLD"
+    assert _litter(tmp_path) == []
+
+
+def test_rollback_after_promote_restores_prior_object(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    store.put("k.bin", b"OLD")
+    staged = store.stage_fileobj("k.bin", io.BytesIO(b"NEW"))
+    staged.promote()
+    assert store.get("k.bin") == b"NEW"
+    staged.rollback()
+    assert store.get("k.bin") == b"OLD"
+    assert _litter(tmp_path) == []
+
+
+def test_rollback_after_promote_first_write_removes_object(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    staged = store.stage_fileobj("k.bin", io.BytesIO(b"NEW"))
+    staged.promote()
+    assert store.exists("k.bin") is True
+    staged.rollback()
+    assert store.exists("k.bin") is False
+    assert _litter(tmp_path) == []
+
+
+def test_staged_operations_are_idempotent(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    store.put("k.bin", b"OLD")
+    staged = store.stage_fileobj("k.bin", io.BytesIO(b"NEW"))
+    staged.promote()
+    staged.promote()  # no-op
+    staged.finalize()
+    staged.finalize()  # no-op
+    staged.rollback()  # after finalize: no-op — the swap is permanent
+    assert store.get("k.bin") == b"NEW"
+    assert _litter(tmp_path) == []
+    # And rollback twice from the staged state is safe too.
+    staged2 = store.stage_fileobj("k.bin", io.BytesIO(b"X"))
+    staged2.rollback()
+    staged2.rollback()
+    assert store.get("k.bin") == b"NEW"
+
+
+def test_stage_copy_failure_cleans_staging_and_leaves_dest(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    store.put("k.bin", b"OLD")
+
+    class ExplodingReader(io.RawIOBase):
+        def readinto(self, b: bytearray) -> int:  # pragma: no cover - signature only
+            raise OSError("disk gone")
+
+        def readable(self) -> bool:
+            return True
+
+    with pytest.raises(OSError):
+        store.stage_fileobj("k.bin", io.BufferedReader(ExplodingReader()))
+    assert store.get("k.bin") == b"OLD"
+    assert _litter(tmp_path) == []
+
+
+def test_stage_reads_from_current_file_position(tmp_path: Path) -> None:
+    store = LocalDiskStorage(tmp_path)
+    fileobj = io.BytesIO(b"SKIPPEDpayload")
+    fileobj.seek(7)
+    staged = store.stage_fileobj("k.bin", fileobj)
+    staged.promote()
+    staged.finalize()
+    assert store.get("k.bin") == b"payload"

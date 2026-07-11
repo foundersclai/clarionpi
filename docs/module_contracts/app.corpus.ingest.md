@@ -37,6 +37,20 @@ The OCR port is `app/corpus/ocr.py` (`none`/`fake`/`tesseract`); the object-stor
   resume, and commit all read slots in ordinal order, and the client pairs browser files to
   slots by ordinal — never by response-array index. Commit therefore creates documents in
   exactly the client's declared order.
+- **Uploads are bounded and stream-safe (upload-safety audit, SEC-05).** Registration
+  enforces `upload_max_files_per_session` / `upload_max_bytes_per_file` /
+  `upload_max_bytes_per_session` BEFORE minting any slot/key/audit row (typed
+  `UploadLimitExceeded`); the slot PUT streams the body into a spool while counting bytes —
+  never `await request.body()` — rejecting over-cap (`413`) and declared-size-mismatch
+  (`422`) bodies without invoking storage. Blob swaps go through the storage door's staged
+  replacement (`stage_fileobj` → promote/rollback/finalize) bracketing the DB commit, so a
+  failed commit restores the prior object and leaves no staging litter.
+- **Session lifecycle changes serialize on the session row.** `receive_slot_blob`,
+  `commit_session`, and `expire_stale_sessions` each re-load the `UploadSession` under
+  `FOR UPDATE` (`populate_existing`) and RE-CHECK their lifecycle predicate under the lock;
+  the expiry sweep uses `SKIP LOCKED` (a row held by an active upload is retried next
+  sweep) and commits per row. Proven on Postgres by the `integration`-marked concurrency
+  suite; SQLite ignores `FOR UPDATE`, so the unit suite does not claim lock semantics.
 - **Late-document runs (M4): the `evidence_review` rework edge is live; other states still leave
   the gate untouched.** `run_phase0` processes newly-`uploaded` documents for a matter already past
   `corpus_processing` — extracting them and re-syncing the fact registry + specials ledger. At

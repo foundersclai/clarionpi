@@ -15,9 +15,11 @@ At M1 only the ``local`` backend exists; :func:`get_storage` raises
 
 from __future__ import annotations
 
+import shutil
+import uuid
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
-from typing import Protocol, runtime_checkable
+from typing import IO, Protocol, runtime_checkable
 
 from app.core.config import get_settings
 
@@ -34,12 +36,44 @@ class StorageNotConfigured(Exception):
     """Raised by :func:`get_storage` for a backend that is not implemented."""
 
 
+class StagedObjectReplacement(Protocol):
+    """A staged object replacement, coordinating a blob swap with a DB commit (SEC-05).
+
+    Returned by :meth:`ObjectStorage.stage_fileobj`. All three operations are idempotent:
+
+    - ``promote()`` atomically installs the staged object at the destination, retaining
+      enough backup state to restore any pre-existing object.
+    - ``rollback()`` undoes everything: pre-promotion it discards the staged copy; post-
+      promotion it restores the prior object (or removes a first upload's object).
+    - ``finalize()`` discards the recovery state — call ONLY after the DB commit succeeds.
+    """
+
+    def promote(self) -> None:
+        """Atomically install the staged object at the destination key."""
+        ...
+
+    def rollback(self) -> None:
+        """Restore the pre-staging state (prior object back, or no object at all)."""
+        ...
+
+    def finalize(self) -> None:
+        """Discard recovery state after the coordinating DB commit succeeded."""
+        ...
+
+
 @runtime_checkable
 class ObjectStorage(Protocol):
     """The storage port: put/get/exists/delete plus an optional presign."""
 
     def put(self, key: str, data: bytes) -> None:
         """Store ``data`` at ``key`` (creating any parent structure)."""
+        ...
+
+    def stage_fileobj(self, key: str, fileobj: IO[bytes]) -> StagedObjectReplacement:
+        """Stage a replacement for ``key`` from ``fileobj`` (read from its current position)
+        WITHOUT touching the live object; the returned handle promotes/rolls back/finalizes.
+        Never reads a prior blob back into memory.
+        """
         ...
 
     def get(self, key: str) -> bytes:
@@ -86,6 +120,57 @@ def _safe_relative_path(root: Path, key: str) -> Path:
     return candidate
 
 
+class _LocalStagedReplacement:
+    """Staged replacement for :class:`LocalDiskStorage` using sibling temp/backup files.
+
+    The staging and backup files live in the destination's own directory (same filesystem,
+    so ``os.replace`` is atomic). State machine: ``staged → promoted → finalized`` with
+    ``rollback`` legal from ``staged`` or ``promoted``; every operation is idempotent.
+    """
+
+    def __init__(self, dest: Path, staging: Path) -> None:
+        self._dest = dest
+        self._staging = staging
+        self._backup = dest.with_name(f"{dest.name}.backup-{uuid.uuid4().hex}")
+        self._had_prior = False
+        self._state = "staged"
+
+    def promote(self) -> None:
+        if self._state != "staged":
+            return  # idempotent (already promoted / rolled back / finalized)
+        self._had_prior = self._dest.is_file()
+        try:
+            if self._had_prior:
+                self._dest.replace(self._backup)
+            self._staging.replace(self._dest)
+        except OSError:
+            # Failed promotion leaves the pre-existing object in place and no temp litter.
+            if self._had_prior and self._backup.is_file():
+                self._backup.replace(self._dest)
+            self._staging.unlink(missing_ok=True)
+            self._state = "rolled_back"
+            raise
+        self._state = "promoted"
+
+    def rollback(self) -> None:
+        if self._state == "staged":
+            self._staging.unlink(missing_ok=True)
+            self._state = "rolled_back"
+        elif self._state == "promoted":
+            if self._had_prior:
+                self._backup.replace(self._dest)  # restore the prior object
+            else:
+                self._dest.unlink(missing_ok=True)  # first upload: no object again
+            self._state = "rolled_back"
+        # finalized / rolled_back: idempotent no-op
+
+    def finalize(self) -> None:
+        if self._state == "promoted":
+            self._backup.unlink(missing_ok=True)
+            self._state = "finalized"
+        # any other state: idempotent no-op (nothing to discard)
+
+
 class LocalDiskStorage:
     """Dev/test backend: keys map to files under a root dir.
 
@@ -102,6 +187,18 @@ class LocalDiskStorage:
         path = _safe_relative_path(self._root, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+
+    def stage_fileobj(self, key: str, fileobj: IO[bytes]) -> StagedObjectReplacement:
+        dest = _safe_relative_path(self._root, key)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        staging = dest.with_name(f"{dest.name}.staging-{uuid.uuid4().hex}")
+        try:
+            with staging.open("wb") as out:
+                shutil.copyfileobj(fileobj, out)
+        except BaseException:
+            staging.unlink(missing_ok=True)  # failed staging leaves no litter, dest untouched
+            raise
+        return _LocalStagedReplacement(dest, staging)
 
     def get(self, key: str) -> bytes:
         path = _safe_relative_path(self._root, key)

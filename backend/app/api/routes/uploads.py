@@ -14,6 +14,7 @@ below (the dev "presign").
 from __future__ import annotations
 
 import logging
+import tempfile
 import uuid
 
 from fastapi import APIRouter, Depends, Request, status
@@ -30,6 +31,7 @@ from app.api.view_models import (
     upload_session_to_view,
     upload_slot_to_view,
 )
+from app.core.config import get_settings
 from app.core.storage import ObjectStorage, get_storage
 from app.corpus.ingest.sessions import (
     UploadIncomplete,
@@ -40,6 +42,7 @@ from app.corpus.ingest.sessions import (
     register_upload_session,
     upload_url_for,
 )
+from app.models.enums import UploadSessionStatus
 from app.models.orm import Matter, UploadSession, UploadSlot, User
 from app.models.schemas import UploadRegister
 
@@ -147,8 +150,12 @@ async def put_slot(
 ) -> UploadSlotView | JSONResponse:
     """Receive a slot's bytes (the app-mediated dev PUT). Overwrites on retry.
 
-    Async so the raw body can be read via ``await request.body()``. A slot (or its session)
-    outside firm scope → ``404``; a non-OPEN session → ``409``.
+    The body is STREAMED into a bounded spool file while counting bytes — never read whole
+    into memory (SEC-05). Crossing the configured per-file maximum stops consumption with a
+    typed ``413``; any declared-size mismatch is a typed ``422``; on either rejection the
+    slot's prior object and ``received`` state are untouched (storage is never invoked). A
+    slot (or its session) outside firm scope → ``404``; a non-OPEN session → ``409``
+    (pre-checked before the body is consumed, then re-checked under the row lock).
     """
     slot = session.get(UploadSlot, slot_id)
     if slot is None:
@@ -165,26 +172,72 @@ async def put_slot(
                 "detail": f"no session {slot.session_id}",
             },
         )
-    data = await request.body()
+    # Reject a non-OPEN session BEFORE consuming the request body. The authoritative check
+    # re-runs inside receive_slot_blob under the session-row lock.
+    if upload_session.status != UploadSessionStatus.OPEN.value:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"error": "upload_session_not_open", "status": upload_session.status},
+        )
+
+    max_file_bytes = get_settings().upload_max_bytes_per_file
+    declared = slot.size_bytes
+    received_bytes = 0
+    with tempfile.NamedTemporaryFile() as spool:  # route staging; auto-removed on close
+        async for chunk in request.stream():
+            received_bytes += len(chunk)
+            # The configured hard cap governs first (registration guarantees declared <=
+            # max, so crossing the cap always also crosses the declared size).
+            if received_bytes > max_file_bytes:
+                _log_put(upload_session, slot, received_bytes, matched=False)
+                return JSONResponse(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    content={"error": "upload_limit_exceeded", "limit": "max_file_bytes"},
+                )
+            if received_bytes > declared:
+                _log_put(upload_session, slot, received_bytes, matched=False)
+                return JSONResponse(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    content={"error": "upload_size_mismatch"},
+                )
+            spool.write(chunk)
+        if received_bytes != declared:
+            _log_put(upload_session, slot, received_bytes, matched=False)
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={"error": "upload_size_mismatch"},
+            )
+        _log_put(upload_session, slot, received_bytes, matched=True)
+        spool.seek(0)
+        try:
+            receive_slot_blob(
+                session,
+                slot=slot,
+                upload_session=upload_session,
+                storage=storage,
+                fileobj=spool,
+            )
+        except UploadSessionNotOpen as exc:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"error": "upload_session_not_open", "status": exc.status},
+            )
+    return upload_slot_to_view(slot, upload_url_for(slot, storage))
+
+
+def _log_put(
+    upload_session: UploadSession, slot: UploadSlot, actual_bytes: int, *, matched: bool
+) -> None:
+    """Debug diagnostic per slot PUT — ids and byte counts only, never filenames (PHI)."""
     _LOG.debug(
         "slot_put_received session_id=%s slot_id=%s declared_bytes=%d actual_bytes=%d "
         "size_matches=%s",
         upload_session.id,
         slot.id,
         slot.size_bytes,
-        len(data),
-        slot.size_bytes == len(data),
+        actual_bytes,
+        matched,
     )
-    try:
-        receive_slot_blob(
-            session, slot=slot, upload_session=upload_session, storage=storage, data=data
-        )
-    except UploadSessionNotOpen as exc:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "upload_session_not_open", "status": exc.status},
-        )
-    return upload_slot_to_view(slot, upload_url_for(slot, storage))
 
 
 @router.post(

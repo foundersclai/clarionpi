@@ -10,8 +10,10 @@ Upload-target contract: :func:`upload_url_for` hands out the storage backend's p
 URL when it can presign, and otherwise the app-mediated dev route
 ``/api/uploads/slots/{slot_id}`` (the local backend cannot presign — the app *is* the dev
 presign). A re-PUT to an already-received slot in an OPEN session **overwrites** the blob:
-retrying a flaky upload is legitimate, so ``storage.put`` simply replaces the object and no
-error is raised.
+retrying a flaky upload is legitimate, so the staged replacement swaps the object and no
+error is raised. Receive/commit/expire all re-load the session row under ``FOR UPDATE`` and
+recheck their lifecycle predicate under the lock (SEC-05), so a PUT cannot land after a
+commit/expiry serialized first, and commit/expiry cannot transition mid-PUT.
 
 Fail-loud discipline: commit refuses a session with any un-received slot
 (:class:`UploadIncomplete` naming the missing filenames) — a firm that believes it uploaded
@@ -26,7 +28,9 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import IO
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -51,6 +55,18 @@ def _utcnow() -> datetime:
     timestamp and compare naive-to-naive everywhere so SQLite and Postgres agree.
     """
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _as_naive_utc(value: datetime) -> datetime:
+    """Normalize a loaded timestamp to naive UTC for Python-side comparison.
+
+    SQLite round-trips ``DateTime(timezone=True)`` as naive; Postgres returns it tz-AWARE.
+    Every app-computed timestamp is naive UTC, so Python-side comparisons must normalize
+    the loaded side or they raise ``TypeError`` on Postgres.
+    """
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
 
 
 def _safe_name(filename: str) -> str:
@@ -177,25 +193,60 @@ def upload_url_for(slot: UploadSlot, storage: ObjectStorage) -> str:
     return f"/api/uploads/slots/{slot.id}"
 
 
+def _lock_session_row(db: Session, session_id: uuid.UUID) -> UploadSession | None:
+    """Re-load ``UploadSession`` under ``FOR UPDATE``, refreshing stale identity-map state.
+
+    ``populate_existing`` matters: a check against an already-loaded ORM object is stale and
+    does not close the PUT-versus-commit/expiry race — the locked SELECT must overwrite the
+    in-session attributes with the row that actually serialized. ``FOR UPDATE`` is a no-op on
+    SQLite (single-writer anyway); the Postgres integration suite proves the serialization.
+    """
+    return db.execute(
+        select(UploadSession)
+        .where(UploadSession.id == session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def receive_slot_blob(
     db: Session,
     *,
     slot: UploadSlot,
     upload_session: UploadSession,
     storage: ObjectStorage,
-    data: bytes,
+    fileobj: IO[bytes],
 ) -> UploadSlot:
-    """Store ``data`` at the slot's key and mark it received; return the slot.
+    """Stage ``fileobj`` at the slot's key, lock + recheck the session, promote, commit.
 
-    Refuses a non-OPEN session (:class:`UploadSessionNotOpen`). A re-PUT to an
-    already-received slot overwrites the blob (idempotent retry of a flaky upload).
+    Refuses a non-OPEN session (:class:`UploadSessionNotOpen`) — checked cheaply on the
+    caller's snapshot, then authoritatively on the row re-loaded under ``FOR UPDATE``
+    immediately before promotion, so a commit/expiry that serialized first is honored. A
+    re-PUT to an already-received slot in an OPEN session replaces the blob (idempotent
+    retry of a flaky upload).
+
+    The filesystem swap and the DB commit are NOT one atomic transaction; the staged-
+    replacement protocol brackets them: promote → mark received → DB commit → finalize,
+    with ``rollback()`` on any pre-commit failure restoring both the prior object and the
+    prior received state.
     """
     if upload_session.status != UploadSessionStatus.OPEN.value:
         raise UploadSessionNotOpen(upload_session.status)
-    # Declared size is advisory at M1: a mismatch against len(data) is not enforced here.
-    storage.put(slot.storage_key, data)
-    slot.received = True
-    db.commit()
+    staged = storage.stage_fileobj(slot.storage_key, fileobj)
+    try:
+        locked = _lock_session_row(db, upload_session.id)
+        if locked is None or locked.status != UploadSessionStatus.OPEN.value:
+            raise UploadSessionNotOpen(
+                locked.status if locked is not None else UploadSessionStatus.EXPIRED.value
+            )
+        staged.promote()
+        slot.received = True
+        db.commit()
+    except BaseException:
+        staged.rollback()  # prior object (and received state, via db rollback) preserved
+        db.rollback()
+        raise
+    staged.finalize()  # only after the DB commit succeeded
     return slot
 
 
@@ -212,15 +263,27 @@ def commit_session(db: Session, *, user: User, upload_session: UploadSession) ->
     Slots (and the returned documents) are ordered by ``ordinal`` — the client's
     registration order, the stable pairing contract (BUS-06). Documents are therefore
     created in exactly the order the client declared the files.
-    """
-    if upload_session.status != UploadSessionStatus.OPEN.value:
-        raise UploadSessionNotOpen(upload_session.status)
 
+    OPEN-ness and completeness are rechecked on the session row re-loaded under
+    ``FOR UPDATE`` (not the caller's possibly-stale snapshot), and the lock is held through
+    document creation and the transaction commit — an in-flight slot PUT serializes either
+    wholly before or wholly after this commit.
+    """
+    locked = _lock_session_row(db, upload_session.id)
+    if locked is None:
+        raise UploadSessionNotOpen(UploadSessionStatus.EXPIRED.value)
+    if locked.status != UploadSessionStatus.OPEN.value:
+        raise UploadSessionNotOpen(locked.status)
+
+    # populate_existing: completeness must be evaluated from CURRENT row data under the
+    # lock — a slot object already in this session's identity map (loaded before a
+    # concurrent PUT committed) would otherwise report a stale received=False.
     slots = list(
         db.scalars(
             select(UploadSlot)
             .where(UploadSlot.session_id == upload_session.id)
             .order_by(UploadSlot.ordinal)
+            .execution_options(populate_existing=True)
         )
     )
     missing = [slot.filename for slot in slots if not slot.received]
@@ -244,15 +307,15 @@ def commit_session(db: Session, *, user: User, upload_session: UploadSession) ->
         slot.document_id = doc.id
         documents.append(doc)
 
-    upload_session.status = UploadSessionStatus.COMMITTED.value
+    locked.status = UploadSessionStatus.COMMITTED.value
     record_event(
         db,
         firm_id=user.firm_id,
         actor_id=user.id,
         event_kind="upload_session_committed",
         payload={
-            "session_id": str(upload_session.id),
-            "matter_id": str(upload_session.matter_id),
+            "session_id": str(locked.id),
+            "matter_id": str(locked.matter_id),
             "document_ids": [str(doc.id) for doc in documents],
         },
     )
@@ -260,7 +323,13 @@ def commit_session(db: Session, *, user: User, upload_session: UploadSession) ->
     return documents
 
 
-def expire_stale_sessions(db: Session, *, storage: ObjectStorage, now: datetime) -> int:
+def expire_stale_sessions(
+    db: Session,
+    *,
+    storage: ObjectStorage,
+    now: datetime,
+    on_candidates_scanned: Callable[[], None] | None = None,
+) -> int:
     """Expire every OPEN session past its TTL; return how many were expired.
 
     Runs on an UNscoped session — this is an ops sweep across all firms, not a per-request
@@ -268,30 +337,60 @@ def expire_stale_sessions(db: Session, *, storage: ObjectStorage, now: datetime)
     (``storage.delete`` is idempotent), and an ``upload_session_expired`` audit event
     (``actor_id`` None — no human actor) is written per session. There is no scheduler at M1;
     callers/tests invoke this directly with an explicit ``now``.
+
+    Concurrency discipline: candidates come from a plain scan, but each row is re-locked
+    (``FOR UPDATE SKIP LOCKED``) and its OPEN + past-TTL predicate RE-CHECKED under the lock
+    before any blob delete or state change — a session that committed (or was already
+    expired) between scan and lock is skipped, and a row currently locked by an active
+    upload/commit is skipped for this sweep (the next sweep retries it). Each expiry commits
+    per row, so locks are not held across unrelated sessions.
+
+    ``on_candidates_scanned`` is a deterministic test barrier (fired once, after the scan and
+    before any row lock); production callers leave it ``None``.
     """
-    stale = list(
+    stale_ids = list(
         db.scalars(
-            select(UploadSession).where(
+            select(UploadSession.id).where(
                 UploadSession.status == UploadSessionStatus.OPEN.value,
                 UploadSession.ttl_expires_at < now,
             )
         )
     )
-    for session in stale:
-        slots = db.scalars(select(UploadSlot).where(UploadSlot.session_id == session.id))
+    if on_candidates_scanned is not None:
+        on_candidates_scanned()
+    expired = 0
+    for session_id in stale_ids:
+        locked = db.execute(
+            select(UploadSession)
+            .where(UploadSession.id == session_id)
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        if locked is None:
+            continue  # locked by an active upload/commit — the next sweep retries
+        still_expired = _as_naive_utc(locked.ttl_expires_at) < now
+        if locked.status != UploadSessionStatus.OPEN.value or not still_expired:
+            db.rollback()  # predicate no longer holds under the lock — release and skip
+            continue
+        slots = db.scalars(
+            select(UploadSlot)
+            .where(UploadSlot.session_id == locked.id)
+            .execution_options(populate_existing=True)  # received flags read lock-fresh
+        )
         for slot in slots:
             if slot.received:
                 storage.delete(slot.storage_key)
-        session.status = UploadSessionStatus.EXPIRED.value
+        locked.status = UploadSessionStatus.EXPIRED.value
         record_event(
             db,
-            firm_id=session.firm_id,
+            firm_id=locked.firm_id,
             actor_id=None,
             event_kind="upload_session_expired",
             payload={
-                "session_id": str(session.id),
-                "matter_id": str(session.matter_id),
+                "session_id": str(locked.id),
+                "matter_id": str(locked.matter_id),
             },
         )
-    db.commit()
-    return len(stale)
+        db.commit()
+        expired += 1
+    return expired

@@ -64,9 +64,9 @@ def test_register_put_commit_happy_flow(
     ]
     assert all(s["received"] is False for s in slots)
 
-    # PUT each slot's bytes via its app-mediated upload_url.
+    # PUT each slot's bytes via its app-mediated upload_url (body length == declared).
     for slot in slots:
-        put = client.put(slot["upload_url"], content=f"BYTES-{slot['filename']}".encode())
+        put = client.put(slot["upload_url"], content=slot["filename"].encode())
         assert put.status_code == 200, put.text
         assert put.json()["received"] is True
 
@@ -86,7 +86,7 @@ def test_register_put_commit_happy_flow(
             .one()
             .storage_key
         )
-        assert stored == f"BYTES-{slot['filename']}".encode()
+        assert stored == slot["filename"].encode()
     # Session flipped to committed.
     session_row = db.scalars(
         select(UploadSession).where(UploadSession.id == uuid.UUID(body["id"]))
@@ -106,7 +106,7 @@ def test_register_upload_url_is_app_route_on_local_backend(
 def test_resume_get_reflects_received_flags(client: TestClient, matter: Matter) -> None:
     body = _register(client, matter, "first.pdf", "second.pdf")
     first, second = body["slots"]
-    put = client.put(first["upload_url"], content=b"x")
+    put = client.put(first["upload_url"], content=b"first.pdf")  # body length == declared
     assert put.status_code == 200
 
     resumed = client.get(f"/api/uploads/{body['id']}")
@@ -123,7 +123,8 @@ def test_commit_incomplete_returns_409(client: TestClient, matter: Matter) -> No
     body = _register(client, matter, "got.pdf", "missing.pdf")
     # Slot order is not registration order, so address "got.pdf" by name, not by position.
     got = next(s for s in body["slots"] if s["filename"] == "got.pdf")
-    client.put(got["upload_url"], content=b"x")
+    put = client.put(got["upload_url"], content=b"got.pdf")  # body length == declared
+    assert put.status_code == 200
 
     commit = client.post(f"/api/uploads/{body['id']}/commit")
     assert commit.status_code == 409, commit.text
@@ -132,27 +133,89 @@ def test_commit_incomplete_returns_409(client: TestClient, matter: Matter) -> No
     assert payload["missing"] == ["missing.pdf"]
 
 
-def test_put_size_mismatch_is_logged_but_currently_accepted(
+def test_put_size_mismatch_is_rejected_and_logged(
     client: TestClient, matter: Matter, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Diagnostic (SEC-05/BUS-06 step 1): declared vs actual byte counts are logged.
-
-    Today a mismatched body is silently accepted — this test records that evidence (the
-    ``size_matches=False`` log plus the 200) before the enforcement lands. Only ids and byte
-    counts are logged, never filenames.
-    """
+    """SEC-05: a body larger than declared is a typed 422; the debug diagnostic (step 1
+    evidence, retained at debug level) logs ids and byte counts only — never filenames."""
     body = _register(client, matter, "a.pdf")  # declared size 5 ("a.pdf")
     slot = body["slots"][0]
     with caplog.at_level("DEBUG", logger="clarionpi.uploads"):
         put = client.put(slot["upload_url"], content=b"only-three-matches-no")  # 21 bytes
-    assert put.status_code == 200  # current behavior: no enforcement yet
+    assert put.status_code == 422
+    assert put.json() == {"error": "upload_size_mismatch"}
     diag = [r for r in caplog.records if "slot_put_received" in r.getMessage()]
     assert len(diag) == 1
     message = diag[0].getMessage()
     assert "declared_bytes=5" in message
-    assert "actual_bytes=21" in message
     assert "size_matches=False" in message
     assert "a.pdf" not in message  # filenames never logged
+
+
+def test_put_smaller_than_declared_is_rejected(client: TestClient, matter: Matter) -> None:
+    body = _register(client, matter, "a.pdf")  # declared size 5
+    slot = body["slots"][0]
+    put = client.put(slot["upload_url"], content=b"abc")  # 3 < 5
+    assert put.status_code == 422
+    assert put.json() == {"error": "upload_size_mismatch"}
+
+
+def test_put_exact_declared_size_stores_and_marks_received(
+    client: TestClient, matter: Matter, storage: LocalDiskStorage, db: Session
+) -> None:
+    body = _register(client, matter, "a.pdf")  # declared size 5
+    slot = body["slots"][0]
+    put = client.put(slot["upload_url"], content=b"12345")
+    assert put.status_code == 200
+    assert put.json()["received"] is True
+    key = db.scalars(select(UploadSlot).where(UploadSlot.id == uuid.UUID(slot["id"]))).one()
+    assert storage.get(key.storage_key) == b"12345"
+
+
+def test_put_over_configured_max_returns_413_without_storing(
+    tiny_limits: None,
+    client: TestClient,
+    matter: Matter,
+    storage: LocalDiskStorage,
+    db: Session,
+) -> None:
+    """A body crossing the configured per-file cap stops with 413; nothing is stored."""
+    body = _register(client, matter, "a.pdf")  # declared 5, cap 10 (tiny_limits)
+    slot = body["slots"][0]
+    put = client.put(slot["upload_url"], content=b"x" * 11)  # crosses the cap
+    assert put.status_code == 413
+    assert put.json() == {"error": "upload_limit_exceeded", "limit": "max_file_bytes"}
+    row = db.scalars(select(UploadSlot).where(UploadSlot.id == uuid.UUID(slot["id"]))).one()
+    assert row.received is False
+    assert not storage.exists(row.storage_key)
+
+
+def test_put_to_committed_session_is_409_before_body_is_consumed(
+    client: TestClient, matter: Matter
+) -> None:
+    body = _register(client, matter, "a.pdf")
+    slot = body["slots"][0]
+    assert client.put(slot["upload_url"], content=b"12345").status_code == 200
+    assert client.post(f"/api/uploads/{body['id']}/commit").status_code == 201
+    # The route refuses on the pre-check (before any stream read); the service re-checks
+    # under the row lock as the authoritative gate.
+    put = client.put(slot["upload_url"], content=b"12345")
+    assert put.status_code == 409
+    assert put.json()["error"] == "upload_session_not_open"
+
+
+def test_rejected_re_put_preserves_prior_object_and_received_state(
+    client: TestClient, matter: Matter, storage: LocalDiskStorage, db: Session
+) -> None:
+    body = _register(client, matter, "a.pdf")  # declared 5
+    slot = body["slots"][0]
+    assert client.put(slot["upload_url"], content=b"GOOD1").status_code == 200
+    # The retry has the wrong actual size → 422; the prior object and received survive.
+    put = client.put(slot["upload_url"], content=b"bad")
+    assert put.status_code == 422
+    row = db.scalars(select(UploadSlot).where(UploadSlot.id == uuid.UUID(slot["id"]))).one()
+    assert row.received is True
+    assert storage.get(row.storage_key) == b"GOOD1"
 
 
 @pytest.fixture

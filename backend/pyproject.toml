@@ -32,6 +32,8 @@ dev = [
     "mypy",
     "types-PyYAML",
     "hypothesis",
+    # Postgres driver for the integration-marked concurrency suite (docker compose db).
+    "psycopg[binary]",
 ]
 
 [tool.pytest.ini_options]

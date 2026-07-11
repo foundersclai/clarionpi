@@ -11,6 +11,7 @@ commit; and pathological filenames still yield storage keys the local backend ac
 
 from __future__ import annotations
 
+import io
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -107,7 +108,9 @@ def test_receive_stores_blob_and_flags_received(
         db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
     )
     slot = _slots(db, session)[0]
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"PDF-BYTES")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"PDF-BYTES")
+    )
     assert slot.received is True
     assert storage.get(slot.storage_key) == b"PDF-BYTES"
 
@@ -119,9 +122,13 @@ def test_receive_overwrites_on_retry(
         db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
     )
     slot = _slots(db, session)[0]
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"v1")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"v1")
+    )
     # A re-PUT to an already-received slot in an OPEN session replaces the blob, no error.
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"v2")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"v2")
+    )
     assert slot.received is True
     assert storage.get(slot.storage_key) == b"v2"
 
@@ -133,10 +140,14 @@ def test_receive_on_committed_session_raises(
         db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
     )
     slot = _slots(db, session)[0]
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"x")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+    )
     commit_session(db, user=dev_user, upload_session=session)
     with pytest.raises(UploadSessionNotOpen) as exc:
-        receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"y")
+        receive_slot_blob(
+            db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"y")
+        )
     assert exc.value.status == UploadSessionStatus.COMMITTED.value
 
 
@@ -151,7 +162,9 @@ def test_commit_with_missing_slot_raises_and_creates_no_documents(
         storage=storage,
     )
     got = _slot_named(db, session, "got.pdf")
-    receive_slot_blob(db, slot=got, upload_session=session, storage=storage, data=b"x")
+    receive_slot_blob(
+        db, slot=got, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+    )
     with pytest.raises(UploadIncomplete) as exc:
         commit_session(db, user=dev_user, upload_session=session)
     # Exactly the un-received filenames (order is deterministic-but-not-registration; the
@@ -176,7 +189,9 @@ def test_successful_commit_creates_uploaded_documents_and_audits(
     )
     slots = _slots(db, session)
     for slot in slots:
-        receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"x")
+        receive_slot_blob(
+            db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+        )
 
     docs = commit_session(db, user=dev_user, upload_session=session)
 
@@ -207,7 +222,9 @@ def test_commit_twice_raises_upload_session_not_open(
         db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
     )
     slot = _slots(db, session)[0]
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"x")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+    )
     commit_session(db, user=dev_user, upload_session=session)
     with pytest.raises(UploadSessionNotOpen) as exc:
         commit_session(db, user=dev_user, upload_session=session)
@@ -222,7 +239,9 @@ def test_expire_sweep_flips_only_past_ttl_open_sessions(
         db, user=dev_user, matter=matter, files=_decls("old.pdf"), storage=storage
     )
     stale_slot = _slots(db, stale)[0]
-    receive_slot_blob(db, slot=stale_slot, upload_session=stale, storage=storage, data=b"old")
+    receive_slot_blob(
+        db, slot=stale_slot, upload_session=stale, storage=storage, fileobj=io.BytesIO(b"old")
+    )
     # Force the TTL into the past (naive UTC).
     stale.ttl_expires_at = _utcnow() - timedelta(minutes=1)
     db.commit()
@@ -300,7 +319,9 @@ def test_weird_filenames_produce_safe_keys(
     # No traversal survives the sanitizer, so the resolved key stays under the storage root.
     assert "/../" not in slot.storage_key
     # The sanitized key is one the local backend accepts (round-trips through storage).
-    receive_slot_blob(db, slot=slot, upload_session=session, storage=storage, data=b"x")
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+    )
     assert storage.get(slot.storage_key) == b"x"
 
 
@@ -311,3 +332,98 @@ def test_safe_name_falls_back_to_file_when_nothing_survives() -> None:
     assert _safe_name("") == "file"
     assert _safe_name("report.pdf") == "report.pdf"
     assert _safe_name("A B/C") == "A_B_C"
+
+
+def test_db_commit_failure_after_promotion_restores_prior_object(
+    db: Session,
+    dev_user: User,
+    matter: Matter,
+    storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A DB commit failure after storage promotion rolls the object back to the prior
+    version and leaves no staging/recovery files (SEC-05 step 5)."""
+    session = register_upload_session(
+        db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
+    )
+    slot = _slots(db, session)[0]
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"v1")
+    )
+
+    def _failing_commit() -> None:
+        raise RuntimeError("forced commit failure")
+
+    monkeypatch.setattr(db, "commit", _failing_commit)
+    with pytest.raises(RuntimeError, match="forced commit failure"):
+        receive_slot_blob(
+            db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"v2")
+        )
+    monkeypatch.undo()
+
+    # Prior object restored; received state unchanged (still True from the v1 upload).
+    assert storage.get(slot.storage_key) == b"v1"
+    db.refresh(slot)
+    assert slot.received is True
+    # No staging or recovery litter anywhere under the storage root.
+    litter = [
+        p
+        for p in (tmp_path / "storage").rglob("*")
+        if p.is_file() and (".staging-" in p.name or ".backup-" in p.name)
+    ]
+    assert litter == []
+
+
+def test_db_commit_failure_on_first_upload_leaves_no_object(
+    db: Session,
+    dev_user: User,
+    matter: Matter,
+    storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = register_upload_session(
+        db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
+    )
+    slot = _slots(db, session)[0]
+
+    def _failing_commit() -> None:
+        raise RuntimeError("forced commit failure")
+
+    monkeypatch.setattr(db, "commit", _failing_commit)
+    with pytest.raises(RuntimeError):
+        receive_slot_blob(
+            db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"v1")
+        )
+    monkeypatch.undo()
+
+    assert storage.exists(slot.storage_key) is False
+    db.refresh(slot)
+    assert slot.received is False
+
+
+def test_expiry_recheck_skips_session_committed_after_scan(
+    db: Session, dev_user: User, matter: Matter, storage: LocalDiskStorage
+) -> None:
+    """The sweep re-checks its predicate under the row lock: a session that commits between
+    the candidate scan and the lock is skipped, and its blobs survive (unit-level; the
+    Postgres integration suite proves the actual lock serialization)."""
+    session = register_upload_session(
+        db, user=dev_user, matter=matter, files=_decls("a.pdf"), storage=storage
+    )
+    slot = _slots(db, session)[0]
+    receive_slot_blob(
+        db, slot=slot, upload_session=session, storage=storage, fileobj=io.BytesIO(b"x")
+    )
+    session.ttl_expires_at = _utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    def _commit_between_scan_and_lock() -> None:
+        commit_session(db, user=dev_user, upload_session=session)
+
+    count = expire_stale_sessions(
+        db, storage=storage, now=_utcnow(), on_candidates_scanned=_commit_between_scan_and_lock
+    )
+    assert count == 0
+    assert session.status == UploadSessionStatus.COMMITTED.value
+    assert storage.get(slot.storage_key) == b"x"  # nothing deleted
