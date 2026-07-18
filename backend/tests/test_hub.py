@@ -113,8 +113,7 @@ EXPECTED_TENANT_KEY_GROUPS = {
         "DemandDraft(firm_id,matter_id,id,version,owning_operation_run_id)",
         "ComplianceFinding(firm_id,matter_id,id)",
         "ComplianceFindingRevision(firm_id,matter_id,finding_id,revision)",
-        "ComplianceFindingRevision(firm_id,matter_id,draft_id,draft_version,finding_id,"
-        "revision)",
+        "ComplianceFindingRevision(firm_id,matter_id,draft_id,draft_version,finding_id,revision)",
         "ComplianceFindingRevision(firm_id,matter_id,draft_id,draft_version,finding_id,"
         "revision,source_operation_run_id)",
     ),
@@ -398,9 +397,7 @@ def test_each_missing_workshop_adr_fails_hub_check(complete_repo: Path, adr_id: 
         "0017-artifact-publication",
     ],
 )
-def test_wrong_workshop_adr_assignment_fails_hub_check(
-    complete_repo: Path, adr_id: str
-) -> None:
+def test_wrong_workshop_adr_assignment_fails_hub_check(complete_repo: Path, adr_id: str) -> None:
     path = _adr_path(complete_repo, adr_id)
     _replace(path, ADR_SPECS[adr_id][1], "Decision owner: wrong boundary.")
     assert any(f"ADR-{adr_id} decision owner" in error for error in _charter_errors(complete_repo))
@@ -428,9 +425,7 @@ def test_shared_adr_dependency_is_explicit(complete_repo: Path, adr_id: str) -> 
 
 
 @pytest.mark.parametrize("adr_id", ["0014", "0015", "0016", "0017"])
-def test_shared_decision_is_not_folded_into_workshop_adr(
-    complete_repo: Path, adr_id: str
-) -> None:
+def test_shared_decision_is_not_folded_into_workshop_adr(complete_repo: Path, adr_id: str) -> None:
     boundary = _adr_path(complete_repo, "0013")
     boundary.write_text(
         boundary.read_text(encoding="utf-8") + ADR_SPECS[adr_id][1] + "\n",
@@ -453,9 +448,7 @@ def test_future_workshop_owner_is_declared_without_live_registry_row(
 
 
 @pytest.mark.parametrize("owner", EXPECTED_FUTURE_OWNERS, ids=list(EXPECTED_FUTURE_OWNERS))
-def test_complete_future_owner_activation_passes_hub_check(
-    complete_repo: Path, owner: str
-) -> None:
+def test_complete_future_owner_activation_passes_hub_check(complete_repo: Path, owner: str) -> None:
     _activate_owner(complete_repo, owner, "complete")
     _assert_charter_ok(complete_repo)
 
@@ -487,15 +480,13 @@ def test_s1_preserves_existing_contract_registry_rows(complete_repo: Path) -> No
     before = HUB.parse_contracts_table((complete_repo / "CONTRACTS.md").read_text(encoding="utf-8"))
     _assert_charter_ok(complete_repo)
     after = HUB.parse_contracts_table((complete_repo / "CONTRACTS.md").read_text(encoding="utf-8"))
-    assert before == after == [
-        ("backend/app/existing", "docs/module_contracts/existing.md", "live")
-    ]
+    assert (
+        before == after == [("backend/app/existing", "docs/module_contracts/existing.md", "live")]
+    )
 
 
 @pytest.mark.parametrize("owner", EXPECTED_FUTURE_OWNERS, ids=list(EXPECTED_FUTURE_OWNERS))
-def test_missing_future_owner_declaration_fails_hub_check(
-    complete_repo: Path, owner: str
-) -> None:
+def test_missing_future_owner_declaration_fails_hub_check(complete_repo: Path, owner: str) -> None:
     _replace(complete_repo / "docs/system_contract.md", _owner_line(owner), "")
     assert any(f"missing future owner {owner}" in error for error in _charter_errors(complete_repo))
 
@@ -512,9 +503,9 @@ def test_hub_check_has_no_backend_app_imports() -> None:
 
 
 def test_workshop_readiness_overlay_is_present(complete_repo: Path) -> None:
-    assert OVERLAY in (
-        complete_repo / "backlog/pi/10_implementation_readiness.md"
-    ).read_text(encoding="utf-8")
+    assert OVERLAY in (complete_repo / "backlog/pi/10_implementation_readiness.md").read_text(
+        encoding="utf-8"
+    )
     _assert_charter_ok(complete_repo)
 
 
@@ -573,9 +564,7 @@ def test_s1_adds_no_runtime_workshop_surface(complete_repo: Path, surface: str) 
     assert surface in {"package", "import", "route", "profile", "capability"}
 
 
-@pytest.mark.parametrize(
-    "group", EXPECTED_TENANT_KEY_GROUPS, ids=list(EXPECTED_TENANT_KEY_GROUPS)
-)
+@pytest.mark.parametrize("group", EXPECTED_TENANT_KEY_GROUPS, ids=list(EXPECTED_TENANT_KEY_GROUPS))
 def test_tenant_key_candidate_group_is_complete(group: str) -> None:
     actual = getattr(HUB, "WORKSHOP_TENANT_KEY_GROUPS", None)
     assert actual is not None, "intended red: WORKSHOP_TENANT_KEY_GROUPS is missing"
@@ -639,9 +628,7 @@ def _drift_inventory(repo_root: Path, case: str) -> None:
 
 
 @pytest.mark.parametrize("case", INVENTORY_DRIFT_CASES, ids=INVENTORY_DRIFT_CASES)
-def test_tenant_contract_inventory_drift_fails_hub_check(
-    complete_repo: Path, case: str
-) -> None:
+def test_tenant_contract_inventory_drift_fails_hub_check(complete_repo: Path, case: str) -> None:
     _drift_inventory(complete_repo, case)
     assert any("tenant inventory" in error for error in _charter_errors(complete_repo))
 
@@ -654,18 +641,14 @@ def test_tenant_key_contract_rejects_scope_mix(complete_repo: Path, scope: str) 
 
 
 @pytest.mark.parametrize("substitute", BARE_KEY_RULES, ids=list(BARE_KEY_RULES))
-def test_tenant_key_contract_rejects_bare_substitute(
-    complete_repo: Path, substitute: str
-) -> None:
+def test_tenant_key_contract_rejects_bare_substitute(complete_repo: Path, substitute: str) -> None:
     path = _adr_path(complete_repo, "0013")
     _replace(path, BARE_KEY_RULES[substitute], "bare key rule removed")
     assert any("bare-key rule" in error for error in _charter_errors(complete_repo))
 
 
 @pytest.mark.parametrize("obligation", TENANT_OBLIGATIONS, ids=list(TENANT_OBLIGATIONS))
-def test_tenant_key_migration_obligation_is_frozen(
-    complete_repo: Path, obligation: str
-) -> None:
+def test_tenant_key_migration_obligation_is_frozen(complete_repo: Path, obligation: str) -> None:
     path = _adr_path(complete_repo, "0013")
     _replace(path, TENANT_OBLIGATIONS[obligation], "migration obligation removed")
     assert any("migration obligation" in error for error in _charter_errors(complete_repo))
