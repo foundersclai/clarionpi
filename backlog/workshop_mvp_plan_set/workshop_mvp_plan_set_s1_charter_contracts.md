@@ -14,13 +14,13 @@
 - SDLC-Minimum-Tier: 3
 - SDLC-Tier-Status: APPROVED
 - SDLC-Tier-Assessor: Codex, live repository context
-- SDLC-Tier-Content-SHA256: 77302377dd5152741f9f2ba98d79cd8bce5edca65096ef2345c21345b94a41cd
-- SDLC-Tier-Base-SHA: d50586d3026d80f9da28b54a608d27cf368d431c
+- SDLC-Tier-Content-SHA256: 4857643182c3c358cd861194bec68bc660190f4c87d2a264a69fb737c747f459
+- SDLC-Tier-Base-SHA: 814b75c27b7a6360d855280203d78e9df049ac29
 - SDLC-Tier-Triggers: module ownership changes; cross-module contract ownership registration
 - SDLC-Tier-Approval: user-approved in thread
 - SDLC-Tier-Approval-Rationale: recommended
 - SDLC-Tier-Degraded-Assurance: NONE
-- SDLC-Tier-Revalidation: unchanged-tier — consensus corrections preserve Tier 3 scope
+- SDLC-Tier-Revalidation: unchanged-tier — matrix mapping corrections preserve Tier 3 scope
 <!-- sdlc-tier-assessment:end -->
 
 ## Goal and non-goals
@@ -172,27 +172,56 @@ must not edit `backend/app/models/orm.py` or `backend/alembic/versions/`.
 | BM-04 | Frozen tenant-key/reference contract → current legacy ORM and downstream migrations | source WMVP-00 inventory → ADR-0013 exact sets → `WORKSHOP_TENANT_KEY_GROUPS`/`WORKSHOP_REFERENCE_GROUPS` → `check_workshop_charter` → migration slices/hub gate | all nine candidate-key groups and five reference groups match exactly; current present/absent/scalar-key legacy shapes are characterized | missing, extra, reordered, or altered candidate/reference entry fails | cross-firm, same-firm/different-matter, mixed-column, bare-UUID, and bare matter-local version substitutes are forbidden by contract | all-null/all-present, Postgres `MATCH FULL`, duplicate-parent, cross-scope, partial-null, and WMVP-01D RegistryVersion preflight obligations are present | S1 adds no ORM constraint or Alembic migration | `happy keys → backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[tenant-roots-decision], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[strategy-settlement], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[generation-publication], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[analysis-facts], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[draft-compliance], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[operations-telemetry], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[ingest], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[workshop-authority], backend/tests/test_hub.py::test_tenant_key_candidate_group_is_complete[artifacts]; happy refs → backend/tests/test_hub.py::test_tenant_reference_group_is_complete[strategy-authority], backend/tests/test_hub.py::test_tenant_reference_group_is_complete[budget-run], backend/tests/test_hub.py::test_tenant_reference_group_is_complete[corpus-evidence], backend/tests/test_hub.py::test_tenant_reference_group_is_complete[analysis-current], backend/tests/test_hub.py::test_tenant_reference_group_is_complete[upload-publication]; happy characterization → backend/tests/test_hub.py::test_current_tenant_key_legacy_shape_is_characterized[present-families], backend/tests/test_hub.py::test_current_tenant_key_legacy_shape_is_characterized[absent-families], backend/tests/test_hub.py::test_current_tenant_key_legacy_shape_is_characterized[scalar-parent-fks], backend/tests/test_hub.py::test_current_tenant_key_legacy_shape_is_characterized[matter-local-uniques], backend/tests/test_hub.py::test_current_tenant_key_legacy_shape_is_characterized[integer-fences]; negative inventory → backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[missing], backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[extra], backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[reordered], backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[altered-column], backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[missing-reference]; edge scope → backend/tests/test_hub.py::test_tenant_key_contract_rejects_scope_mix[cross-firm], backend/tests/test_hub.py::test_tenant_key_contract_rejects_scope_mix[same-firm-different-matter], backend/tests/test_hub.py::test_tenant_key_contract_rejects_scope_mix[mixed-columns]; edge bare keys → backend/tests/test_hub.py::test_tenant_key_contract_rejects_bare_substitute[uuid], backend/tests/test_hub.py::test_tenant_key_contract_rejects_bare_substitute[matter-local-version]; terminal obligations → backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[all-null-or-all-present], backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[postgres-match-full], backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[duplicate-parent-preflight], backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[cross-scope-preflight], backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[partial-null-preflight], backend/tests/test_hub.py::test_tenant_key_migration_obligation_is_frozen[registry-version-intermediate-head]; forbidden schema effects → backend/tests/test_hub.py::test_s1_tenant_contract_adds_no_schema_change[orm], backend/tests/test_hub.py::test_s1_tenant_contract_adds_no_schema_change[alembic]` |
 | BM-05 | Charter validator → CLI aggregate/diagnostics | ADR/owner/readiness/source/tenant contract files → `check_workshop_charter(repo_root)` → `main(repo_root)` → stderr + process status → `make hub-check` | complete charter returns 0 and one deterministic OK line | every charter-validator failure category returns 1 with its stable diagnostic | multiple failures are emitted in deterministic order against the supplied repo root | aggregate never reports partial success and remains fail-visible on every invocation | no traceback and no filesystem write | `happy → backend/tests/test_hub.py::test_hub_main_returns_zero_for_complete_charter; negative → backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-adr], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[wrong-adr-owner], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-adr-dependency], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[shared-decision-folded], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[legal-attestation-present], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[adr-0009-allocated], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-future-owner], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[partial-owner-activation], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-readiness-overlay], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[r2-criteria-changed], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-source-rule], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[forbidden-source-input], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[workshop-evidence-closes-gate], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[tenant-inventory-drift], backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_charter_diagnostic[missing-tenant-obligation]; edge → backend/tests/test_hub.py::test_hub_main_orders_multiple_charter_diagnostics, backend/tests/test_hub.py::test_hub_main_uses_supplied_repo_root; terminal → backend/tests/test_hub.py::test_hub_main_never_reports_partial_success; forbidden effects → backend/tests/test_hub.py::test_hub_main_failure_has_no_side_effect[traceback], backend/tests/test_hub.py::test_hub_main_failure_has_no_side_effect[filesystem-write]` |
 
+### Matrix allocation supplement
+
+These mappings are part of BM-01–BM-05 and close behaviorally distinct states that would be
+ambiguous or excessively wide inside the table cells above:
+
+- BM-01 negative wrong-owner also maps ADR-0013 to
+  `backend/tests/test_hub.py::test_wrong_workshop_adr_assignment_fails_hub_check[0013-workshop-boundary]`.
+- BM-02 negative partial activation additionally maps contract-only and
+  contract+registry-row-without-implementation-marker for both future owners to
+  `backend/tests/test_hub.py::test_partial_future_owner_activation_fails_hub_check[app.core.matter_access-contract-only]`,
+  `backend/tests/test_hub.py::test_partial_future_owner_activation_fails_hub_check[app.workshop.lifecycle-contract-only]`,
+  `backend/tests/test_hub.py::test_partial_future_owner_activation_fails_hub_check[app.core.matter_access-contract-row-no-marker]`, and
+  `backend/tests/test_hub.py::test_partial_future_owner_activation_fails_hub_check[app.workshop.lifecycle-contract-row-no-marker]`.
+  Together with the table mappings, these cover every reachable partial state of the
+  implementation-marker/contract/registry-row activation triple.
+- BM-04 negative reference inventory drift additionally maps to
+  `backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[extra-reference]`,
+  `backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[reordered-reference]`, and
+  `backend/tests/test_hub.py::test_tenant_contract_inventory_drift_fails_hub_check[altered-reference]`;
+  the existing `[missing-reference]` mapping covers the fourth reference-clause drift class.
+- BM-05 pairs the existing hub producers with the changed `main(repo_root)` consumer and stable
+  exit/diagnostic contract through
+  `backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_existing_contract_diagnostic[missing-agents]`,
+  `backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_existing_contract_diagnostic[agents-placeholder]`,
+  `backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_existing_contract_diagnostic[missing-contracts]`,
+  `backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_existing_contract_diagnostic[missing-registered-module]`, and
+  `backend/tests/test_hub.py::test_hub_main_returns_one_with_deterministic_existing_contract_diagnostic[missing-registered-contract-doc]`.
+- Direct-consumer sweep: `Makefile::{hub-check,verify-backend,verify}` consumes only the unchanged
+  process-status/stdout contract already allocated in BM-05 and the final verification commands;
+  `backend/tests/engine/test_chronology.py::test_hub_check_passes_with_new_contract_row` consumes
+  only the unchanged success line and remains the existing subprocess characterization. No
+  production module imports `scripts/hub_check.py`; repository search found no other direct caller.
+
 ## Independent matrix-completeness review
 
 The downstream per-slice consensus review fills this scaffold against the implementation base.
 
 <!-- matrix-attestation:start -->
 - Reviewer/context: fresh Codex subagent, read-only, neutral prompt, no correction history
-- Matrix-Completeness-Gate: BLOCKED
+- Matrix-Completeness-Gate: PASS
 - Matrix-Deferred-Findings: NONE
-- Matrix-Review-Content-SHA256: 988f7e8240f1b02eaebdddbdf8ffb44ca6f33378079108ee24c8c96690bc44e8
-- Matrix-Review-Base-SHA: d50586d3026d80f9da28b54a608d27cf368d431c
+- Matrix-Review-Content-SHA256: f4b455dcbadef38a2ef77aa23bcdc01f186b1cd4fecd973e9c076b2e5476fb1d
+- Matrix-Review-Base-SHA: 814b75c27b7a6360d855280203d78e9df049ac29
 - Matrix-Review-Worktree: clean-except-plan
-- Changed seams and fallback/legacy paths audited: BLOCKED — legacy hub failures and two reachable partial future-owner activation states are unmapped
-- Every populated axis → exact deterministic test mapping confirmed: BLOCKED — reference drift variants and the ADR-0013 wrong-owner path lack exact tests
-- Producer failure + consumer response pairs confirmed: BLOCKED — existing AGENTS/CONTRACTS/module/contract-doc failures are not allocated through the changed `main(repo_root)` aggregate
-- Forbidden side-effect assertions confirmed: PASS for all currently mapped effects
+- Changed seams and fallback/legacy paths audited: PASS — BM-01–BM-05 plus the allocation supplement cover every changed and legacy hub path
+- Every populated axis → exact deterministic test mapping confirmed: PASS — happy, negative, edge, terminal, and side-effect outcomes have exact identifiers
+- Producer failure + consumer response pairs confirmed: PASS — charter and legacy hub failures are paired through `main(repo_root)` diagnostics
+- Forbidden side-effect assertions confirmed: PASS — calls, imports, runtime surfaces, schema writes, tracebacks, filesystem writes, and registry-row drift are covered
 - N/A axes and concrete reasons confirmed: PASS — no N/A axes claimed
-- Pre-implementation findings resolved and plan re-reviewed: NO
-- Verified gap: BM-05 omits missing/placeholder `AGENTS.md`, missing `CONTRACTS.md`, missing registered module path, and missing registered contract-doc failure mappings through `main(repo_root)`
-- Verified gap: BM-02 omits contract-only and contract+registry-row-without-implementation-marker activation states for both future owners
-- Verified gap: BM-04 allocates only missing-reference drift; extra, reordered, and altered reference-clause failures lack deterministic test identifiers
-- Verified gap: BM-01 omits the wrong-owner test for `0013-workshop-mvp-boundary`
+- Pre-implementation findings resolved and plan re-reviewed: YES — dual-clean Codex/Claude round 2 followed by fresh read-only attestation
 - Late-gap rule acknowledged: YES
 <!-- matrix-attestation:end -->
 
