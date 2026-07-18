@@ -14,6 +14,20 @@ At **M0** most modules are package stubs — the `notes` column states each modu
 status truthfully (`implemented`/`stub`). `corpus` and `core` each back two contracts
 (shared directory, distinct boundaries).
 
+## Declared Workshop MVP owners
+
+The following are future owners, not live registry entries. Each declaration freezes its
+implementation marker and eventual contract row. Declaration-only is valid now; activation is
+valid only when the marker, contract document, and live table row land together.
+
+<!-- future-workshop-owners:start -->
+- `app.core.matter_access` — future owner; implementation marker `backend/app/core/matter_access.py`; contract `docs/module_contracts/app.core.matter_access.md`; live registry path `backend/app/core`; activate marker, contract, and row in one PR.
+- `app.workshop.lifecycle` — future owner; implementation marker `backend/app/workshop/lifecycle.py`; contract `docs/module_contracts/app.workshop.lifecycle.md`; live registry path `backend/app/workshop`; activate marker, contract, and row in one PR.
+<!-- future-workshop-owners:end -->
+
+These declarations intentionally sit outside the parsed table below. A later slice must move an
+owner to the live registry without leaving any partial marker/contract/row state.
+
 | module path | contract doc | notes |
 |---|---|---|
 | backend/app/corpus | docs/module_contracts/app.corpus.ingest.md | status: live (M1) — raw uploads to page store (sessions, classify, OCR fallback, dedup, phase0 SSE) |

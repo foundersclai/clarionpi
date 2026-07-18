@@ -37,6 +37,17 @@ gets a shared **Cross-cutting** paragraph inside both. `corpus` and `core` each
 back two contracts (a module path may legitimately appear twice — the boundaries
 differ, the directory is shared).
 
+## Declared Workshop MVP owners
+
+These declarations reserve future ownership without creating a module contract or a live registry
+row. The implementation marker, contract document, and registry row must land atomically when a
+later slice activates either owner.
+
+<!-- future-workshop-owners:start -->
+- `app.core.matter_access` — future owner; implementation marker `backend/app/core/matter_access.py`; contract `docs/module_contracts/app.core.matter_access.md`; live registry path `backend/app/core`; activate marker, contract, and row in one PR.
+- `app.workshop.lifecycle` — future owner; implementation marker `backend/app/workshop/lifecycle.py`; contract `docs/module_contracts/app.workshop.lifecycle.md`; live registry path `backend/app/workshop`; activate marker, contract, and row in one PR.
+<!-- future-workshop-owners:end -->
+
 ## How these relate to the rest of the contract stack
 
 - [`system_contract.md`](../system_contract.md) is the **top-level contract** —

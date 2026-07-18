@@ -51,6 +51,17 @@ Small internal refactors, private-helper extraction, formatting, and local
 implementation cleanups do not require a system-contract edit unless they change
 one of the surfaces above.
 
+## Workshop MVP future-owner rule
+
+ADR-0013 declares two future module owners without claiming runtime capability. Declaration-only
+is the current safe state. A later boundary change activates an owner only when its implementation
+marker, module contract, and live `CONTRACTS.md` row land in the same PR.
+
+<!-- future-workshop-owners:start -->
+- `app.core.matter_access` — future owner; implementation marker `backend/app/core/matter_access.py`; contract `docs/module_contracts/app.core.matter_access.md`; live registry path `backend/app/core`; activate marker, contract, and row in one PR.
+- `app.workshop.lifecycle` — future owner; implementation marker `backend/app/workshop/lifecycle.py`; contract `docs/module_contracts/app.workshop.lifecycle.md`; live registry path `backend/app/workshop`; activate marker, contract, and row in one PR.
+<!-- future-workshop-owners:end -->
+
 ## Core Invariants
 
 ### 1. The Product Is A Gated Copilot
