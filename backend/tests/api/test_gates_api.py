@@ -94,10 +94,11 @@ def _current(client: TestClient, matter_id: uuid.UUID) -> dict:
 
 
 def _confirm_all_edits() -> dict:
+    # WD-1: a real (private-party) matter carries SOL only; confirming NOC_CITE would raise
+    # UnknownDeadlineRule (422) against the SOL-only set.
     return {
         "deadline_confirmations": [
             {"rule_id": SOL_CITE, "confirmed": True},
-            {"rule_id": NOC_CITE, "confirmed": True},
         ]
     }
 
@@ -137,7 +138,7 @@ def test_current_envelope_facts_review_shape_for_attorney(
     assert vm["incident_facts"] is None
     assert vm["documents_summary"] == {"total": 0, "needs_review": 0, "failed": 0}
     candidates = vm["deadline_candidates"]
-    assert {c["rule_id"] for c in candidates} == {SOL_CITE, NOC_CITE}
+    assert {c["rule_id"] for c in candidates} == {SOL_CITE}  # WD-1: notice-of-claim suppressed (private-party)
     for candidate in candidates:
         assert candidate["confirmed"] is False
         assert candidate["verify_status"] == "unverified"
@@ -389,4 +390,4 @@ def test_list_matters_tenant_scoped_newest_first(
     assert str(firm_b_matter_id) not in ids  # another firm's matter never appears
     for matter in resp.json()["matters"]:
         assert matter["gate_state"] == "corpus_processing"
-        assert len(matter["deadline_candidates"]) == 2
+        assert len(matter["deadline_candidates"]) == 1  # WD-1: SOL only (notice-of-claim suppressed)

@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.models.enums import IntakeFlagAnswer
 from app.models.orm import Matter
 
 _INTAKE_FLAGS = (
@@ -46,9 +47,11 @@ def test_create_matter_returns_201_with_deadline_candidates(
     assert body["registry_version"] == 0
 
     kinds = {c["kind"]: c for c in body["deadline_candidates"]}
-    assert set(kinds) == {"sol", "notice_of_claim"}
+    # WD-1: a created matter is private-party (eligibility ⇒ public_entity_involved=NO), so the
+    # public-entity notice-of-claim candidate is suppressed — SOL only. The notice-present path
+    # is exercised at the unit level (test_deadlines.py) because YES/UNKNOWN can't reach the route.
+    assert set(kinds) == {"sol"}
     assert kinds["sol"]["date"] == "2028-01-15"
-    assert kinds["notice_of_claim"]["date"] == "2026-07-14"
     # Statute cites travel to the wire so the FE banner can show them.
     assert "A.R.S. § 12-542" in kinds["sol"]["statute_cite"]
     assert kinds["sol"]["verify_status"] == "unverified"
@@ -230,3 +233,64 @@ def test_create_matter_pins_the_rule_pack(
         assert row.rule_pack_fingerprint == pack.fingerprint
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------------------
+# WD-1 — public-entity notice-of-claim suppression on the create route (BM-02 / BM-03)
+# --------------------------------------------------------------------------------------
+
+
+def test_created_matter_excludes_public_entity_notice_candidate(client: TestClient) -> None:
+    body = client.post("/api/matters", json=_valid_body()).json()
+    kinds = {c["kind"] for c in body["deadline_candidates"]}
+    assert "notice_of_claim" not in kinds
+
+
+def test_created_matter_retains_sol_candidate(client: TestClient) -> None:
+    body = client.post("/api/matters", json=_valid_body()).json()
+    kinds = {c["kind"] for c in body["deadline_candidates"]}
+    assert "sol" in kinds
+
+
+def test_create_passes_intake_answer_to_deadline_computation(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route threads the matter's ACTUAL intake answer into deadline computation, not a
+    hardcoded constant — the wiring that keeps suppression keyed on real intake."""
+    import app.api.routes.matters as matters_route
+    from app.rules.deadlines import compute_deadline_candidates as real
+
+    seen: dict = {}
+
+    def _spy(*args, **kwargs):
+        seen["public_entity_involved"] = kwargs.get(
+            "public_entity_involved", args[3] if len(args) > 3 else None
+        )
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(matters_route, "compute_deadline_candidates", _spy)
+    resp = client.post("/api/matters", json=_valid_body())
+    assert resp.status_code == 201, resp.text
+    # The body answered "no"; the route passed exactly that enum, sourced from the request.
+    assert seen["public_entity_involved"] is IntakeFlagAnswer.NO
+
+
+def test_create_eligibility_refusal_unchanged(client: TestClient) -> None:
+    # WD-1 changes deadline computation, not the WI-2 eligibility gate: a public-entity matter
+    # is still refused with the typed 422 before any deadline work happens.
+    resp = client.post("/api/matters", json=_valid_body() | {"public_entity_involved": "yes"})
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "matter_out_of_scope"
+
+
+def test_create_non_az_refusal_unchanged(client: TestClient) -> None:
+    resp = client.post("/api/matters", json=_valid_body() | {"jurisdiction": "CA"})
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "jurisdiction_unsupported"
+
+
+def test_matter_view_rehydrates_sol_only_candidates(client: TestClient) -> None:
+    created = client.post("/api/matters", json=_valid_body()).json()
+    fetched = client.get(f"/api/matters/{created['id']}").json()
+    kinds = {c["kind"] for c in fetched["deadline_candidates"]}
+    assert kinds == {"sol"}

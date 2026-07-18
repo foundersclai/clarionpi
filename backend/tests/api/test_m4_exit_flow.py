@@ -348,7 +348,7 @@ def test_m4_exit_full_g2a_flow(
     envelope = _current(client, matter_id)
     assert envelope["gate"] == "facts_review"
     candidates = envelope["view_model"]["deadline_candidates"]
-    assert len(candidates) == 2  # AZ pack: SOL + notice-of-claim
+    assert len(candidates) == 1  # WD-1: private-party → SOL only
     confirmations = [{"rule_id": c["rule_id"], "confirmed": True} for c in candidates]
     edited = _submit(
         client,
