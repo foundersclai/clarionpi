@@ -90,7 +90,9 @@ def create_matter(
             },
         )
 
-    candidates = compute_deadline_candidates(pack, body.claim_type, body.incident_date)
+    candidates = compute_deadline_candidates(
+        pack, body.claim_type, body.incident_date, body.public_entity_involved
+    )
     matter = Matter(
         client_display_name=body.client_display_name,
         claim_type=body.claim_type.value,

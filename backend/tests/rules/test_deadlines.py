@@ -39,9 +39,7 @@ def test_candidates_for_mva_incident() -> None:
     pack = load_pack("AZ")
     # public_entity_involved=YES keeps the notice-of-claim candidate, so this test still
     # exercises the full two-candidate set (the date math is the point).
-    candidates = compute_deadline_candidates(
-        pack, ClaimType.MVA, _INCIDENT, IntakeFlagAnswer.YES
-    )
+    candidates = compute_deadline_candidates(pack, ClaimType.MVA, _INCIDENT, IntakeFlagAnswer.YES)
 
     by_kind = {c.kind: c for c in candidates}
     assert set(by_kind) == {DeadlineKind.SOL, DeadlineKind.NOTICE_OF_CLAIM}
@@ -53,9 +51,7 @@ def test_candidates_for_mva_incident() -> None:
 
 def test_candidates_carry_cites_assumptions_and_unverified_status() -> None:
     pack = load_pack("AZ")
-    candidates = compute_deadline_candidates(
-        pack, ClaimType.MVA, _INCIDENT, IntakeFlagAnswer.YES
-    )
+    candidates = compute_deadline_candidates(pack, ClaimType.MVA, _INCIDENT, IntakeFlagAnswer.YES)
     by_kind = {c.kind: c for c in candidates}
 
     sol = by_kind[DeadlineKind.SOL]
@@ -111,7 +107,7 @@ def test_sol_candidate_present_regardless_of_public_entity(answer: IntakeFlagAns
 
 @pytest.mark.parametrize("answer", _ANSWERS, ids=_ANSWER_IDS)
 def test_mva_candidate_set_never_empty(answer: IntakeFlagAnswer) -> None:
-    # Suppression must never empty the set (would flip G1's non-empty invariant): SOL always present.
+    # Suppression must never empty the set (SOL always present) — G1's non-empty invariant holds.
     candidates = compute_deadline_candidates(load_pack("AZ"), ClaimType.MVA, _INCIDENT, answer)
     assert len(candidates) >= 1
 
