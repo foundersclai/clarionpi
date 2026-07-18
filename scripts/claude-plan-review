@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Run a Claude plan-review pass in a disposable repository copy. Only the
+# requested audit plan may be copied back to the live workspace.
+
+set -euo pipefail
+
+readonly PLAN_PREFIX="docs/audit/plans/"
+
+die() {
+  printf 'claude-plan-review: %s\n' "$*" >&2
+  exit 2
+}
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/claude-plan-review docs/audit/plans/<plan>.md
+
+Runs Claude's review-fix-loop against a disposable copy of this repository.
+The only permitted live-workspace write is the named plan file. The command
+refuses to apply the result if any other file changed in either workspace.
+EOF
+}
+
+snapshot_outside_plan() {
+  local root="$1"
+  local relative_plan="$2"
+
+  (
+    cd "$root"
+    find . -mindepth 1 \
+      ! -path './.git' \
+      ! -path './.git/*' \
+      ! -path "./${relative_plan}" \
+      -print | LC_ALL=C sort | sed 's/^/path /'
+    find . -type f \
+      ! -path './.git/*' \
+      ! -path "./${relative_plan}" \
+      -exec shasum -a 256 {} + | LC_ALL=C sort
+    find . -type l \
+      ! -path './.git/*' \
+      ! -path "./${relative_plan}" \
+      -exec sh -c 'for entry; do printf "link %s -> %s\\n" "$entry" "$(readlink "$entry")"; done' sh {} + \
+      | LC_ALL=C sort
+  )
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+
+[[ "$#" -eq 1 ]] || {
+  usage >&2
+  exit 2
+}
+
+command -v claude >/dev/null 2>&1 || die "claude is not installed or not on PATH"
+command -v git >/dev/null 2>&1 || die "git is not installed or not on PATH"
+command -v shasum >/dev/null 2>&1 || die "shasum is not installed or not on PATH"
+
+plan_argument="$1"
+[[ "$plan_argument" != /* ]] || die "plan path must be repository-relative"
+
+repo_root="$(git rev-parse --show-toplevel)"
+repo_root="$(cd "$repo_root" && pwd -P)"
+candidate="$repo_root/$plan_argument"
+[[ -f "$candidate" ]] || die "plan does not exist: $plan_argument"
+[[ ! -L "$candidate" ]] || die "plan must not be a symlink"
+
+plan_directory="$(cd "$(dirname "$candidate")" && pwd -P)"
+source_plan="$plan_directory/$(basename "$candidate")"
+relative_plan="${source_plan#"$repo_root/"}"
+[[ "$relative_plan" != "$source_plan" ]] || die "plan resolves outside the repository"
+
+case "$relative_plan" in
+  "${PLAN_PREFIX}"*.md) ;;
+  *) die "plan must be under ${PLAN_PREFIX} and end in .md" ;;
+esac
+
+plan_name="${relative_plan#"$PLAN_PREFIX"}"
+[[ "$plan_name" != */* && -n "$plan_name" ]] || die "plan must be directly under ${PLAN_PREFIX}"
+
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/clarionpi-claude-review.XXXXXX")"
+review_root="$work_dir/repo"
+cleanup() {
+  rm -rf "$work_dir"
+}
+trap cleanup EXIT
+
+source_before="$work_dir/source-before.manifest"
+review_before="$work_dir/review-before.manifest"
+review_after="$work_dir/review-after.manifest"
+source_after="$work_dir/source-after.manifest"
+source_plan_before_hash="$(shasum -a 256 "$source_plan")"
+
+snapshot_outside_plan "$repo_root" "$relative_plan" >"$source_before"
+
+git clone --quiet --no-local "$repo_root" "$review_root"
+mkdir -p "$review_root/$(dirname "$relative_plan")"
+cp "$source_plan" "$review_root/$relative_plan"
+
+# Preserve tracked local code changes so the reviewer sees the current product state.
+git -C "$repo_root" diff --binary HEAD | git -C "$review_root" apply --whitespace=nowarn
+
+review_plan="$review_root/$relative_plan"
+snapshot_outside_plan "$review_root" "$relative_plan" >"$review_before"
+
+prompt="Invoke the review-fix-loop skill on the plan at $review_plan. Ground every claim against the code in $review_root and fix the plan in place. Do not use network access, git write operations, or change any other file. Output ONLY your final status block."
+
+set +e
+(
+  cd "$review_root"
+  claude -p "$prompt" \
+    --permission-mode bypassPermissions \
+    --add-dir "$review_root" \
+    --output-format text \
+    --no-session-persistence \
+    --bare
+)
+claude_status=$?
+set -e
+
+[[ "$claude_status" -eq 0 ]] || die "Claude exited with status $claude_status; no plan was copied back"
+[[ -f "$review_plan" && ! -L "$review_plan" ]] || die "Claude removed or replaced the plan; no plan was copied back"
+
+snapshot_outside_plan "$review_root" "$relative_plan" >"$review_after"
+if ! cmp -s "$review_before" "$review_after"; then
+  die "Claude changed a file outside $relative_plan in the disposable copy; no plan was copied back"
+fi
+
+snapshot_outside_plan "$repo_root" "$relative_plan" >"$source_after"
+if ! cmp -s "$source_before" "$source_after"; then
+  die "the live workspace changed outside $relative_plan while Claude ran; no plan was copied back"
+fi
+
+source_plan_after_hash="$(shasum -a 256 "$source_plan")"
+if [[ "$source_plan_before_hash" != "$source_plan_after_hash" ]]; then
+  die "the live plan changed while Claude ran; no plan was copied back"
+fi
+
+if cmp -s "$source_plan" "$review_plan"; then
+  printf 'Claude left %s unchanged.\n' "$relative_plan"
+  exit 0
+fi
+
+cp "$review_plan" "$source_plan"
+printf 'Claude review applied to %s.\n' "$relative_plan"

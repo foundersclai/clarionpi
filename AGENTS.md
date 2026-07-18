@@ -7,6 +7,13 @@ captive-firm deployment.
 Read this before making changes. Where this file conflicts with your defaults, this
 file wins.
 
+**Deployment status: pre-production.** No production traffic exists on any surface —
+no live firm, no real matters, no real PHI; all runs use development/synthetic data
+(workshop sources are owned-synthetic by rule). SDLC tier assessments may apply the
+pre-production wire-scope modifier on this declaration. **Remove this block at first
+live deployment** — the demotion expires at launch, and approvals that relied on it
+must be reassessed.
+
 ## Commands
 
 | Task | Command |
@@ -85,6 +92,10 @@ scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual
 
 ## Gotchas
 
+- The Codex sandbox may not see GitHub credentials stored in the host keychain. If
+  `gh auth status` or another GitHub access check fails inside the sandbox, repeat the
+  read-only authentication and permission check outside the sandbox before declaring
+  an authentication blocker or asking the user to log in again.
 - `make test` needs no services (SQLite in-memory); `deploy/docker-compose.yml` is only
   for integration/dev against real Postgres + MinIO.
 - No `uv` on this machine at bootstrap time — the backend venv is plain

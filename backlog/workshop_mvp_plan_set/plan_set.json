@@ -1,0 +1,1172 @@
+{
+    "schema_version": 2,
+    "slug": "workshop_mvp_plan_set",
+    "status": "READY_FOR_REVIEW",
+    "generated_at": "2026-07-18T00:03:18Z",
+    "repository": {
+        "head": "d50586d3026d80f9da28b54a608d27cf368d431c",
+        "worktree_dirty": true
+    },
+    "source": {
+        "kind": "document",
+        "inputs": [
+            {
+                "id": "INPUT-01",
+                "kind": "path",
+                "reference": "backlog/planned/workshop_mvp.md",
+                "snapshot_path": "source_input_01.md",
+                "sha256": "53e13d247b5e2e39cbc9f390629f50dd9886f4985255858b432f253031d75bfb",
+                "origin_sha256": "53e13d247b5e2e39cbc9f390629f50dd9886f4985255858b432f253031d75bfb"
+            }
+        ],
+        "items": [
+            {
+                "id": "SRC-01",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Freeze the workshop boundary, ADR sequence, contracts, and tenant-key rules.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:267 WMVP-00"
+                ],
+                "owner_slice_id": "S1",
+                "target": null
+            },
+            {
+                "id": "SRC-02",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Establish durable operation ownership and atomic result settlement.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:902 WMVP-01G"
+                ],
+                "owner_slice_id": "S2",
+                "target": null
+            },
+            {
+                "id": "SRC-03",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Own upload ordinals, corpus heads, and deterministic duplicate selection.",
+                "disposition": "implement",
+                "evidence": [
+                    "backend/app/corpus/ingest/dedup.py:115 canonical selection"
+                ],
+                "owner_slice_id": "S3",
+                "target": null
+            },
+            {
+                "id": "SRC-04",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Make derived rows, prompts, tokens, risks, and package inputs semantically ordered.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:859 WMVP-01E"
+                ],
+                "owner_slice_id": "S4",
+                "target": null
+            },
+            {
+                "id": "SRC-05",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Publish immutable analysis and evidence generations with exact gate bindings.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:902 WMVP-01G"
+                ],
+                "owner_slice_id": "S5",
+                "target": null
+            },
+            {
+                "id": "SRC-06",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Resolve medical amount tokens to all contributing bill-page anchors.",
+                "disposition": "implement",
+                "evidence": [
+                    "backend/app/engine/tokenizer/registry.py:465 mint_amounts"
+                ],
+                "owner_slice_id": "S6",
+                "target": null
+            },
+            {
+                "id": "SRC-07",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Settle the final requested demand through immutable elections, plans, and exact G2.5 approval.",
+                "disposition": "implement",
+                "evidence": [
+                    "backend/app/engine/brain2/plan.py:372 demand_amount_cents"
+                ],
+                "owner_slice_id": "S7",
+                "target": null
+            },
+            {
+                "id": "SRC-08",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Close requested-demand and specials provenance through package authority.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:748 WMVP-01C"
+                ],
+                "owner_slice_id": "S8",
+                "target": null
+            },
+            {
+                "id": "SRC-09",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Suppress public-entity deadlines for private-party intake.",
+                "disposition": "implement",
+                "evidence": [
+                    "backend/app/api/routes/matters.py:93 compute_deadline_candidates call"
+                ],
+                "owner_slice_id": "S9",
+                "target": null
+            },
+            {
+                "id": "SRC-10",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Diagnose and close or explicitly constrain chronology byte nondeterminism.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:889 WMVP-01F"
+                ],
+                "owner_slice_id": "S10",
+                "target": null
+            },
+            {
+                "id": "SRC-11",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Add validated workshop runtime composition, session security, and authoritative disclosure.",
+                "disposition": "implement",
+                "evidence": [
+                    "backend/app/core/llm_provider.py:182 provider construction"
+                ],
+                "owner_slice_id": "S11",
+                "target": null
+            },
+            {
+                "id": "SRC-12",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Generate and seal one owned synthetic Arizona scenario and manifest.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:1367 WMVP-04"
+                ],
+                "owner_slice_id": "S12",
+                "target": null
+            },
+            {
+                "id": "SRC-13",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Persist immutable demo purpose, enforce the single content-access policy door, and own the running workshop evidence session.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:1063 WMVP-03"
+                ],
+                "owner_slice_id": "S13",
+                "target": null
+            },
+            {
+                "id": "SRC-14",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Add strict canonical replay with invocation, budget, and call provenance.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:1490 WMVP-05"
+                ],
+                "owner_slice_id": "S14",
+                "target": null
+            },
+            {
+                "id": "SRC-15",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Seal uploads and own prepare, reset, checkpoint, supervisor, and doctor recovery.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:2210 WMVP-06"
+                ],
+                "owner_slice_id": "S15",
+                "target": null
+            },
+            {
+                "id": "SRC-16",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Publish four permanently restricted artifacts through fenced immutable publication.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:2556 WMVP-07"
+                ],
+                "owner_slice_id": "S16",
+                "target": null
+            },
+            {
+                "id": "SRC-17",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Present the closed evidence export through a truthful workshop kit, feedback form, and paid-review funnel.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:2887 WMVP-09"
+                ],
+                "owner_slice_id": "S17",
+                "target": null
+            },
+            {
+                "id": "SRC-18",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Prove the isolated full HTTP flow, UI truth, artifacts, and rehearsal acceptance.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:2801 WMVP-08"
+                ],
+                "owner_slice_id": "S19",
+                "target": null
+            },
+            {
+                "id": "SRC-24",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Seal immutable draft and compliance-finding history and bind package authority to the exact current G3-approved tuple.",
+                "disposition": "implement",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:1492 WMVP-05",
+                    "backlog/planned/workshop_mvp.md:1939 immutable draft and compliance history"
+                ],
+                "owner_slice_id": "S18",
+                "target": null
+            },
+            {
+                "id": "SRC-19",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Live matters, PHI, attendee uploads, and public hosting are excluded.",
+                "disposition": "non-goal",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:146 explicit out of scope"
+                ],
+                "owner_slice_id": null,
+                "target": null
+            },
+            {
+                "id": "SRC-20",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "WI-3, WI-4, ADR-0009/WI-1, and legal attestations remain held.",
+                "disposition": "non-goal",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:27 current-state reconciliation"
+                ],
+                "owner_slice_id": null,
+                "target": null
+            },
+            {
+                "id": "SRC-21",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Arizona legal review and relationship diligence require a paid human engagement.",
+                "disposition": "non-coding",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:2887 recruitment funnel"
+                ],
+                "owner_slice_id": null,
+                "target": null
+            },
+            {
+                "id": "SRC-22",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "Workshop evidence cannot close legal, ethics, HIPAA, BAA, or live-pilot gates.",
+                "disposition": "non-goal",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:81 track boundary"
+                ],
+                "owner_slice_id": null,
+                "target": null
+            },
+            {
+                "id": "SRC-23",
+                "input_ids": [
+                    "INPUT-01"
+                ],
+                "statement": "The pre-existing untracked Claude helper is not part of workshop implementation.",
+                "disposition": "non-goal",
+                "evidence": [
+                    "backlog/planned/workshop_mvp.md:27 current-state reconciliation"
+                ],
+                "owner_slice_id": null,
+                "target": null
+            }
+        ]
+    },
+    "umbrella": {
+        "path": "umbrella.md",
+        "sha256": "c66d16eeed37dba3d85483313180dbb334fdb15631ba4e215de66b9c183ac756"
+    },
+    "review": {
+        "status": "PASS",
+        "context": "fresh",
+        "reviewer_id": "fresh-workshop-set-review-1",
+        "candidate_sha256": "b394215b4822bbca83297b02bc995ca93549ead99f2f2f1b56a2c49c928ade48",
+        "report_path": "review_blocker.md",
+        "report_sha256": "602be219e4fd0837c3cb563c09e1ad69d348e8d37145a54b439793ff244ba6aa",
+        "summary": "No blocking findings remain after two repair cycles across the complete Workshop MVP plan set.",
+        "repair_cycles": 2
+    },
+    "blockers": [],
+    "slices": [
+        {
+            "id": "S1",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s1_charter_contracts.md",
+            "sha256": "1b6e28891e24879a6b5ab181c8be6f301f9ae8a9f667b6bd3485fb9522d73cc0",
+            "goal": "Freeze the Workshop MVP charter and contracts.",
+            "primary_invariant": "Workshop evidence never advances live-pilot or legal readiness.",
+            "source_ids": [
+                "SRC-01"
+            ],
+            "depends_on": [],
+            "owners": [
+                "docs.adr",
+                "docs.module_contracts"
+            ],
+            "boundaries": [
+                "source charter to contract hubs"
+            ],
+            "production_files": [
+                "docs/adr/0013-workshop-mvp-boundary.md",
+                "CONTRACTS.md",
+                "docs/system_contract.md",
+                "docs/module_contracts/README.md",
+                "backlog/pi/10_implementation_readiness.md",
+                "workshop/README.md"
+            ],
+            "new_abstractions": [],
+            "mergeability": "independent",
+            "deployment": "safe",
+            "safe_intermediate_state": "Documentation and contract registrations add no runtime capability.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S2",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s2_durable_operation_base.md",
+            "sha256": "c0ef175f1b2c92d31c1a0210bb5fe37e60e68960e6b2f5f924be779be08cf8c8",
+            "goal": "Establish durable operation ownership.",
+            "primary_invariant": "Each long operation has one fenced owner and one immutable terminal result.",
+            "source_ids": [
+                "SRC-02"
+            ],
+            "depends_on": [
+                "S1"
+            ],
+            "owners": [
+                "app.core.operation_runs",
+                "app.api.operation_runs"
+            ],
+            "boundaries": [
+                "idempotency admission to terminal result"
+            ],
+            "production_files": [
+                "backend/app/core/operation_runs.py",
+                "backend/app/models/orm.py",
+                "backend/app/models/enums.py",
+                "backend/app/models/schemas.py",
+                "backend/app/api/routes/operation_runs.py",
+                "backend/app/api/view_models.py",
+                "docs/adr/0015-durable-operation-generations.md"
+            ],
+            "new_abstractions": [
+                "MatterOperationRun",
+                "OperationResult"
+            ],
+            "mergeability": "ordered",
+            "deployment": "dormant",
+            "safe_intermediate_state": "Additive run records have no caller until later slices migrate each operation.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S3",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s3_ingest_identity_order.md",
+            "sha256": "b9eede35c7dd99dc40002be9f78efebd99af523aa7d5a0af56803ffee956ce79",
+            "goal": "Own ingest identity and duplicate ordering.",
+            "primary_invariant": "Document order and Phase-0 results derive from durable matter-local identities.",
+            "source_ids": [
+                "SRC-03"
+            ],
+            "depends_on": [
+                "S2"
+            ],
+            "owners": [
+                "app.corpus.ingest",
+                "app.engine.orchestrator"
+            ],
+            "boundaries": [
+                "upload slot order to corpus head"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/corpus/ingest/sessions.py",
+                "backend/app/corpus/ingest/dedup.py",
+                "backend/app/corpus/ingest/phase0.py",
+                "backend/app/engine/orchestrator/phase0_completion.py",
+                "backend/app/engine/orchestrator/registry_bump.py",
+                "backend/app/api/routes/documents.py"
+            ],
+            "new_abstractions": [
+                "CorpusVersion"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "Additive corpus identities and ordinals are consumed by ordinary ingest.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S4",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s4_semantic_ordering.md",
+            "sha256": "d66294b9226ca0a1ab1018f4c959585eedf9706d1c9619c80d6826b993467830",
+            "goal": "Make shared semantic ordering deterministic.",
+            "primary_invariant": "Persisted semantic identity, never UUID or insertion order, determines every shared sequence.",
+            "source_ids": [
+                "SRC-04"
+            ],
+            "depends_on": [
+                "S3"
+            ],
+            "owners": [
+                "app.corpus.extraction",
+                "app.engine.brain1",
+                "app.engine.tokenizer",
+                "app.package"
+            ],
+            "boundaries": [
+                "persisted rows to prompt and package sequences"
+            ],
+            "production_files": [
+                "backend/app/corpus/extraction/merge.py",
+                "backend/app/engine/brain1/chronology.py",
+                "backend/app/engine/brain1/risk.py",
+                "backend/app/engine/tokenizer/registry.py",
+                "backend/app/engine/brain2/plan.py",
+                "backend/app/engine/brain2/drafter.py",
+                "backend/app/engine/compliance/judge.py",
+                "backend/app/package/build.py"
+            ],
+            "new_abstractions": [
+                "SemanticOrderKey"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "Standard outputs use stable semantic keys without workshop activation.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S5",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s5_analysis_evidence_generations.md",
+            "sha256": "0214bfc9578b8d4eca28eb8231ac5d03c26e75a50fe044ac1fe6e9ba3366a884",
+            "goal": "Publish immutable analysis and evidence generations.",
+            "primary_invariant": "Only a complete exact-fenced generation can become current evidence authority.",
+            "source_ids": [
+                "SRC-05"
+            ],
+            "depends_on": [
+                "S2",
+                "S3",
+                "S4"
+            ],
+            "owners": [
+                "app.engine.brain1",
+                "app.engine.orchestrator",
+                "app.api.evidence"
+            ],
+            "boundaries": [
+                "corpus and registry head to G2a result"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/models/enums.py",
+                "backend/app/engine/brain1/analysis.py",
+                "backend/app/engine/brain1/risk.py",
+                "backend/app/engine/orchestrator/service.py",
+                "backend/app/api/routes/evidence.py",
+                "backend/app/api/view_models.py",
+                "backend/app/engine/orchestrator/registry_bump.py"
+            ],
+            "new_abstractions": [
+                "AnalysisGeneration",
+                "EvidenceVersion"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "Current pointers move only after a complete generation settles with its run.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S6",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s6_amount_anchor_resolution.md",
+            "sha256": "d7a0ef5c077559ae71bdcc5427e0714afd442e9ebf3227e4c3504aab2c60419b",
+            "goal": "Resolve medical amounts to bill-page anchors.",
+            "primary_invariant": "Every non-empty medical amount derives complete ordered source-page provenance.",
+            "source_ids": [
+                "SRC-06"
+            ],
+            "depends_on": [
+                "S3",
+                "S4",
+                "S5"
+            ],
+            "owners": [
+                "app.money",
+                "app.engine.tokenizer",
+                "app.api.provenance"
+            ],
+            "boundaries": [
+                "billing lines to amount token anchors"
+            ],
+            "production_files": [
+                "backend/app/money/specials.py",
+                "backend/app/engine/tokenizer/registry.py",
+                "backend/app/models/orm.py",
+                "backend/app/api/routes/provenance.py",
+                "backend/app/package/provenance.py"
+            ],
+            "new_abstractions": [
+                "AmountAnchorResolver"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "New medical tokens gain anchors while legacy rows remain nonauthoritative.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S7",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s7_requested_demand_settlement.md",
+            "sha256": "9e8acab26e9551e5cbdb1ff070f06cd29e6bf0c25b763ba01a55cbdca1727248",
+            "goal": "Settle the final requested demand.",
+            "primary_invariant": "Draft and package authority bind the exact immutable human demand election and approved plan.",
+            "source_ids": [
+                "SRC-07"
+            ],
+            "depends_on": [
+                "S5",
+                "S6"
+            ],
+            "owners": [
+                "app.engine.brain2",
+                "app.engine.tokenizer",
+                "app.engine.orchestrator",
+                "app.rules"
+            ],
+            "boundaries": [
+                "strategy revision to exact G2.5-approved plan"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/models/enums.py",
+                "backend/app/models/schemas.py",
+                "backend/app/engine/tokenizer/registry.py",
+                "backend/app/engine/brain2/plan.py",
+                "backend/app/engine/brain2/constraints.py",
+                "backend/app/engine/brain2/renderer.py",
+                "backend/app/engine/orchestrator/service.py",
+                "backend/app/api/routes/gates.py",
+                "backend/app/rules/loader.py",
+                "docs/adr/0014-requested-demand-settlement.md"
+            ],
+            "new_abstractions": [
+                "AmountRole",
+                "RequestedDemandElection"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "New plans require exact elections while legacy unbound plans cannot gain authority.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": [
+                {
+                    "metric": "production_file_count",
+                    "rationale": "Election settlement is one atomic invariant spanning schema, registry, allocation, gate, and render consumers.",
+                    "why_not_split": "Separating producer and consumers would expose plans or tokens that cannot be validated or rendered safely.",
+                    "mitigation": "The single matrix row binds settlement failure to rollback of every producer and consumer side effect."
+                }
+            ]
+        },
+        {
+            "id": "S8",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s8_amount_provenance_closure.md",
+            "sha256": "bca9071b706b22aaf17a6a52bbb4a1949998ed103d89608bb09de19f10c345a7",
+            "goal": "Close amount provenance through package authority.",
+            "primary_invariant": "Every rendered amount proves either exact human election origin or complete source-page origin.",
+            "source_ids": [
+                "SRC-08"
+            ],
+            "depends_on": [
+                "S6",
+                "S7"
+            ],
+            "owners": [
+                "app.engine.tokenizer",
+                "app.package",
+                "app.api.provenance"
+            ],
+            "boundaries": [
+                "typed amount token to election or bill-page sink"
+            ],
+            "production_files": [
+                "backend/app/engine/tokenizer/registry.py",
+                "backend/app/package/build.py",
+                "backend/app/package/provenance.py",
+                "backend/app/api/routes/provenance.py",
+                "backend/app/api/view_models.py"
+            ],
+            "new_abstractions": [
+                "AmountProvenanceState"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "Only complete typed provenance becomes current package authority.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S9",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s9_deadline_applicability.md",
+            "sha256": "2b3616c1b8d26cf78021279796d12f8077053cf16c274c72b1413717b70f942e",
+            "goal": "Apply intake facts to deadline candidates.",
+            "primary_invariant": "Only deadlines applicable to the typed audited intake context persist.",
+            "source_ids": [
+                "SRC-09"
+            ],
+            "depends_on": [
+                "S1"
+            ],
+            "owners": [
+                "app.rules",
+                "app.api.matters"
+            ],
+            "boundaries": [
+                "typed intake to persisted deadline candidates"
+            ],
+            "production_files": [
+                "backend/app/rules/deadlines.py",
+                "backend/app/rules/loader.py",
+                "backend/app/rules/packs/az.yaml",
+                "backend/app/api/routes/matters.py"
+            ],
+            "new_abstractions": [
+                "DeadlineApplicability"
+            ],
+            "mergeability": "independent",
+            "deployment": "safe",
+            "safe_intermediate_state": "Standard matter creation persists only rule-pack candidates applicable to intake.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S10",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s10_chronology_determinism.md",
+            "sha256": "c8a2296713b811102b4989053b9b501ce0d7b682f6cc86403aff1773f41fb3a7",
+            "goal": "Stabilize chronology artifact determinism.",
+            "primary_invariant": "Identical chronology inputs never gain a false byte-identity claim.",
+            "source_ids": [
+                "SRC-10"
+            ],
+            "depends_on": [
+                "S1"
+            ],
+            "owners": [
+                "app.package"
+            ],
+            "boundaries": [
+                "chronology rows to declared XLSX baseline"
+            ],
+            "production_files": [
+                "backend/app/package/artifacts.py",
+                "backend/app/package/build.py"
+            ],
+            "new_abstractions": [],
+            "mergeability": "independent",
+            "deployment": "safe",
+            "safe_intermediate_state": "Chronology claims remain semantic-only until the byte diagnostic proves closure.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S11",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s11_runtime_profile.md",
+            "sha256": "4ce0490025d0fb196e7eea4acc2682be8eb57492e4d5cb369fc0f029ac2bdce2",
+            "goal": "Add fail-closed workshop runtime composition.",
+            "primary_invariant": "Invalid profile, provider, auth, origin, or bind combinations construct no application sink.",
+            "source_ids": [
+                "SRC-11"
+            ],
+            "depends_on": [
+                "S1"
+            ],
+            "owners": [
+                "app.core.runtime",
+                "app.api.runtime",
+                "frontend.runtime"
+            ],
+            "boundaries": [
+                "validated configuration to served loopback app"
+            ],
+            "production_files": [
+                "backend/app/core/config.py",
+                "backend/app/core/llm_provider.py",
+                "backend/app/core/services.py",
+                "backend/app/main.py",
+                "backend/app/api/routes/runtime.py",
+                "backend/app/api/view_models.py",
+                "frontend/app/layout.tsx",
+                "frontend/lib/api.ts"
+            ],
+            "new_abstractions": [
+                "RuntimeProfile",
+                "AppServices"
+            ],
+            "mergeability": "independent",
+            "deployment": "dormant",
+            "safe_intermediate_state": "Workshop boot remains refused until explicit validated capabilities are complete.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S12",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s12_synthetic_scenario.md",
+            "sha256": "a0553ed5c8bbaf56de84a165ff09b8aadd969a3f9c28eb8adf504c36fe343689",
+            "goal": "Generate and seal the synthetic Arizona scenario.",
+            "primary_invariant": "Only validated owned synthetic bytes can become an active immutable scenario generation.",
+            "source_ids": [
+                "SRC-12"
+            ],
+            "depends_on": [
+                "S1"
+            ],
+            "owners": [
+                "workshop.scenario"
+            ],
+            "boundaries": [
+                "synthetic specification to sealed scenario generation"
+            ],
+            "production_files": [
+                "workshop/scenario/schema.py",
+                "workshop/scenario/generate.py",
+                "workshop/scenario/validate.py",
+                "workshop/scenario/scenario.json",
+                "workshop/scenario/truth.json",
+                "workshop/toolchain.lock.json"
+            ],
+            "new_abstractions": [
+                "WorkshopScenario",
+                "ScenarioGeneration"
+            ],
+            "mergeability": "independent",
+            "deployment": "dormant",
+            "safe_intermediate_state": "Generated scenario generations are inert until a later validated runtime activates one.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S13",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s13_persisted_demo_identity.md",
+            "sha256": "afc15ef97c5c21856dedb0c1891e9365840d93b02d82a7de7a5d1000558c4122",
+            "goal": "Persist demo identity, enforce access policy, and own evidence authority.",
+            "primary_invariant": "Persisted demo content is inaccessible outside a matching capability and every interactive write binds the running immutable evidence session.",
+            "source_ids": [
+                "SRC-13"
+            ],
+            "depends_on": [
+                "S5",
+                "S11"
+            ],
+            "owners": [
+                "app.core.matter_access",
+                "app.api.matters",
+                "app.api.workshop_evidence"
+            ],
+            "boundaries": [
+                "persisted purpose to content-bearing capability",
+                "running evidence session to immutable evidence export"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/models/enums.py",
+                "backend/app/core/matter_access.py",
+                "backend/app/api/routes/matters.py",
+                "backend/app/api/routes/workshop_evidence.py",
+                "backend/app/api/view_models.py",
+                "backend/app/corpus/ingest/sessions.py",
+                "backend/app/package/build.py"
+            ],
+            "new_abstractions": [
+                "MatterPurpose",
+                "MatterAccessContext",
+                "WorkshopEvidenceRun"
+            ],
+            "mergeability": "ordered",
+            "deployment": "feature_gated",
+            "safe_intermediate_state": "Demo creation remains unavailable while demo content is refused outside workshop.",
+            "line_count": 68,
+            "exact_test_count": 10,
+            "threshold_exceptions": [
+                {
+                    "metric": "new_abstraction_count",
+                    "rationale": "Persisted purpose, the single access context, and the running evidence-session fence are the three inseparable identities required by WMVP-03.",
+                    "why_not_split": "Moving the evidence session later would let interactive writers ship without the authority they must bind, recreating the reviewed provenance gap.",
+                    "mitigation": "Two matrix rows independently prove content refusal and finish-versus-writer settlement across the shared policy door."
+                }
+            ]
+        },
+        {
+            "id": "S14",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s14_canonical_replay.md",
+            "sha256": "89ecc168b8a4ea43d26e9547e5c5b980bbacfdce071316ae5fcc213b71298780",
+            "goal": "Add strict canonical deterministic replay.",
+            "primary_invariant": "An exact canonical catalog match is the only workshop model result and every attempt settles durable truth.",
+            "source_ids": [
+                "SRC-14"
+            ],
+            "depends_on": [
+                "S2",
+                "S3",
+                "S4",
+                "S5",
+                "S6",
+                "S7",
+                "S8",
+                "S9",
+                "S11",
+                "S12",
+                "S13"
+            ],
+            "owners": [
+                "app.core.llm",
+                "workshop.replay"
+            ],
+            "boundaries": [
+                "canonical prompt to typed durable replay result"
+            ],
+            "production_files": [
+                "backend/app/core/llm_provider.py",
+                "backend/app/core/llm_telemetry.py",
+                "backend/app/core/matter_budget.py",
+                "backend/app/core/operation_runs.py",
+                "workshop/replay/canonicalizer.py",
+                "workshop/replay/catalog.py",
+                "workshop/replay/provider.py"
+            ],
+            "new_abstractions": [
+                "ReplayCatalog",
+                "ProviderInvocation"
+            ],
+            "mergeability": "ordered",
+            "deployment": "feature_gated",
+            "safe_intermediate_state": "Replay is constructible only inside validated workshop composition with no network fallback.",
+            "line_count": 66,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S18",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s18_draft_compliance_authority.md",
+            "sha256": "ecf730e52c03d0769b64856c1c1b17de529c6c9fe8f934d18d6a5e0b8f7c130a",
+            "goal": "Seal immutable draft, compliance-finding, and exact G3 authority.",
+            "primary_invariant": "Only the exact current immutable draft and compliance head approved atomically at G3 can authorize package work.",
+            "source_ids": [
+                "SRC-24"
+            ],
+            "depends_on": [
+                "S2",
+                "S5",
+                "S7",
+                "S14"
+            ],
+            "owners": [
+                "app.engine.brain2",
+                "app.engine.compliance",
+                "app.engine.orchestrator",
+                "app.package"
+            ],
+            "boundaries": [
+                "immutable draft and finding heads to exact G3 package authority"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/models/enums.py",
+                "backend/app/engine/brain2/generate.py",
+                "backend/app/engine/compliance/engine.py",
+                "backend/app/engine/orchestrator/service.py",
+                "backend/app/api/routes/drafting.py",
+                "backend/app/api/view_models.py",
+                "backend/app/package/manifest.py",
+                "docs/adr/0016-immutable-draft-compliance-history.md"
+            ],
+            "new_abstractions": [
+                "DemandDraftVersion",
+                "ComplianceHead"
+            ],
+            "mergeability": "ordered",
+            "deployment": "safe",
+            "safe_intermediate_state": "Replay stays feature-gated until immutable draft and compliance history can settle exact G3 authority.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": [
+                {
+                    "metric": "production_file_count",
+                    "rationale": "Exact G3 settlement is one atomic invariant spanning immutable producer history, gate side effects, API identity, and the package authority consumer.",
+                    "why_not_split": "A producer-only or gate-only intermediate would either strand approved drafts or permit package work against mutable or stale history.",
+                    "mitigation": "The boundary row binds successful atomic settlement and refusal-before-reuse/render to named deterministic tests."
+                }
+            ]
+        },
+        {
+            "id": "S15",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s15_lifecycle_sealed_upload.md",
+            "sha256": "6fb5601a955aa439087e8c7c49cbd154d3cc6ffb14301c393b4c6a7a32736ceb",
+            "goal": "Own sealed upload and workshop lifecycle.",
+            "primary_invariant": "Only a validated authenticated generation can own files, processes, ports, uploads, and reset.",
+            "source_ids": [
+                "SRC-15"
+            ],
+            "depends_on": [
+                "S11",
+                "S12",
+                "S13",
+                "S14",
+                "S18"
+            ],
+            "owners": [
+                "app.corpus.ingest",
+                "workshop.lifecycle"
+            ],
+            "boundaries": [
+                "scenario manifest and workspace to active generation"
+            ],
+            "production_files": [
+                "backend/app/corpus/ingest/sessions.py",
+                "backend/app/core/storage.py",
+                "backend/app/api/routes/uploads.py",
+                "workshop/lifecycle/workspace.py",
+                "workshop/lifecycle/checkpoint.py",
+                "workshop/lifecycle/supervisor.py",
+                "workshop/cli.py",
+                "backend/app/core/auth.py"
+            ],
+            "new_abstractions": [
+                "WorkshopScenarioSeal",
+                "WorkspaceGeneration"
+            ],
+            "mergeability": "ordered",
+            "deployment": "feature_gated",
+            "safe_intermediate_state": "Preparation stages validated immutable generations before atomic activation.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S16",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s16_restricted_artifact_publication.md",
+            "sha256": "9928dddf12346b490b008126642c7aede56d5144e026016de1c4d64a3c117bdf",
+            "goal": "Publish permanently restricted demo artifacts.",
+            "primary_invariant": "Every demo artifact set is immutable, fully restricted, exact-authority-bound, and atomically published.",
+            "source_ids": [
+                "SRC-16"
+            ],
+            "depends_on": [
+                "S5",
+                "S8",
+                "S9",
+                "S10",
+                "S12",
+                "S13",
+                "S14",
+                "S15",
+                "S18"
+            ],
+            "owners": [
+                "app.package",
+                "app.api.package",
+                "workshop.render"
+            ],
+            "boundaries": [
+                "approved authority and policy to restricted immutable bytes"
+            ],
+            "production_files": [
+                "backend/app/models/orm.py",
+                "backend/app/package/build.py",
+                "backend/app/core/storage.py",
+                "backend/app/api/routes/drafting.py",
+                "backend/app/api/routes/provenance.py",
+                "frontend/components/compliance-panel.tsx",
+                "workshop/render/verify.py",
+                "workshop/toolchain.lock.json",
+                "docs/adr/0017-artifact-publication.md"
+            ],
+            "new_abstractions": [
+                "ArtifactPublication",
+                "DistributionClass"
+            ],
+            "mergeability": "ordered",
+            "deployment": "feature_gated",
+            "safe_intermediate_state": "Demo build, list, and download stay refused until every policy and publication check passes.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": [
+                {
+                    "metric": "production_file_count",
+                    "rationale": "Artifact publication is one fenced invariant spanning authority reservation, storage promotion, API serving, UI disclosure, offline verification, and its architecture decision.",
+                    "why_not_split": "Publishing any producer or serving consumer separately would expose partial, overwriteable, or insufficiently restricted artifact sets.",
+                    "mitigation": "The single boundary row asserts atomic four-object publication, refusal-before-read, commit-ack reconciliation, and immutable prior bytes."
+                }
+            ]
+        },
+        {
+            "id": "S17",
+            "kind": "implementation",
+            "path": "workshop_mvp_plan_set_s17_workshop_kit_evidence.md",
+            "sha256": "fc6ce57545b10e2b6cbf41348b7400f86a0f8036c7a7271c5b1e10dd1d798746",
+            "goal": "Build the workshop kit and evidence funnel.",
+            "primary_invariant": "Workshop evidence is immutable and machine-derived while qualitative and legal review remain separate human records.",
+            "source_ids": [
+                "SRC-17"
+            ],
+            "depends_on": [
+                "S1",
+                "S13"
+            ],
+            "owners": [
+                "workshop.materials"
+            ],
+            "boundaries": [
+                "closed body-free evidence export to versioned workshop materials"
+            ],
+            "production_files": [
+                "workshop/materials/presenter.md",
+                "workshop/materials/limitations.md",
+                "workshop/materials/feedback.md"
+            ],
+            "new_abstractions": [],
+            "mergeability": "ordered",
+            "deployment": "dormant",
+            "safe_intermediate_state": "Materials and evidence views cannot create product authority or legal approval.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        },
+        {
+            "id": "S19",
+            "kind": "integration",
+            "path": "workshop_mvp_plan_set_s19_full_flow_integration.md",
+            "sha256": "91226eadd533862d9c4a4702f4429c7b68320faace5aef769ad48adfda7f051e",
+            "goal": "Prove the full isolated workshop flow.",
+            "primary_invariant": "No workshop release claim exists until every shared, demo, integration, and rehearsal gate passes.",
+            "source_ids": [
+                "SRC-18"
+            ],
+            "depends_on": [
+                "S1",
+                "S2",
+                "S3",
+                "S4",
+                "S5",
+                "S6",
+                "S7",
+                "S8",
+                "S9",
+                "S10",
+                "S11",
+                "S12",
+                "S13",
+                "S14",
+                "S15",
+                "S16",
+                "S17",
+                "S18"
+            ],
+            "owners": [
+                "integration.workshop_mvp"
+            ],
+            "boundaries": [
+                "sealed workspace to restricted package and evidence export"
+            ],
+            "production_files": [],
+            "new_abstractions": [],
+            "mergeability": "atomic",
+            "deployment": "atomic_release",
+            "safe_intermediate_state": "No release tag or workshop claim exists until the complete acceptance gate passes.",
+            "line_count": 65,
+            "exact_test_count": 5,
+            "threshold_exceptions": []
+        }
+    ],
+    "integration_slice_id": "S19"
+}
