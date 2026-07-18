@@ -36,6 +36,13 @@ until B4 closes ([11 §1](./11_spike_briefs.md) fixture rules).
 | **R3 — live-PHI production** | Full caseload, steady operations | R2 across ≥5 matters; HIPAA checklist audit; incident process exercised | Sustained ops; audit reviews clean; unit economics measured vs [08 §3](./08_seed_plan_and_budget.md) |
 | **R4 — v1.x** | Comparables, assistant, HybridEngine fallback, lost wages ([05 M8](./05_implementation_plan.md)) | R3 stable | Per-feature acceptance in [02](./02_feature_list.md) |
 
+<!-- workshop-mvp-r1-overlay:start -->
+### Workshop MVP R1 overlay
+
+The Workshop MVP is an R1 demonstration overlay only. Its evidence is owned-synthetic and cannot
+close the legal, PHI, ethics, or live-pilot gates for R2.
+<!-- workshop-mvp-r1-overlay:end -->
+
 ## 4. Decisions ledger (2026-07-04)
 
 Gate-semantics and build-rule decisions closed by this review; each is recorded in place in

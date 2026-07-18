@@ -23,3 +23,6 @@ dist/
 # Per-matter run logs (runtime artifacts, never committed)
 logs/
 backend/logs/
+
+# Derived Gate Brief renders (the tracked source is *.brief.md)
+*.brief.html
