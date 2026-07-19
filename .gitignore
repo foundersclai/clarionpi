@@ -23,3 +23,6 @@ dist/
 # Per-matter run logs (runtime artifacts, never committed)
 logs/
 backend/logs/
+
+# Workshop demo — generated scenario PDFs (regenerate via each scenario's generate.py)
+workshop/**/pdf/

@@ -50,6 +50,7 @@ docs/adr/               architecture decisions — read before changing architec
 docs/module_contracts/  per-module boundary contracts — read before changing a module's surface
 systemflows/            Mermaid diagrams of the main business flows (as-built; keep in sync with enums + machine.py)
 samples/                reference/calibration material (real demand letters, forms, PHI-safe data) — NEVER fixture source; see samples/README.md THE RULE
+workshop/               owned-synthetic demo material (WD-3): the Arizona MVA scenario an operator uploads — reviewable source + a plain deterministic PDF generator, no seal machinery (that is release-track S12); see workshop/README.md
 backlog/                plan files (snake_case .md, status by folder) — planning artifacts, not code
 scripts/hub_check.py    drift gate between AGENTS.md/CONTRACTS.md and the actual repo tree
 ```
