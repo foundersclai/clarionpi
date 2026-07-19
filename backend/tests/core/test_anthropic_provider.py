@@ -69,13 +69,30 @@ def test_long_dated_model_id_matches_prefix() -> None:
 
 
 def test_haiku_and_opus_prefixes_price_distinctly() -> None:
+    # haiku-4-5 input $1/MTok = 100 cents; opus $5/MTok = 500 cents — distinct prefixes.
     assert _cost_cents("claude-haiku-4-5", 1_000_000, 0) == 100
-    assert _cost_cents("claude-opus-4-8", 1_000_000, 0) == 1500
+    assert _cost_cents("claude-opus-4-8", 1_000_000, 0) == 500
 
 
-def test_unknown_model_uses_most_expensive_default() -> None:
+def test_price_table_matches_published_anthropic_rates() -> None:
+    """Regression (metering): the price table tracks Anthropic's published per-MTok list rates.
+
+    Asserted on exactly 1M input + 1M output so each equals (input + output) cents. Correct these
+    if Anthropic changes its rates; Sonnet uses the standard rate, not the temporary intro discount
+    (a meter erring high is safe).
+    """
+    assert _cost_cents("claude-opus-4-8", 1_000_000, 1_000_000) == 500 + 2500  # Opus 4.8 $5/$25
+    assert _cost_cents("claude-fable-5", 1_000_000, 1_000_000) == 1000 + 5000  # Fable 5 $10/$50
+    assert _cost_cents("claude-sonnet-5", 1_000_000, 1_000_000) == 300 + 1500  # Sonnet 5 $3/$15
+    assert _cost_cents("claude-haiku-4-5", 1_000_000, 1_000_000) == 100 + 500  # Haiku 4.5 $1/$5
+
+
+def test_unknown_model_uses_conservative_ceiling() -> None:
+    # Unknown/mistyped model ids price at a deliberate ceiling above every known tier so the meter
+    # never undercounts — intentionally higher than the priciest known tier (fable $10/$50).
     in_price, out_price = _DEFAULT_PRICE
     assert (in_price, out_price) == (3000, 15000)
+    assert in_price > 1000 and out_price > 5000  # strictly above fable's real rate
     assert _cost_cents("gpt-4o", 1_000_000, 1_000_000) == in_price + out_price
 
 
