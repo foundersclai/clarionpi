@@ -608,6 +608,11 @@ def test_g3_approve_blocked_then_allowed(db: Session, matter: Matter, attorney: 
     assert excinfo.value.guard == "no_blocking_findings"
     db.refresh(matter)
     assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
+    db.refresh(draft)
+    # WD-2: a refused approve never touches the draft — it stays at its seeded status. This test
+    # seeds `validated` via `_draft` (default) and runs no compliance pass, so it is never
+    # IN_COMPLIANCE; the point is only that the refusal leaves it unapproved.
+    assert draft.status == DraftStatus.VALIDATED.value
 
     # Resolve the finding (attorney override) -> zero open blocking -> the approve now transitions.
     disposition_finding(
@@ -631,6 +636,9 @@ def test_g3_approve_blocked_then_allowed(db: Session, matter: Matter, attorney: 
     assert result.transitioned is True
     db.refresh(matter)
     assert matter.gate_state == GateState.PACKAGE_ASSEMBLY.value
+    db.refresh(draft)
+    # WD-2: the allowed G3 approve marks the current draft APPROVED (the DraftStatus terminal).
+    assert draft.status == DraftStatus.APPROVED.value
 
 
 def test_post_draft_hook_runs_pass(db: Session, matter: Matter, attorney: User) -> None:

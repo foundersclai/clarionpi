@@ -925,6 +925,12 @@ def test_g3_approve_blocked_then_passes_after_disposition(
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["result"]["to_state"] == GateState.PACKAGE_ASSEMBLY.value
+    # WD-2: the allowed G3 approve marks the current draft APPROVED (same wire flow, HTTP level).
+    _db = seeded()
+    try:
+        assert _db.get(DemandDraft, draft_id).status == DraftStatus.APPROVED.value
+    finally:
+        _db.close()
 
 
 def _open_finding_id(session_factory: sessionmaker[Session], draft_id: uuid.UUID) -> uuid.UUID:
@@ -943,3 +949,136 @@ def _open_finding_id(session_factory: sessionmaker[Session], draft_id: uuid.UUID
         )
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------------------
+# WD-2 — buildable read-model truth (BM-02) + the no-draft G3 wire refusal (BM-01)
+# --------------------------------------------------------------------------------------
+
+
+def test_package_vm_buildable_true_after_g3_approve(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    session_mode: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # BM-02 positive: a clean G3 approve marks the draft APPROVED, so the package_assembly VM
+    # reports buildable=True (was permanently False). The normal path emits NO missing-side-effect
+    # diagnostic.
+    import logging
+
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    draft_id, _ = _seed_compliance_draft(seeded, matter_id)
+    _freeze_registry(seeded, matter_id)  # G3 approve's registry_version_match needs a frozen pin
+    gate = GateState.COMPLIANCE_REVIEW.value
+
+    with caplog.at_level(logging.ERROR, logger="clarionpi.orchestrator"):
+        resp = client.post(
+            f"/api/matters/{matter_id}/gates/{gate}/submit",
+            json={
+                "action": GateAction.APPROVE.value,
+                "idempotency_key": uuid.uuid4().hex,
+                "payload_version": _payload_version(seeded, matter_id),
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["result"]["to_state"] == GateState.PACKAGE_ASSEMBLY.value
+    assert not [
+        r
+        for r in caplog.records
+        if r.name == "clarionpi.orchestrator" and r.levelno == logging.ERROR
+    ]
+
+    env = client.get(f"/api/matters/{matter_id}/gates/current")
+    assert env.status_code == 200, env.text
+    assert env.json()["view_model"]["buildable"] is True
+
+    db = seeded()
+    try:
+        assert db.get(DemandDraft, draft_id).status == DraftStatus.APPROVED.value
+    finally:
+        db.close()
+
+
+def test_package_vm_buildable_false_outside_package_assembly(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    # BM-02 negative: buildable is only meaningful at package_assembly. An APPROVED draft on a
+    # matter parked elsewhere (package_ready) is NOT buildable — the state gate wins.
+    from app.api.view_models import package_vm
+
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    db = seeded()
+    try:
+        matter = db.get(Matter, matter_id)
+        matter.gate_state = GateState.PACKAGE_READY.value
+        db.add(
+            DemandDraft(
+                firm_id=DEV_FIRM_ID,
+                matter_id=matter.id,
+                version=1,
+                registry_version=matter.registry_version,
+                strategy_plan_version=1,
+                status=DraftStatus.APPROVED.value,
+            )
+        )
+        db.commit()
+        assert package_vm(db, matter)["buildable"] is False
+    finally:
+        db.close()
+
+
+def test_package_vm_buildable_false_with_superseded_current_draft(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    # BM-02 edge: at package_assembly, if the highest-version draft is SUPERSEDED, latest_draft()
+    # returns None (never falls back to an older draft) -> buildable stays False.
+    from app.api.view_models import package_vm
+
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    db = seeded()
+    try:
+        matter = db.get(Matter, matter_id)
+        matter.gate_state = GateState.PACKAGE_ASSEMBLY.value
+        db.add(
+            DemandDraft(
+                firm_id=DEV_FIRM_ID,
+                matter_id=matter.id,
+                version=2,
+                registry_version=matter.registry_version,
+                strategy_plan_version=1,
+                status=DraftStatus.SUPERSEDED.value,
+            )
+        )
+        db.commit()
+        assert package_vm(db, matter)["buildable"] is False
+    finally:
+        db.close()
+
+
+def test_g3_approve_without_current_draft_returns_exact_guard_failure(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    # BM-01 no-draft wire: guards pass (no draft -> no_blocking_findings counts zero) but the side
+    # effect finds no current draft -> the route returns the exact existing-shape 409 guard_failed
+    # body with guard=demand_draft, code=draft_missing (no new status/shape branch).
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    _park(seeded, matter_id, GateState.COMPLIANCE_REVIEW)
+    _freeze_registry(seeded, matter_id)  # registry_version_match; no draft is seeded
+    resp = client.post(
+        f"/api/matters/{matter_id}/gates/{GateState.COMPLIANCE_REVIEW.value}/submit",
+        json={
+            "action": GateAction.APPROVE.value,
+            "idempotency_key": uuid.uuid4().hex,
+            "payload_version": _payload_version(seeded, matter_id),
+        },
+    )
+    assert resp.status_code == 409, resp.text
+    body = resp.json()
+    assert body["error"] == "guard_failed"
+    assert body["guard"] == "demand_draft"
+    assert body["code"] == "draft_missing"

@@ -133,7 +133,12 @@ spans, **never** the tokenized body (inv 11); `findings` are `ComplianceFindingV
 ordered blocking-first then oldest; `open_blocking` is the exact G3-guard count;
 `buckets` = `{mechanical, semantic}` over the OPEN findings) / `package_vm`
 (`{artifact_sets, buildable}` — `buildable` true only at `package_assembly` when the
-latest draft is `approved`) · `artifact_sets_view` (latest first; each artifact is
+latest draft is `approved`; the G3 approve side effect (`_approve_draft`, ADR-0018) is what
+marks the draft `approved`, so `buildable` and the not-buildable hint now tell the truth.
+`buildable` is a FE hint ONLY — the build route is gate-state-fenced, never
+draft-status-gated. The G3 side effect's fail-loud no-draft branch surfaces via the gates
+route as `409 guard_failed {guard: "demand_draft", code: "draft_missing"}`) ·
+`artifact_sets_view` (latest first; each artifact is
 `{kind, sha256, byte_count, url}` — the `object_key` is INTERNAL and never on the wire,
 only the kind-keyed download `url`) · **drafting-route error vocabulary**:
 `matter_not_found`/`finding_not_found`/`artifact_not_found` → `404`,

@@ -188,7 +188,11 @@ def test_bump_invalidates_all_stale_plans_and_supersedes_drafts(
     matter = _matter(db, firm, state=GateState.PLAN_REVIEW, registry_version=5)
     stale_plan = _plan(db, matter, registry_version=3)
     current_plan = _plan(db, matter, registry_version=5)
-    stale_draft = _draft(db, matter, registry_version=3, version=1)
+    # WD-2: seed the stale draft explicitly APPROVED — the G3 terminal status — to prove an
+    # approved draft is superseded exactly like any non-superseded one (status != SUPERSEDED).
+    stale_draft = _draft(
+        db, matter, registry_version=3, version=1, status=DraftStatus.APPROVED.value
+    )
     already_superseded = _draft(
         db, matter, registry_version=2, version=2, status=DraftStatus.SUPERSEDED.value
     )
@@ -206,6 +210,28 @@ def test_bump_invalidates_all_stale_plans_and_supersedes_drafts(
     assert current_plan.invalidated_by_registry_version is None
     assert stale_draft.status == DraftStatus.SUPERSEDED.value
     assert already_superseded.status == DraftStatus.SUPERSEDED.value  # idempotent
+
+
+def test_approved_draft_registry_bump_cascades_package_assembly_to_evidence_review(
+    db: Session, firm: Firm, attorney: User
+) -> None:
+    # BM-03: an APPROVED draft at package_assembly is NOT exempt from supersession. A registry
+    # bump supersedes it (status != SUPERSEDED); latest_draft() then returns None (buildable
+    # False) and the matter cascades PACKAGE_ASSEMBLY -> EVIDENCE_REVIEW. WD-2's APPROVED terminal
+    # supersedes like IN_COMPLIANCE / VALIDATED; the cascade is unchanged.
+    from app.engine.compliance.engine import latest_draft
+
+    matter = _matter(db, firm, state=GateState.PACKAGE_ASSEMBLY, registry_version=3)
+    approved = _draft(db, matter, registry_version=3, version=1, status=DraftStatus.APPROVED.value)
+
+    outcome = apply_registry_bump(db, matter=matter, user=attorney, to_registry_version=4)
+    assert outcome.applied is True
+    assert outcome.drafts_superseded == 1
+    db.refresh(matter)
+    db.refresh(approved)
+    assert approved.status == DraftStatus.SUPERSEDED.value  # approving does not exempt it
+    assert latest_draft(db, matter=matter) is None  # -> buildable False downstream
+    assert matter.gate_state == GateState.EVIDENCE_REVIEW.value
 
 
 def test_covered_cursor_is_an_idempotent_no_op(db: Session, firm: Firm, attorney: User) -> None:
