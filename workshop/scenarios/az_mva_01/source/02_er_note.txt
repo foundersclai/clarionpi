@@ -1,0 +1,34 @@
+SAGUARO REGIONAL MEDICAL CENTER
+EMERGENCY DEPARTMENT - CLINICAL ENCOUNTER NOTE
+
+Patient: Rivas, Marisol            MRN: SRMC-778201
+DOB: 04/22/1989                    Date of Service: March 14, 2025
+Arrival: 6:02 PM                   Attending: J. Okafor, MD
+
+CHIEF COMPLAINT
+Neck, lower-back, and right-shoulder pain after a rear-end motor vehicle
+collision earlier this evening.
+
+HISTORY OF PRESENT ILLNESS
+34-year-old restrained driver, stopped at a red light, struck from behind by a
+pickup truck. Denies loss of consciousness. Reports immediate neck stiffness,
+lumbar pain, and right-shoulder pain worsened by overhead motion.
+
+EXAMINATION
+Cervical paraspinal tenderness with reduced range of motion. Lumbar paraspinal
+tenderness, negative straight-leg raise. Right shoulder tender over the
+anterolateral deltoid; limited active abduction, neurovascularly intact.
+
+IMAGING
+CT cervical spine and CT lumbar spine: no acute fracture or malalignment.
+Right shoulder radiograph, two views: no fracture; soft-tissue injury.
+
+ASSESSMENT
+1. Cervical strain (whiplash-associated), acute, traffic collision.
+2. Lumbar strain, acute.
+3. Right shoulder contusion; rule out rotator cuff injury - orthopedic follow-up.
+
+PLAN
+Analgesics, home exercises, work note for 3 days. Referral to Desert Sky
+Orthopedics for the right shoulder. Return precautions reviewed. Discharged in
+stable condition at 8:40 PM.
