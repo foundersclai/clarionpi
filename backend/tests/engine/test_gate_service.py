@@ -992,10 +992,32 @@ def test_g3_action_marks_only_current_draft_approved(
 def test_g3_draft_missing_when_highest_draft_superseded(
     db: Session, attorney: User, matter: Matter
 ) -> None:
-    # BM-01 edge: when the highest-version draft is SUPERSEDED, latest_draft returns None (it never
-    # falls back to an older draft), so G3 approve fails loud with DraftMissing and rolls back —
-    # a distinct path to the same fail-loud contract as the no-draft-at-all case.
-    _park_at_compliance_review(db, matter, draft_status=DraftStatus.SUPERSEDED)
+    # BM-01 edge + BUS-05 no-fallback: with an older LIVE draft (v1) beneath a SUPERSEDED highest
+    # (v2), latest_draft returns None — it never falls back to the stale v1 (a stale draft must not
+    # resurrect after a newer one was invalidated). So G3 approve fails loud with DraftMissing,
+    # rolls back, and the older live draft is left unapproved.
+    from app.engine.compliance.engine import latest_draft
+
+    _park_at_compliance_review(db, matter, draft=False)  # freeze the registry; seed drafts below
+    older = DemandDraft(
+        matter_id=matter.id,
+        version=1,
+        registry_version=1,
+        strategy_plan_version=1,
+        status=DraftStatus.IN_COMPLIANCE.value,
+    )
+    superseded_top = DemandDraft(
+        matter_id=matter.id,
+        version=2,
+        registry_version=1,
+        strategy_plan_version=1,
+        status=DraftStatus.SUPERSEDED.value,
+    )
+    tenant_add(db, older, matter.firm_id)
+    tenant_add(db, superseded_top, matter.firm_id)
+    db.commit()
+    assert latest_draft(db, matter=matter) is None  # no fallback to the older live v1
+
     with pytest.raises(GuardRefused) as excinfo:
         apply_gate_action(
             db,
@@ -1007,6 +1029,8 @@ def test_g3_draft_missing_when_highest_draft_superseded(
     assert excinfo.value.guard == "demand_draft"
     assert excinfo.value.code == "draft_missing"
     db.expire_all()
+    db.refresh(older)
+    assert older.status == DraftStatus.IN_COMPLIANCE.value  # older live draft NOT approved
     assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
     assert _records(db, matter) == []
 
