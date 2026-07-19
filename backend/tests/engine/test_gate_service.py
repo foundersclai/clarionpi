@@ -946,7 +946,27 @@ def test_g3_action_marks_only_current_draft_approved(
     from app.engine.compliance.engine import latest_draft
     from app.models.orm import ArtifactSet, LlmCall
 
-    draft = _park_at_compliance_review(db, matter)
+    _park_at_compliance_review(db, matter, draft=False)  # freeze the registry; seed drafts below
+    # Two live drafts: latest_draft picks the HIGHEST version, so ONLY the current (v2) is approved
+    # and the older (v1) is left untouched — the target/non-target boundary of "only current".
+    older = DemandDraft(
+        matter_id=matter.id,
+        version=1,
+        registry_version=1,
+        strategy_plan_version=1,
+        status=DraftStatus.IN_COMPLIANCE.value,
+    )
+    current_draft = DemandDraft(
+        matter_id=matter.id,
+        version=2,
+        registry_version=1,
+        strategy_plan_version=1,
+        status=DraftStatus.IN_COMPLIANCE.value,
+    )
+    tenant_add(db, older, matter.firm_id)
+    tenant_add(db, current_draft, matter.firm_id)
+    db.commit()
+
     reason = "compliance clean; proceeding" if action is GateAction.OVERRIDE else None
     result = apply_gate_action(
         db,
@@ -959,12 +979,36 @@ def test_g3_action_marks_only_current_draft_approved(
     assert result.to_state == GateState.PACKAGE_ASSEMBLY.value
     db.expire_all()
     current = latest_draft(db, matter=matter)
-    assert current.id == draft.id
+    assert current.version == 2  # the CURRENT (highest) draft, never the older one
     assert current.status == DraftStatus.APPROVED.value
+    db.refresh(older)
+    assert older.status == DraftStatus.IN_COMPLIANCE.value  # the older draft is NOT approved
     assert len(_records(db, matter)) == 1
     assert len(_gate_audits(db)) == 1
     assert db.execute(select(LlmCall)).first() is None
     assert db.execute(select(ArtifactSet)).first() is None
+
+
+def test_g3_draft_missing_when_highest_draft_superseded(
+    db: Session, attorney: User, matter: Matter
+) -> None:
+    # BM-01 edge: when the highest-version draft is SUPERSEDED, latest_draft returns None (it never
+    # falls back to an older draft), so G3 approve fails loud with DraftMissing and rolls back —
+    # a distinct path to the same fail-loud contract as the no-draft-at-all case.
+    _park_at_compliance_review(db, matter, draft_status=DraftStatus.SUPERSEDED)
+    with pytest.raises(GuardRefused) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_g3(GateAction.APPROVE, key="g3-superseded-top", db=db, matter=matter),
+        )
+    assert excinfo.value.guard == "demand_draft"
+    assert excinfo.value.code == "draft_missing"
+    db.expire_all()
+    assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
+    assert _records(db, matter) == []
 
 
 @pytest.mark.parametrize(
