@@ -88,13 +88,17 @@ duplicate **replays** the first outcome with the current state) ·
 `dry_run_approve_blockers` (side-effect-free guard preview for the wire) ·
 `_SIDE_EFFECTS` (per-`(state, event)` in-transaction callables; G2a freezes the
 `RegistryVersion` (`_freeze_registry_version`), G2.5 pins the plan
-(`_approve_plan_version`); the G3→package advance is the drafting route's, not a service
-side effect) · `_EDITABLE_GATES` (`facts_review`, `strategy_intake`, and `plan_review` —
+(`_approve_plan_version`), G3 marks the current draft `APPROVED` (`_approve_draft` — a
+draft-row denorm of the authoritative GateRecord; ADR-0018). The G3→`package_assembly`
+advance itself stays the machine's; the build route remains gate-state-fenced, never
+draft-status-gated) · `_EDITABLE_GATES` (`facts_review`, `strategy_intake`, and `plan_review` —
 the M5 plan-edit re-emits a new `StrategyPlan` version). **Typed refusals → HTTP:**
 `GateStateMismatch`/`StalePayloadVersion`/`IllegalGateAction`/`OverrideRequired`
 → `409`; `GuardRefused` → `409` (except `role_attorney` → `403 role_forbidden`) — its
-subclasses `PlanMissing` (`plan_missing`) / `PlanRegistryDrift` (`plan_registry_drift`)
-surface as `409 guard_failed` `{guard: "strategy_plan", code: ...}` with zero new mapping;
+subclasses `PlanMissing` / `PlanRegistryDrift` (`{guard: "strategy_plan", code:
+"plan_missing" | "plan_registry_drift"}`) and `DraftMissing` (`{guard: "demand_draft",
+code: "draft_missing"}` — the G3 side effect's fail-loud no-draft branch, ADR-0018)
+surface as `409 guard_failed` with zero new mapping;
 `OverrideReasonRequired`/`UnknownDeadlineRule`/`UnknownPlanSection`/`EditsNotSupported`/
 `InvalidEdits`/`InvalidIdempotencyKey` → `422`.
 
@@ -109,7 +113,8 @@ adding a new run kind; changing the service surface (the `apply_gate_action` ste
 `payload_version` formula, the idempotency/replay semantics, the typed-refusal → HTTP
 mapping, or the side-effect registry). A change to any of these lands with a new ADR (cf.
 [ADR-0005](../adr/0005-m3-gate-service-decisions.md),
-[ADR-0007](../adr/0007-m5-drafting-decisions.md)). Update this file **and**
+[ADR-0007](../adr/0007-m5-drafting-decisions.md),
+[ADR-0018](../adr/0018-g3-draft-status-side-effect.md)). Update this file **and**
 [`system_contract.md`](../system_contract.md) §1/4/8/9/12 in the same PR.
 
 

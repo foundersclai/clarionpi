@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,7 +49,14 @@ from app.core.tenancy import tenant_add
 from app.engine.orchestrator import guards, machine
 from app.engine.orchestrator.guards import GuardContext, GuardResult
 from app.engine.orchestrator.idempotency import validate_client_key
-from app.models.enums import FlagSeverity, GateAction, GateEvent, GateState, UserRole
+from app.models.enums import (
+    DraftStatus,
+    FlagSeverity,
+    GateAction,
+    GateEvent,
+    GateState,
+    UserRole,
+)
 from app.models.orm import (
     GateRecord,
     IncidentFacts,
@@ -66,6 +74,8 @@ from app.models.schemas import (
     PlanReviewEdits,
     StrategyIntakeEdits,
 )
+
+logger = logging.getLogger("clarionpi.orchestrator")
 
 # --------------------------------------------------------------------------------------
 # Typed refusals (the API layer maps these to status codes; see routes/gates.py)
@@ -149,6 +159,25 @@ class PlanRegistryDrift(GuardRefused):
             code="plan_registry_drift",
             detail=f"latest plan registry_version {plan_version} != matter registry_version "
             f"{matter_version}; re-emit the plan at the current version",
+        )
+
+
+class DraftMissing(GuardRefused):
+    """G3 approve reached the draft-approval side effect with no current DemandDraft.
+
+    A :class:`GuardRefused` subclass so the route surfaces it with ZERO new mapping as the 409
+    ``guard_failed`` body ``{"guard": "demand_draft", "code": "draft_missing", ...}``. Defensive:
+    ``COMPLIANCE_REVIEW`` is only reachable post-DRAFTING and ``registry_version_match`` blocks a
+    superseded draft, so a current draft is always present on the normal path. It fails loud rather
+    than silently skip — a silent skip is exactly the bug this side effect fixes (buildable would
+    stay permanently False on a matter whose build succeeds).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            guard="demand_draft",
+            code="draft_missing",
+            detail="no current DemandDraft to approve at G3 (compliance-passed draft absent)",
         )
 
 
@@ -483,9 +512,32 @@ def _approve_plan_version(db: Session, *, matter: Matter, user: User) -> None:
     db.add(plan)
 
 
+def _approve_draft(db: Session, *, matter: Matter, user: User) -> None:
+    """G3 side effect: mark the current compliance-passed draft ``APPROVED``.
+
+    Runs inside the action's transaction (design D4). ``draft.status = APPROVED`` is the draft-row
+    denorm of the G3 approval; the :class:`~app.models.orm.GateRecord` remains the authoritative
+    approval trail (symmetric with :func:`_approve_plan_version`'s ``plan.approved`` denorm).
+    ``DemandDraft`` has no approval-actor columns by design.
+
+    Fail-loud on a missing draft (:class:`DraftMissing`, a ``GuardRefused`` -> 409): the whole
+    action rolls back rather than silently leaving the draft unapproved. Unreachable on the normal
+    path (``COMPLIANCE_REVIEW`` is post-DRAFTING; ``registry_version_match`` blocks a superseded
+    draft), so this guards a future wiring regression, not a live path.
+    """
+    from app.engine.compliance.engine import latest_draft  # local: mirrors the G3 guard feed
+
+    draft = latest_draft(db, matter=matter)
+    if draft is None:
+        raise DraftMissing()
+    draft.status = DraftStatus.APPROVED.value
+    db.add(draft)
+
+
 _SIDE_EFFECTS: Mapping[tuple[GateState, GateEvent], Callable[..., None]] = {
     (GateState.EVIDENCE_REVIEW, GateEvent.G2A_CONFIRMED): _settle_exhibits_then_freeze,
     (GateState.PLAN_REVIEW, GateEvent.G25_APPROVED): _approve_plan_version,
+    (GateState.COMPLIANCE_REVIEW, GateEvent.G3_APPROVED): _approve_draft,
 }
 
 
@@ -870,6 +922,18 @@ def _apply_gate_action_inner(
         side_effect = _SIDE_EFFECTS.get((state, event))
         if side_effect is not None:
             side_effect(db, matter=matter, user=user)
+        elif (state, event) == (GateState.COMPLIANCE_REVIEW, GateEvent.G3_APPROVED):
+            # Fail-visible wiring guard: G3 approve MUST resolve the draft-approval side effect.
+            # A missing entry silently left the draft unapproved (the exact bug WD-2 fixes), so a
+            # future registry regression logs loudly (ids/state/event only — no client facts).
+            # Dead on the normal path: the entry is registered in _SIDE_EFFECTS above.
+            logger.error(
+                "G3 approve dispatched with no registered side effect "
+                "(matter_id=%s state=%s event=%s) — draft left unapproved",
+                matter.id,
+                state.value,
+                event.value,
+            )
         matter.gate_state = transition.to.value
         transitioned = True
     # edit / reject: record + audit, NO transition (a rejected G-gate parks in place — the
@@ -921,6 +985,7 @@ def _apply_gate_action_inner(
 
 __all__ = [
     "GATE_EVENT_BY_APPROVE",
+    "DraftMissing",
     "EditsNotSupported",
     "GateActionResult",
     "GateStateMismatch",

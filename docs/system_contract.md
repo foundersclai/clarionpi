@@ -72,7 +72,9 @@ decide strategy, skip a gate, or retry until a proxy judge is satisfied.
   `_approve_plan_version` side effect pins the plan), a section that fails deterministic
   validation twice **surfaces** (`surfaced_failed`) rather than looping, and the G3 approve
   guard (`no_blocking_findings`, fed by `compliance.open_blocking_count`) refuses a draft
-  with any open blocking finding. Bounded correction (span-patch / single-section regen) is
+  with any open blocking finding. On a clean G3 approve the `_approve_draft` side effect marks
+  the current draft `APPROVED` (ADR-0018 — a draft-row denorm of the GateRecord) which the
+  package `buildable` hint reads. Bounded correction (span-patch / single-section regen) is
   narrow structural repair with a mandatory re-verify, never a strategy decision.
 - **Enforced (WI-2):** the v1 pilot box is checked where effort starts — matter creation
   REQUIRES four explicit tri-state intake answers (`public_entity_involved`,
@@ -334,9 +336,12 @@ Overrides are `requires_override` (allowed, logged with a reason) vs `unavailabl
 - **Enforced (M5) for G2.5/G3 sign-off:** the G2.5 plan approve and the G3 compliance
   approve are in the audited-gate set — each writes a `GateRecord` + `AuditEvent` through
   `apply_gate_action`, the G2.5 side effect stamps `approved`/`approved_by`/`approved_at`
-  on the plan, and a finding disposition writes its own `compliance_finding_dispositioned`
-  audit (an OVERRIDE recorded with a reason, surfaced in the provenance report's judgment-call
-  log). The G3 approve refuses a draft with any open blocking finding (`no_blocking_findings`);
+  on the plan, the G3 side effect marks the current draft `APPROVED` (`_approve_draft`,
+  ADR-0018 — the GateRecord stays the authoritative trail; the draft status is its denorm,
+  with no approval-actor columns), and a finding disposition writes its own
+  `compliance_finding_dispositioned` audit (an OVERRIDE recorded with a reason, surfaced in
+  the provenance report's judgment-call log). The G3 approve refuses a draft with any open
+  blocking finding (`no_blocking_findings`);
   the package build writes an `artifact_set_built` + `package_ready` audit, and each artifact
   download is audited (`artifact_downloaded`).
 
