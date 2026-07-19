@@ -190,6 +190,22 @@ describe("PackageCard — package_assembly build", () => {
     await screen.findByText(/rule pack changed after this matter was created/i);
     expect(onGateReady).not.toHaveBeenCalled();
   });
+  it("shows the not-buildable hint only when buildable is false; the build button stays enabled", () => {
+    const base = { artifact_sets: [], registry_version_current: true, new_cycle_required: false };
+    // buildable=false (backend draft not yet APPROVED): the hint shows, but the build button is
+    // NOT disabled — the hint is advisory, never the build gate (which is gate_state).
+    const { unmount } = renderWithQuery(
+      <PackageCard matterId="m1" gate="package_assembly" vm={{ ...base, buildable: false }} />,
+    );
+    expect(screen.getByTestId("not-buildable-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("build-package")).toBeEnabled();
+    unmount();
+    // buildable=true (WD-2: the backend feeds True once G3 marks the draft APPROVED) -> hint gone.
+    renderWithQuery(
+      <PackageCard matterId="m1" gate="package_assembly" vm={{ ...base, buildable: true }} />,
+    );
+    expect(screen.queryByTestId("not-buildable-hint")).not.toBeInTheDocument();
+  });
 });
 
 describe("PackageCard — package_ready downloads", () => {

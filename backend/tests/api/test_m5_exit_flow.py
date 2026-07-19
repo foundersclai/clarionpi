@@ -625,6 +625,15 @@ def test_m5_exit_full_demand_package(
     assert g3.status_code == 200, g3.text
     assert g3.json()["result"]["to_state"] == GateState.PACKAGE_ASSEMBLY.value
 
+    # WD-2 (BM-02): the G3 approve marked the current draft APPROVED, so the package_assembly VM
+    # reports buildable=True before the build runs. buildable is a FE hint, never the build gate.
+    _db = seeded()
+    try:
+        assert _db.get(DemandDraft, draft_id).status == DraftStatus.APPROVED.value
+    finally:
+        _db.close()
+    assert _current(client, matter_id)["view_model"]["buildable"] is True
+
     # ---- package build → four artifact_ready frames + package_ready -----------------------
     build = client.post(f"/api/matters/{matter_id}/package/build")
     assert build.status_code == 200, build.text

@@ -42,7 +42,10 @@ from app.engine.orchestrator.service import (
 )
 from app.engine.tokenizer.registry import bump_version
 from app.models.enums import (
+    CheckKind,
     DeadlineKind,
+    DraftStatus,
+    FindingStatus,
     FlagKind,
     FlagSeverity,
     GateAction,
@@ -53,6 +56,8 @@ from app.models.enums import (
 )
 from app.models.orm import (
     AuditEvent,
+    ComplianceFinding,
+    DemandDraft,
     GateRecord,
     IncidentFacts,
     Matter,
@@ -849,3 +854,298 @@ def test_dry_run_blockers_name_guards_without_side_effects(
     matter.sol_candidates = _candidates(confirmed=(True, True))
     db.commit()
     assert service.dry_run_approve_blockers(db, matter=matter, user=attorney) == []
+
+
+# ------------------------------------------------------------------------------------------
+# WD-2 — G3 approve draft side effect (_approve_draft) + fail-loud refusal (BM-01, BM-04)
+# ------------------------------------------------------------------------------------------
+
+
+def _park_at_compliance_review(
+    db: Session,
+    matter: Matter,
+    *,
+    draft: bool = True,
+    draft_status: DraftStatus = DraftStatus.IN_COMPLIANCE,
+    blocking: bool = False,
+    registry_version: int = 1,
+) -> DemandDraft | None:
+    """Park ``matter`` at COMPLIANCE_REVIEW with a frozen registry (so registry_version_match
+    passes) and — unless ``draft=False`` — a current draft at ``draft_status``, plus one OPEN
+    blocking finding when ``blocking``.
+
+    Mirrors the real pre-G3 state (G2a froze the registry; drafting produced a draft; the
+    compliance pass ran). No StrategyPlan is needed: the G3 guards and the ``_approve_draft``
+    side effect read only the frozen registry pin + ``latest_draft``. Returns the draft or None.
+    """
+    from app.engine.compliance.engine import bucket_for
+
+    reg = RegistryVersion(
+        matter_id=matter.id, version=registry_version, frozen=True, change_reason="g2a_freeze"
+    )
+    tenant_add(db, reg, matter.firm_id)
+    matter.registry_version = registry_version
+    matter.gate_state = GateState.COMPLIANCE_REVIEW.value
+
+    made: DemandDraft | None = None
+    if draft:
+        made = DemandDraft(
+            matter_id=matter.id,
+            version=1,
+            registry_version=registry_version,
+            strategy_plan_version=1,
+            status=draft_status.value,
+        )
+        tenant_add(db, made, matter.firm_id)
+        db.flush()  # assign made.id for the finding FK
+        if blocking:
+            finding = ComplianceFinding(
+                draft_id=made.id,
+                section_id="liability",
+                registry_version=registry_version,
+                check_kind=CheckKind.UNDISPOSED_ADVERSE.value,
+                bucket=bucket_for(CheckKind.UNDISPOSED_ADVERSE).value,
+                severity="blocking",
+                detail="planted",
+                anchors=[],
+                status=FindingStatus.OPEN.value,
+            )
+            tenant_add(db, finding, matter.firm_id)
+    db.commit()
+    return made
+
+
+def _g3(
+    action: GateAction, *, key: str, db: Session, matter: Matter, reason: str | None = None
+) -> GateSubmit:
+    return _submit(action, key=key, version=payload_version(db, matter=matter), reason=reason)
+
+
+def _gate_audits(db: Session) -> list[AuditEvent]:
+    return [e for e in db.execute(select(AuditEvent)).scalars() if e.event_kind == "gate_action"]
+
+
+def test_side_effects_map_registers_g3_draft_approval() -> None:
+    # BM-01 registration: exactly the (COMPLIANCE_REVIEW, G3_APPROVED) entry is added; the two
+    # pre-existing entries are unchanged — locked as data so a remap fails here before a route.
+    assert (GateState.COMPLIANCE_REVIEW, GateEvent.G3_APPROVED) in service._SIDE_EFFECTS
+    assert set(service._SIDE_EFFECTS) == {
+        (GateState.EVIDENCE_REVIEW, GateEvent.G2A_CONFIRMED),
+        (GateState.PLAN_REVIEW, GateEvent.G25_APPROVED),
+        (GateState.COMPLIANCE_REVIEW, GateEvent.G3_APPROVED),
+    }
+
+
+@pytest.mark.parametrize("action", [GateAction.APPROVE, GateAction.OVERRIDE])
+def test_g3_action_marks_only_current_draft_approved(
+    db: Session, attorney: User, matter: Matter, action: GateAction
+) -> None:
+    # BM-01 happy: APPROVE and reasoned OVERRIDE on a compliance-passed matter both set the CURRENT
+    # draft APPROVED and move to package_assembly, with exactly one GateRecord + one gate_action
+    # audit and NO LlmCall / ArtifactSet side effect.
+    from app.engine.compliance.engine import latest_draft
+    from app.models.orm import ArtifactSet, LlmCall
+
+    draft = _park_at_compliance_review(db, matter)
+    reason = "compliance clean; proceeding" if action is GateAction.OVERRIDE else None
+    result = apply_gate_action(
+        db,
+        matter=matter,
+        user=attorney,
+        gate="compliance_review",
+        submit=_g3(action, key=f"g3-{action.value}", db=db, matter=matter, reason=reason),
+    )
+    assert result.transitioned is True
+    assert result.to_state == GateState.PACKAGE_ASSEMBLY.value
+    db.expire_all()
+    current = latest_draft(db, matter=matter)
+    assert current.id == draft.id
+    assert current.status == DraftStatus.APPROVED.value
+    assert len(_records(db, matter)) == 1
+    assert len(_gate_audits(db)) == 1
+    assert db.execute(select(LlmCall)).first() is None
+    assert db.execute(select(ArtifactSet)).first() is None
+
+
+@pytest.mark.parametrize(
+    "seed,guard",
+    [
+        ("role", "role_attorney"),
+        ("registry", "registry_version_match"),
+        ("blocking", "no_blocking_findings"),
+    ],
+)
+def test_g3_guard_refusals_leave_draft_and_sinks_untouched(
+    db: Session, attorney: User, paralegal: User, matter: Matter, seed: str, guard: str
+) -> None:
+    # BM-01 negative: each pre-dispatch guard refusal (role / registry drift / open blocking) rolls
+    # the whole action back — the draft stays IN_COMPLIANCE and no GateRecord/audit is written.
+    if seed == "registry":
+        draft = _park_at_compliance_review(db, matter)
+        matter.registry_version = 2  # pin frozen at 1, current now 2 -> version_mismatch
+        db.commit()
+        user = attorney
+    elif seed == "blocking":
+        draft = _park_at_compliance_review(db, matter, blocking=True)
+        user = attorney
+    else:  # role: a paralegal cannot sign off
+        draft = _park_at_compliance_review(db, matter)
+        user = paralegal
+
+    with pytest.raises(GuardRefused) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=user,
+            gate="compliance_review",
+            submit=_g3(GateAction.APPROVE, key=f"g3-refused-{seed}", db=db, matter=matter),
+        )
+    assert excinfo.value.guard == guard
+    db.expire_all()
+    db.refresh(draft)
+    assert draft.status == DraftStatus.IN_COMPLIANCE.value  # never approved on refusal
+    assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value  # parked
+    assert _records(db, matter) == []
+    assert _gate_audits(db) == []
+
+
+def test_g3_override_cannot_bypass_open_blocking_finding(
+    db: Session, attorney: User, matter: Matter
+) -> None:
+    # BM-01: no_blocking_findings is a HARD guard (not the overridable high-severity one) — a
+    # reasoned OVERRIDE cannot push past an open blocking finding.
+    draft = _park_at_compliance_review(db, matter, blocking=True)
+    with pytest.raises(GuardRefused) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_g3(
+                GateAction.OVERRIDE,
+                key="g3-override-blocked",
+                db=db,
+                matter=matter,
+                reason="I really want to ship",
+            ),
+        )
+    assert excinfo.value.guard == "no_blocking_findings"
+    db.expire_all()
+    db.refresh(draft)
+    assert draft.status == DraftStatus.IN_COMPLIANCE.value
+    assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
+
+
+def test_g3_draft_missing_refuses_atomically(db: Session, attorney: User, matter: Matter) -> None:
+    # BM-01 edge: guards pass (no draft -> no_blocking_findings counts zero) but the side effect
+    # finds no current draft -> fail-loud DraftMissing (a GuardRefused with the exact wire code),
+    # rolling the whole action back. Unreachable on the normal path (COMPLIANCE_REVIEW is
+    # post-DRAFTING); constructed here by parking with no draft.
+    _park_at_compliance_review(db, matter, draft=False)
+    with pytest.raises(GuardRefused) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_g3(GateAction.APPROVE, key="g3-no-draft", db=db, matter=matter),
+        )
+    assert excinfo.value.guard == "demand_draft"
+    assert excinfo.value.code == "draft_missing"
+    db.expire_all()
+    assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value  # not moved
+    assert _records(db, matter) == []
+
+
+def test_g3_audit_failure_rolls_back_draft_status_gate_and_records(
+    db: Session, attorney: User, matter: Matter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BM-01 terminal: the draft-status write shares the ONE gate transaction. An audit failure
+    # AFTER the status mutation rolls the draft, gate_state, and GateRecord back together.
+    draft = _park_at_compliance_review(db, matter)
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("audit sink down")
+
+    monkeypatch.setattr(service, "record_event", _boom)
+    with pytest.raises(RuntimeError):
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_g3(GateAction.APPROVE, key="g3-audit-fail", db=db, matter=matter),
+        )
+    db.expire_all()
+    db.refresh(draft)
+    assert draft.status == DraftStatus.IN_COMPLIANCE.value  # rolled back with the transaction
+    assert matter.gate_state == GateState.COMPLIANCE_REVIEW.value
+    assert _records(db, matter) == []
+
+
+def test_missing_g3_side_effect_logs_diagnostic(
+    db: Session,
+    attorney: User,
+    matter: Matter,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # BM-01 fail-visible wiring guard: if a future regression drops the G3 map entry, a successful
+    # G3 dispatch that resolves NO side effect logs a clarionpi.orchestrator ERROR (ids/state only)
+    # so the silent-unapproved bug can never recur unseen. Simulated by removing the entry.
+    import logging
+
+    draft = _park_at_compliance_review(db, matter)
+    patched = {
+        k: v
+        for k, v in service._SIDE_EFFECTS.items()
+        if k != (GateState.COMPLIANCE_REVIEW, GateEvent.G3_APPROVED)
+    }
+    monkeypatch.setattr(service, "_SIDE_EFFECTS", patched)
+    with caplog.at_level(logging.ERROR, logger="clarionpi.orchestrator"):
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_g3(GateAction.APPROVE, key="g3-missing-sidefx", db=db, matter=matter),
+        )
+    assert any(
+        r.name == "clarionpi.orchestrator" and r.levelno == logging.ERROR for r in caplog.records
+    )
+    db.expire_all()
+    db.refresh(draft)
+    assert draft.status == DraftStatus.IN_COMPLIANCE.value  # no side effect ran -> unapproved
+
+
+def test_duplicate_successful_g3_approve_mismatches_before_replay(
+    db: Session, attorney: User, matter: Matter
+) -> None:
+    # BM-04: after a successful G3 approve the matter is at package_assembly; a duplicate submit
+    # addressed to compliance_review hits GateStateMismatch BEFORE the replay lookup — one
+    # GateRecord only, the approved draft unchanged.
+    from app.engine.compliance.engine import latest_draft
+
+    _park_at_compliance_review(db, matter)
+    first = apply_gate_action(
+        db,
+        matter=matter,
+        user=attorney,
+        gate="compliance_review",
+        submit=_g3(GateAction.APPROVE, key="g3-duplicate", db=db, matter=matter),
+    )
+    assert first.to_state == GateState.PACKAGE_ASSEMBLY.value
+    db.expire_all()
+    with pytest.raises(GateStateMismatch) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="compliance_review",
+            submit=_submit(
+                GateAction.APPROVE, key="g3-duplicate", version=payload_version(db, matter=matter)
+            ),
+        )
+    assert excinfo.value.current == GateState.PACKAGE_ASSEMBLY.value
+    assert len(_records(db, matter)) == 1
+    assert latest_draft(db, matter=matter).status == DraftStatus.APPROVED.value

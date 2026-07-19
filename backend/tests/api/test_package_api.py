@@ -461,3 +461,32 @@ def test_build_refused_typed_when_pack_unaudited_and_guard_on(
         assert db.scalar(select(ArtifactSet).where(ArtifactSet.matter_id == matter_id)) is None
     finally:
         db.close()
+
+
+def test_build_succeeds_from_package_assembly_with_in_compliance_draft(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None, storage: LocalDiskStorage
+) -> None:
+    # BM-04 forbidden effect: the build route is authorized ONLY by the gate_state fence, never
+    # by draft status. It still succeeds with an IN_COMPLIANCE (not APPROVED) current draft —
+    # WD-2's status write is a denorm, never a build authorization gate.
+    from app.models.enums import DraftStatus
+
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    _seed_shippable(seeded, storage, matter_id, clear_phi=True)
+    # Flip the seeded APPROVED draft back to IN_COMPLIANCE: the build must not care about status.
+    db = seeded()
+    try:
+        draft = db.execute(
+            select(DemandDraft).where(DemandDraft.matter_id == matter_id)
+        ).scalar_one()
+        draft.status = DraftStatus.IN_COMPLIANCE.value
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post(f"/api/matters/{matter_id}/package/build")
+    assert resp.status_code == 200, resp.text
+    events = _sse_events(resp.text)
+    artifact_frames = [d for n, d in events if n == "artifact_ready"]
+    assert len(artifact_frames) == 4  # build succeeded end-to-end despite the non-approved status
