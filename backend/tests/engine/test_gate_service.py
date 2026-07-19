@@ -141,6 +141,19 @@ def _candidates(*, confirmed: tuple[bool, bool] = (False, False)) -> list[dict]:
     return [sol.model_dump(mode="json"), noc.model_dump(mode="json")]
 
 
+def _sol_only_candidates(*, confirmed: bool = False) -> list[dict]:
+    """The post-WD-1 private-party candidate set: SOL only, notice-of-claim suppressed."""
+    sol = DeadlineCandidate(
+        kind=DeadlineKind.SOL,
+        date=dt.date(2028, 1, 15),
+        statute_cite=SOL_CITE,
+        assumptions=["adult plaintiff — no tolling"],
+        verify_status=RuleVerifyStatus.UNVERIFIED,
+        confirmed=confirmed,
+    )
+    return [sol.model_dump(mode="json")]
+
+
 @pytest.fixture
 def matter(db: Session, attorney: User) -> Matter:
     """A Firm-A matter parked at facts_review with both candidates unconfirmed."""
@@ -358,6 +371,49 @@ def test_unknown_rule_id_refuses_whole_edit(db: Session, attorney: User, matter:
     # The whole action rolled back: the valid confirmation did NOT half-apply.
     db.expire_all()
     assert all(c["confirmed"] is False for c in matter.sol_candidates)
+    assert _records(db, matter) == []
+
+
+# ------------------------------------------------------------------------------------------
+# WD-1 — downstream G1 invariant with a SOL-only (suppressed-notice) candidate set (BM-03)
+# ------------------------------------------------------------------------------------------
+
+
+def test_deadlines_confirmed_with_sol_only_candidate(
+    db: Session, attorney: User, matter: Matter
+) -> None:
+    # Post-suppression a private-party MVA matter carries only the SOL candidate; confirming it
+    # alone satisfies the G1 non-empty + all-confirmed invariant (the set is never emptied).
+    matter.sol_candidates = _sol_only_candidates(confirmed=True)
+    db.commit()
+    ctx = build_guard_context(db, matter=matter, user=attorney, override_reason=None)
+    assert ctx.deadlines_confirmed is True
+
+
+def test_confirmation_for_suppressed_cite_raises_unknown_rule(
+    db: Session, attorney: User, matter: Matter
+) -> None:
+    # On a SOL-only matter, a confirmation naming the suppressed §12-821.01 notice cite matches
+    # no candidate → fail-loud UnknownDeadlineRule (422) + whole-edit rollback, never a silent
+    # no-op that resurrects the candidate.
+    matter.sol_candidates = _sol_only_candidates()
+    db.commit()
+    with pytest.raises(UnknownDeadlineRule) as excinfo:
+        apply_gate_action(
+            db,
+            matter=matter,
+            user=attorney,
+            gate="facts_review",
+            submit=_submit(
+                GateAction.EDIT,
+                key="suppressed-noc-1",
+                version=payload_version(db, matter=matter),
+                edits={"deadline_confirmations": [{"rule_id": NOC_CITE, "confirmed": True}]},
+            ),
+        )
+    assert excinfo.value.rule_id == NOC_CITE
+    db.expire_all()
+    assert [c["statute_cite"] for c in matter.sol_candidates] == [SOL_CITE]  # not resurrected
     assert _records(db, matter) == []
 
 

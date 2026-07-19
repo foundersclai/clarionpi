@@ -147,7 +147,7 @@ def test_m3_exit_full_gate_flow_with_audit_trail(
     assert created.status_code == 201, created.text
     matter_id = uuid.UUID(created.json()["id"])
     assert created.json()["gate_state"] == "corpus_processing"
-    assert len(created.json()["deadline_candidates"]) == 2  # AZ pack: SOL + notice-of-claim
+    assert len(created.json()["deadline_candidates"]) == 1  # WD-1: private-party → SOL only
 
     # ---- corpus_processing -> facts_review: scripted-provider mini Phase 0 --------------
     db = seeded()
@@ -166,7 +166,7 @@ def test_m3_exit_full_gate_flow_with_audit_trail(
     envelope = _current(client, matter_id)
     assert envelope["gate"] == "facts_review"
     candidates = envelope["view_model"]["deadline_candidates"]
-    assert len(candidates) == 2
+    assert len(candidates) == 1  # WD-1: private-party → SOL only
     assert all(c["confirmed"] is False for c in candidates)
     assert envelope["role_affordances"]["can_approve"] is False
     version = envelope["payload_version"]
