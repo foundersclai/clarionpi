@@ -38,6 +38,7 @@ signed.
 | [10_implementation_readiness.md](./10_implementation_readiness.md) | **CANONICAL readiness memo**: P0 blocker dashboard (B1–B4 w/ owners), release matrix R0–R4, decisions ledger D1–D5, supersession ledger, M0 contract-bundle checklist |
 | [11_spike_briefs.md](./11_spike_briefs.md) | Executable S1/S2/S4 protocols: frozen fixture corpus (no live PHI), gold-label ownership, scoring definitions, rescope triggers |
 | [12_abs_ops_runbook.md](./12_abs_ops_runbook.md) | ABS operations runbook **scaffold** (counsel finalizes): independence protocol, intake/solicitation, PHI SOP, separateness hygiene, audit cadences |
+| [13_gtm_strategy.md](./13_gtm_strategy.md) | **GTM strategy** (research-verified 2026-07-19): Phoenix market sizing, unit-economics validation vs 08/09, positioning, phased channel plan (referral backbone + LSA anchor), intake engine, review-velocity program, B3 operator-interview protocol, kill criteria, changed-since-2026-07-03 corrections |
 
 All eighteen architecture diagrams are standalone SVGs in [`diagrams/`](./diagrams/) —
 embedded inline in each doc, with the editable Mermaid source kept in a collapsible
