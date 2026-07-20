@@ -24,5 +24,9 @@ dist/
 logs/
 backend/logs/
 
+# Local object-storage roots — ingest blobs (dev + workshop); runtime artifacts, never committed
+var/
+backend/var/
+
 # Workshop demo — generated scenario PDFs (regenerate via each scenario's generate.py)
 workshop/**/pdf/
