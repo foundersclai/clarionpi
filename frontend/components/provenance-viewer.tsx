@@ -40,6 +40,7 @@ import {
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PdfPageView } from "@/components/pdf-page-view";
+import { formatServiceDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------------------
 // Source discriminated union — what the panel was opened to show.
@@ -212,9 +213,10 @@ function ResolvedProvenance({ provenance }: { provenance: ProvenanceResponse }) 
 // Composition — the billing lines behind a computed [[AMT]] figure (no page states the sum).
 // ---------------------------------------------------------------------------------------
 
-/** "Saguaro Regional Medical Center · 2025-03-14 · $9,200.00" — the per-line row heading. */
+/** "Saguaro Regional Medical Center · 2025-03-14 · $9,200.00" — the per-line row heading. A
+ * period line reads "… · 2025-03-24 – 2025-06-16 · …" so the honest span shows, not a single day. */
 function lineHeading(line: CompositionLineView): string {
-  const parts = [line.provider, line.date_of_service];
+  const parts = [line.provider, formatServiceDate(line.date_of_service, line.service_end_date)];
   if (line.amount !== null) parts.push(line.amount);
   return parts.join(" · ");
 }

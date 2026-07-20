@@ -96,6 +96,23 @@ _BATCH_SCHEMA: dict[str, type[BaseModel]] = {
 }
 
 
+def _summarize_parse_error(exc: Exception) -> str:
+    """A short, diagnosable ``parse_failed`` reason (fits ``ExtractionRun.error``, 512 chars).
+
+    A blind ``"parse_failed"`` hides WHICH field broke — the forbidden silent state. For a
+    :class:`ValidationError` this names the first few offending ``loc:type`` pairs (e.g.
+    ``lines.0.date_of_service:date_type``), which is what turns "extraction quietly dropped a
+    bill" into an operator-actionable signal. Always prefixed ``parse_failed`` so existing
+    reads that key on that prefix still match.
+    """
+    if isinstance(exc, ValidationError):
+        pairs = [
+            f"{'.'.join(str(p) for p in err['loc'])}:{err['type']}" for err in exc.errors()[:5]
+        ]
+        return f"parse_failed: {'; '.join(pairs)}"[:512]
+    return f"parse_failed: {type(exc).__name__}: {exc}"[:512]
+
+
 def _parse_json_object(text: str, schema: type[BaseModel]) -> BaseModel:
     """First-``{``-to-last-``}`` → ``json.loads`` → ``schema.model_validate`` (house pattern).
 
@@ -241,6 +258,7 @@ def _persist_billing(
             matter_id=document.matter_id,
             provider=line.provider.strip(),
             date_of_service=line.date_of_service,
+            service_end_date=line.service_end_date,
             code=line.code,
             billed_cents=billed_cents,
             adjusted_cents=adjusted_cents,
@@ -472,9 +490,11 @@ def extract_document(
                 total_unparseable,
                 None,
             )
-        except (ValueError, json.JSONDecodeError, ValidationError):
+        except (ValueError, json.JSONDecodeError, ValidationError) as exc:
             # Two parse failures on THIS window: record it FAILED and continue to the next window
             # — one bad window must not kill the doc. The doc-level status rule keeps it OCR_DONE.
+            # Record WHICH field/shape broke (not a blind "parse_failed") so a silently dropped
+            # bill becomes an operator-diagnosable signal, never an invisible zero.
             run = ExtractionRun(
                 matter_id=document.matter_id,
                 document_id=document.id,
@@ -484,7 +504,7 @@ def extract_document(
                 prompt_version=prompt_version,
                 model=settings.extractor_model,
                 status=ExtractionStatus.FAILED.value,
-                error="parse_failed",
+                error=_summarize_parse_error(exc),
                 rows_emitted=0,
                 anchors_rejected=0,
             )

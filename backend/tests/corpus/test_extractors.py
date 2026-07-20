@@ -268,6 +268,74 @@ def test_bill_row_with_unparseable_money_is_dropped_and_counted_others_persist(
     assert run.status == ExtractionStatus.PARTIAL.value
 
 
+def test_bill_service_period_persists_start_and_end(
+    db: Session, dev_user: User, matter: Matter
+) -> None:
+    # A range-header bill: the period line carries date_of_service (start) + service_end_date
+    # (end); an ordinary single-date line leaves service_end_date null. The honest period is
+    # recorded, not collapsed to a single-day fiction.
+    doc = _mk_doc(db, matter, doc_type=DocType.BILL, n_pages=3)
+    batch = (
+        '{"lines": ['
+        '{"provider": "Desert Sky Ortho", "date_of_service": "2025-03-24", '
+        '"service_end_date": "2025-06-16", "code": null, "billed": "$1,290.00", '
+        '"adjusted": null, "paid": null, "outstanding": null, "category": "ortho", '
+        '"anchor_page": 1},'
+        '{"provider": "Saguaro ER", "date_of_service": "2025-03-14", '
+        '"service_end_date": null, "code": "99284", "billed": "$9,200.00", '
+        '"adjusted": null, "paid": null, "outstanding": null, "category": "er", '
+        '"anchor_page": 1}'
+        "]}"
+    )
+    provider = ScriptedProvider([_result(batch)])
+    outcome = extract_document(db, _client(db, matter, provider), document=doc)
+
+    assert outcome.rows_emitted == 2
+    rows = {
+        r.provider: r
+        for r in db.query(BillingLine).filter(BillingLine.matter_id == matter.id).all()
+    }
+    # Period line: start anchors date_of_service (every sort/consumer keeps a non-null date),
+    # end is the honest range end.
+    assert rows["Desert Sky Ortho"].date_of_service.isoformat() == "2025-03-24"
+    assert rows["Desert Sky Ortho"].service_end_date is not None
+    assert rows["Desert Sky Ortho"].service_end_date.isoformat() == "2025-06-16"
+    # Single-date line: no distinct end.
+    assert rows["Saguaro ER"].date_of_service.isoformat() == "2025-03-14"
+    assert rows["Saguaro ER"].service_end_date is None
+
+
+def test_bill_null_date_of_service_fails_loud_naming_the_field(
+    db: Session, dev_user: User, matter: Matter
+) -> None:
+    # The exact observed bug: a bill line with no per-line date the model refuses to guess emits
+    # date_of_service=null → ValidationError. It STILL fails (we do not silently zero-fill), but
+    # the failure is now diagnosable — the run's error names the offending field rather than a
+    # blind "parse_failed". This is the no-silent-state guard, model-free and deterministic.
+    doc = _mk_doc(db, matter, doc_type=DocType.BILL, n_pages=3)
+    null_date_line = (
+        '{"lines": ['
+        '{"provider": "Cactus Valley PT", "date_of_service": null, '
+        '"service_end_date": null, "code": "97110", "billed": "$3,540.00", '
+        '"adjusted": null, "paid": null, "outstanding": null, "category": "pt_chiro", '
+        '"anchor_page": 1}'
+        "]}"
+    )
+    # Both attempts (first + JSON-only retry) return the same off-schema shape.
+    provider = ScriptedProvider([_result(null_date_line), _result(null_date_line)])
+    outcome = extract_document(db, _client(db, matter, provider), document=doc)
+
+    assert outcome.runs_failed == 1
+    assert outcome.rows_emitted == 0
+    run = db.query(ExtractionRun).filter(ExtractionRun.document_id == doc.id).one()
+    assert run.status == ExtractionStatus.FAILED.value
+    assert run.error.startswith("parse_failed")
+    # The field is named — this is what makes "$3,540 quietly missing" impossible to miss.
+    assert "date_of_service" in run.error
+    db.refresh(doc)
+    assert doc.status == DocStatus.OCR_DONE.value  # a failed window leaves the doc re-runnable
+
+
 # --------------------------------------------------------------------------------------
 # incident: two windows upsert ONE IncidentFacts row
 # --------------------------------------------------------------------------------------
@@ -429,7 +497,11 @@ def test_parse_fail_twice_on_one_window_is_failed_others_unaffected(
         for r in db.query(ExtractionRun).filter(ExtractionRun.document_id == doc.id).all()
     }
     assert runs[f"{doc.id}:1-8"].status == ExtractionStatus.FAILED.value
-    assert runs[f"{doc.id}:1-8"].error == "parse_failed"
+    # The reason is diagnosable, not a blind "parse_failed": it keeps the prefix AND carries the
+    # underlying cause so a silently dropped window is operator-actionable (no-silent-state).
+    failed_error = runs[f"{doc.id}:1-8"].error
+    assert failed_error.startswith("parse_failed")
+    assert "no JSON object" in failed_error
     assert runs[f"{doc.id}:7-10"].status == ExtractionStatus.OK.value
     # Both attempts on window 1 + one on window 2 = 3 metered calls.
     assert _ledger_count(db, matter) == 3

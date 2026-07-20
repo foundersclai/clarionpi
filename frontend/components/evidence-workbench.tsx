@@ -21,6 +21,7 @@ import { ApiError } from "@/lib/api";
 import { GateStaleError, useSubmitGate } from "@/lib/gates";
 import { centsToDollars, dollarsToCents, MONEY_PARSE_ERROR } from "@/lib/money";
 import { formatPageRanges, parsePageRanges, PageRangeError } from "@/lib/pages";
+import { formatServiceDate } from "@/lib/utils";
 import {
   getManifest,
   runAnalysis,
@@ -850,7 +851,9 @@ function BillingLineRow({
       <td className="py-2 pr-2 align-top">
         <div className="flex flex-col">
           <span>{line.provider}</span>
-          <span className="font-mono text-[0.65rem] text-ink-muted">{line.date_of_service}</span>
+          <span className="font-mono text-[0.65rem] text-ink-muted">
+            {formatServiceDate(line.date_of_service, line.service_end_date)}
+          </span>
         </div>
       </td>
       <td className="py-2 pr-2 align-top">

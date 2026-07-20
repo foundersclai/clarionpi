@@ -408,7 +408,15 @@ class BillingLine(Base, FirmScoped):
         sa.Uuid, ForeignKey("matters.id"), index=True, nullable=False
     )
     provider: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    # ``date_of_service`` is the line's service date OR, for a bill that declares only an overall
+    # service PERIOD (a date range with no per-line date — common on itemized statements), the
+    # START of that printed range. It stays NOT NULL so every existing sort/consumer keeps a
+    # non-null anchor.
     date_of_service: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    # The period END, set only when the bill stated a date range with no per-line date; NULL for a
+    # single-date line. Records the honest span so the ledger never fabricates a single-day service
+    # for a multi-week course of care (both range endpoints are printed on the statement).
+    service_end_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
     code: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     billed_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     adjusted_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)

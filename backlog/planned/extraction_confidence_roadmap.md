@@ -8,10 +8,17 @@
 - Tier expectation: **every slice here touches a Tier-3 trigger** (money, gate guards, or
   prompt/LLM paths — the tier rules fire those at full strength in every environment). None of
   this is quick-fix work; each slice gets its own `sdlc-tier-assessment` + plan before code.
-- Related open chip: "Fix bill extractor parse_failed on quantity-priced lines"
-  (spawned 2026-07-20) — that is the *bug instance*; this roadmap is the *systemic design* the bug
-  exposed. EC-1's regression fixture must include the quantity-priced-line bill either way; the
-  prompt/schema fix itself can land via the chip or be folded into EC-2's prompt work.
+- Related bug instance (now **root-caused and FIXED** on branch
+  `fix/bill-extractor-date-range-header`, 2026-07-20): the chip was filed as "parse_failed on
+  quantity-priced lines", but capturing the raw model output showed that guess was wrong — the true
+  cause is a **service-period (date-range) header with no per-line date** vs. a schema that required
+  a single non-null `date_of_service` (see the corrected incident below). The fix is the honest
+  **period model** (nullable `service_end_date`; `date_of_service` holds the period start; prompt
+  `bill_v1`→`bill_v2`). That is the *bug instance*; this roadmap is the *systemic design* the bug
+  exposed, still unbuilt. EC-1's regression fixture must be the **range-header** bill (not a
+  quantity-priced one). A down-payment on EC-1's no-silent-state corollary already landed with the
+  fix: the runner now records **which field** broke in `ExtractionRun.error` instead of a blind
+  `"parse_failed"` — the doc-level surfacing EC-1 owns is still open.
 
 ## Motivating incident (observed, not hypothetical)
 
@@ -19,11 +26,17 @@ During the 2026-07-20 workshop rebuild (live `LLM_PROVIDER=anthropic`, extractor
 `claude-sonnet-5`, prompt `bill_v1`):
 
 - `05_ortho_bill.pdf` and `07_pt_bill.pdf` failed extraction **deterministically** (reproduced in
-  two independent runs days apart): 2 `extraction_runs` rows each with `error="parse_failed"`,
-  `rows_emitted=0`; both bills contain compound quantity-priced line items
-  ("Established patient follow-up visits, 3 at $430.00 …… $1,290.00" /
-  "Therapeutic exercise, 12 sessions at $295.00 (97110) … $3,540.00"). The flat-line ER bill
-  extracted cleanly.
+  two independent runs days apart, then isolated by capturing the raw model output): 2
+  `extraction_runs` rows each with `error="parse_failed"`, `rows_emitted=0`.
+- **Root cause — confirmed, and NOT the first guess.** Both bills declare a service *period* in the
+  header ("Dates of Service: March 24 - June 16, 2025") with **no per-line date**, while the
+  extractor schema required a single non-null `date_of_service` on every line. The model, correctly
+  obeying the prompt's "do not infer or guess", emitted `date_of_service: null` — which the schema
+  rejected (`ValidationError`, every line, both attempts). The flat single-date ER bill extracted
+  cleanly. The compound quantity-priced line first suspected was a **red herring** (its `billed`
+  string parsed fine on the ledgered line). This is a *contract* failure (schema too strict for a
+  real bill shape), so model escalation would not have helped — the fix is a schema/prompt change
+  (the honest period model), not a smarter model.
 - Consequence: the documents sat at `status="ocr_done"` with **empty `failure_reason`**, absent
   from the specials ledger. The ledger showed $18,750 grand billed instead of the scenario-true
   $29,050 — internally consistent, categories summing cleanly, **no operator-visible signal that
@@ -32,6 +45,12 @@ During the 2026-07-20 workshop rebuild (live `LLM_PROVIDER=anthropic`, extractor
 That last property is the actual defect class this roadmap kills. For a demand package, a silently
 *missing* charge is worse than a wrong one: a wrong number can be caught against the page; a
 confident-looking total that is quietly short goes out the door.
+
+**Resolution status (2026-07-20).** The specific *contract* bug is fixed (period model + prompt
+`bill_v2` + a runner change that records the failing field in `ExtractionRun.error`). The
+*systemic* guarantee this roadmap owns — a deterministic stated-total reconciliation oracle and a
+doc-level no-silent-state invariant that catches the *next*, unforeseen shape — remains unbuilt.
+The fix removes one instance; EC-1 removes the class.
 
 ## Design principle
 

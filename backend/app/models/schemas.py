@@ -181,7 +181,10 @@ class ExtractedBillingLine(BaseModel):
     """
 
     provider: str = Field(min_length=1)
+    # Service date, OR the START of a printed service period when the bill declares only a date
+    # range with no per-line date; ``service_end_date`` carries the range end in that case.
     date_of_service: date
+    service_end_date: date | None = None
     code: str | None = None
     billed: str = Field(min_length=1)
     adjusted: str | None = None
@@ -314,6 +317,7 @@ class BillingLine(_ORMModel):
     matter_id: uuid.UUID
     provider: str
     date_of_service: date
+    service_end_date: date | None = None
     code: str | None = None
     billed_cents: Cents
     adjusted_cents: Cents | None = None

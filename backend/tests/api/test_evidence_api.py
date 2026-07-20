@@ -537,6 +537,7 @@ def test_billing_lines_ordered_with_document_id(
     # Optional cents columns are present and null when unset.
     assert first["adjusted_cents"] is None
     assert first["paid_cents"] is None
+    assert first["service_end_date"] is None  # single-date line has no distinct period end
 
 
 def test_billing_lines_malformed_anchor_document_id_is_null(

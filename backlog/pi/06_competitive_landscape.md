@@ -143,7 +143,8 @@ captive-firm model this compounds — provenance and audit are not a sales featu
 our own firm survives its own carrier audit ([07_captive_firm_model.md](./07_captive_firm_model.md)).
 
 **What the architecture does *not* buy (honest bounds).** Not extraction quality (same
-foundation models, same failure on session-priced bills — observed 2026-07-20, see
+foundation models — e.g. a bill stating only a service *period* with no per-line date once broke a
+too-strict schema, observed and fixed 2026-07-20, see
 [../planned/extraction_confidence_roadmap.md](../planned/extraction_confidence_roadmap.md)),
 not their data flywheel, not their distribution. The design never claimed extraction
 perfection — it claims **extraction failure cannot be silent** (the EC roadmap closes the one

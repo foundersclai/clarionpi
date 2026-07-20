@@ -345,6 +345,7 @@ def _billing_line_view(line: BillingLine) -> dict:
         "id": str(line.id),
         "provider": line.provider,
         "date_of_service": line.date_of_service.isoformat(),
+        "service_end_date": (line.service_end_date.isoformat() if line.service_end_date else None),
         "code": line.code,
         "billed_cents": line.billed_cents,
         "adjusted_cents": line.adjusted_cents,
