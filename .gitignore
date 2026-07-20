@@ -30,3 +30,6 @@ backend/var/
 
 # Workshop demo — generated scenario PDFs (regenerate via each scenario's generate.py)
 workshop/**/pdf/
+
+# Workshop driver — per-run resume state (holds a matter id; runtime artifact, never committed)
+backend/scripts/.workshop_drive_state.json
