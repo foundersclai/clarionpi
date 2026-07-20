@@ -63,9 +63,14 @@ function VerifyBadge({ status }: { status: DeadlineCandidateVM["verify_status"] 
 }
 
 /** Turn any submit error into the copy the card shows inline (verbatim backend body preferred). */
-function submitErrorText(error: ApiError | GateStaleError): string {
+function submitErrorText(error: unknown): string {
   if (error instanceof GateStaleError) {
     return error.message;
+  }
+  // A fetch-layer reject (server down / network blip) has no `.body` — guard so it renders inline
+  // rather than crashing the card on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server to submit. Check your connection and try again.";
   }
   if (error.body.error === "role_forbidden") {
     // Derive the actor role from the typed detail — no hardcoded role assumption.

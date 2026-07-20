@@ -569,9 +569,14 @@ function ApproveBar({
 }
 
 /** Copy for a G3 approve refusal (verbatim body preferred). */
-function approveErrorText(error: ApiError | GateStaleError): string {
+function approveErrorText(error: unknown): string {
   if (error instanceof GateStaleError) {
     return error.message;
+  }
+  // A fetch-layer reject (server down / network blip) has no `.body` — guard so it renders inline
+  // rather than crashing the panel on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server to submit. Check your connection and try again.";
   }
   if (error.body.error === "role_forbidden") {
     const actor = actorRoleFrom(error.body.detail);

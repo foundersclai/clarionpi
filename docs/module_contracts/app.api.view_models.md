@@ -29,7 +29,13 @@ view-models (`view_models.py::plan_review_vm` / `compliance_review_vm` / `packag
 generate SSE run, the finding-action route, the package build SSE run, artifact list +
 byte download). The demand + package runs are SSE (a `post_draft` compliance pre-check runs
 INSIDE the demand stream); the compliance panel exposes each section's RENDERED preview,
-never the tokenized body.
+never the tokenized body. `plan_review_vm` also carries `token_glosses` — a bare token id →
+`{token_id, kind, display_form, resolved, hint}` map over every token any section references
+(`allowed ∪ required`), so the G2.5 rows show an attorney-readable gloss instead of the opaque
+id; resolution is prompt-mode display-form only (inv 5) via `app.engine.tokenizer` (view-models
+never read `FactToken`), an orphan/typo id is `resolved=false` + sentinel (never a raw leak), and
+`hint` is the AMT-only ledger-slot label ("total billed specials") — display-side only, never part
+of the prose-substituted display form.
 
 **Extended @ M6.** The provenance-viewer read surface is live (`routes/provenance.py`, two
 routes; no view-model builder — both serialize directly): `GET /api/documents/{id}/blob`
@@ -37,11 +43,20 @@ routes; no view-model builder — both serialize directly): `GET /api/documents/
 `phi_access` audit row written BEFORE the bytes leave — the PHI byte-access event, inv 7 —
 mirroring `get_artifact_download`; raw bytes, NOT wire-scanned) and
 `GET /api/matters/{id}/provenance/{token_id}` (a BARE token id → `{token_id, display_form,
-outcome, source, anchors[]}`, each anchor `{document_id, page, bbox, blob_url, page_count,
-superseded}` with `bbox` always `null` at v1 — page-level highlights; NO audit here, the token
-lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-span map reaching
-the FE viewer (the deferred M5 line): the compliance panel's BARE-id `spans` click through to
-this route.
+outcome, source, anchors[], composition}`, each anchor `{document_id, page, bbox, blob_url,
+page_count, filename, doc_type, superseded}` — `filename`/`doc_type` server-joined so the viewer
+labels a source page by name, never a bare uuid — with `bbox` always `null` at v1 — page-level
+highlights; NO audit here, the token lookup is not the PHI event; wire-scanned, inv 11).
+`composition` is `null` for non-ledger tokens; for an `[[AMT]]` (a computed sum — `anchors` empty
+by design) it walks the pinned `ledger_ref.line_ids` back to the billing lines that sum to it:
+`{column, hint, lines[], missing_line_ids[]}`, each line `{line_id, provider, date_of_service,
+category, amount, anchor}` — `amount` server-formatted via `app.money.specials.
+line_contribution_cents` (money owns the column semantics; `demand_basis` resolves through the
+matter's pinned pack basis and degrades to `null` on a refused pin, never a 409 on a read),
+`anchor` the line's own enriched page anchor (same shape as above, `null` when the stored anchor
+names no document), and unresolvable ref ids surfaced in `missing_line_ids`, never dropped. This
+realizes the render-span map reaching the FE viewer (the deferred M5 line): the compliance
+panel's BARE-id `spans` click through to this route.
 
 **Extended @ WI-2 (pilot intake preflight).** Matter creation is gated by the v1
 eligibility box: `MatterCreate` REQUIRES the four tri-state intake flags (no silent

@@ -339,6 +339,28 @@ def test_plan_emit_happy_returns_unapproved_plan(
         db.close()
 
 
+def test_plan_review_vm_glosses_section_tokens(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    # The G2.5 envelope carries an attorney-readable gloss for each bare section token id, so the
+    # screen can show "the initial visit" beside the opaque FACT_n chip.
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    _park(seeded, matter_id, GateState.PLAN_REVIEW)
+    _, fact = _two_section_plan(seeded, matter_id, approved=False)
+
+    env = client.get(f"/api/matters/{matter_id}/gates/current")
+    assert env.status_code == 200, env.text
+    glosses = env.json()["view_model"]["token_glosses"]
+    assert glosses[fact] == {
+        "token_id": fact,
+        "kind": "FACT",
+        "display_form": "the initial visit",
+        "resolved": True,
+        "hint": None,  # hints are AMT-only ledger-slot labels
+    }
+
+
 # --------------------------------------------------------------------------------------
 # G2.5 edit — creates a new unapproved version; unknown section 422
 # --------------------------------------------------------------------------------------
@@ -462,6 +484,48 @@ def test_g25_approve_stamps_plan(
         assert plan.approved is True
         assert plan.approved_by == _dev_attorney_id(seeded)
         assert plan.approved_at is not None
+    finally:
+        db.close()
+
+
+def test_g25_approve_with_edits_applies_then_approves_new_version(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    """Regression (workshop): approve-with-edits at G2.5 re-emits THEN approves, atomically.
+
+    The FE's approve carries unsaved form changes (e.g. a typed demand amount) as ``edits`` on the
+    approve call. The backend applies the plan edit first (a new unapproved version) and the
+    approve side-effect stamps the LATEST plan — so the attorney approves what they see, never a
+    stale version with the typed demand silently dropped.
+    """
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    _two_section_plan(seeded, matter_id, approved=False)
+    _freeze_registry(seeded, matter_id)  # registry_version_match needs a frozen pin (G2a in flow)
+    _park(seeded, matter_id, GateState.PLAN_REVIEW)
+
+    resp = _submit(
+        client,
+        seeded,
+        matter_id,
+        action=GateAction.APPROVE,
+        edits={"demand_amount_cents": 15_000_000},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["result"]["to_state"] == GateState.DRAFTING.value
+
+    db = seeded()
+    try:
+        plans = sorted(
+            db.execute(select(StrategyPlan).where(StrategyPlan.matter_id == matter_id)).scalars(),
+            key=lambda p: p.version,
+        )
+        # The edit re-emitted v2; the approve stamped THAT version, with the typed demand.
+        assert [p.version for p in plans] == [1, 2]
+        assert plans[0].approved is False
+        assert plans[1].approved is True
+        assert plans[1].demand_amount_cents == 15_000_000
+        assert plans[1].approved_by == _dev_attorney_id(seeded)
     finally:
         db.close()
 

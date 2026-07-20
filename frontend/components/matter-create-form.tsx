@@ -71,7 +71,12 @@ const ANSWER_LABELS: Record<IntakeFlagAnswer, string> = {
 };
 
 /** Map a typed refusal code to attorney-facing copy. Unknown codes fall back to detail. */
-function refusalMessage(error: ApiError): string {
+function refusalMessage(error: unknown): string {
+  // A fetch-layer reject (server down / network blip) has no `.body` — guard so it renders inline
+  // rather than crashing the form on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server. Check your connection and try again.";
+  }
   const code = error.body.error;
   const supported = Array.isArray(error.body.supported)
     ? (error.body.supported as string[]).join(", ")
@@ -89,7 +94,10 @@ function refusalMessage(error: ApiError): string {
 }
 
 /** The per-flag reasons of a `matter_out_of_scope` refusal, or null for any other error. */
-function scopeReasons(error: ApiError): IntakeScopeReason[] | null {
+function scopeReasons(error: unknown): IntakeScopeReason[] | null {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
   if (error.body.error !== "matter_out_of_scope" || !Array.isArray(error.body.reasons)) {
     return null;
   }

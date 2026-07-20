@@ -17,6 +17,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.deps import DEV_PARALEGAL_EMAIL, DEV_USER_EMAIL, DEV_USER_PASSWORD, seed_dev_users
@@ -24,7 +25,7 @@ from app.api.routes import gates as gates_module
 from app.api.wire_guard import TokenLeak
 from app.core.config import get_settings
 from app.models.enums import GateState
-from app.models.orm import Matter
+from app.models.orm import Matter, StrategyInputs
 
 # The AZ pack's two candidate identities (rule_id == statute_cite on the wire).
 SOL_CITE = "A.R.S. § 12-542 (verify — counsel)"
@@ -215,6 +216,71 @@ def test_happy_g1_confirm_all_then_approve(
     }
     assert body["matter"]["gate_state"] == "strategy_intake"
     assert body["record_id"]
+
+
+def test_g15_approve_with_edits_persists_inputs_atomically(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    """Regression (workshop): approve-with-edits at G1.5 must persist the typed StrategyInputs.
+
+    The FE's "Submit strategy & run analysis" sends the unsaved form as ``edits`` on the approve
+    itself (one atomic call — the backend applies edits before the transition). A dropped edits
+    payload here silently discarded the attorney's strategy: no StrategyInputs row, a blank G2.5
+    demand, and an "(no attorney strategy inputs on file)" emphasis prompt.
+    """
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    _park(seeded, matter_id, GateState.FACTS_REVIEW)
+
+    # Confirm deadlines + approve G1 (the G1.5 approve guard reads deadlines_confirmed).
+    version = _current(client, matter_id)["payload_version"]
+    edit = client.post(
+        f"/api/matters/{matter_id}/gates/facts_review/submit",
+        json={
+            "action": "edit",
+            "idempotency_key": "g15-atomic-confirm-1",
+            "payload_version": version,
+            "edits": _confirm_all_edits(),
+        },
+    )
+    assert edit.status_code == 200, edit.text
+    version = _current(client, matter_id)["payload_version"]
+    g1 = client.post(
+        f"/api/matters/{matter_id}/gates/facts_review/submit",
+        json={
+            "action": "approve",
+            "idempotency_key": "g15-atomic-g1-approve-1",
+            "payload_version": version,
+        },
+    )
+    assert g1.status_code == 200, g1.text
+
+    # Approve G1.5 WITH edits — no prior save; the typed inputs must survive the transition.
+    version = _current(client, matter_id)["payload_version"]
+    approve = client.post(
+        f"/api/matters/{matter_id}/gates/strategy_intake/submit",
+        json={
+            "action": "approve",
+            "idempotency_key": "g15-atomic-approve-1",
+            "payload_version": version,
+            "edits": {
+                "liability_theory": "Rear-end collision; defendant cited for failure to yield.",
+                "anchor_amount_cents": 15_000_000,
+            },
+        },
+    )
+    assert approve.status_code == 200, approve.text
+    assert approve.json()["result"]["to_state"] == "analysis_running"
+
+    db = seeded()
+    try:
+        row = db.execute(
+            select(StrategyInputs).where(StrategyInputs.matter_id == matter_id)
+        ).scalar_one()
+        assert row.liability_theory == ("Rear-end collision; defendant cited for failure to yield.")
+        assert row.anchor_amount_cents == 15_000_000
+    finally:
+        db.close()
 
 
 def test_paralegal_approve_is_typed_403(

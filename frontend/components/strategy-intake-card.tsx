@@ -67,9 +67,14 @@ function initialForm(vm: StrategyIntakeVM): FormState {
   };
 }
 
-function submitErrorText(error: ApiError | GateStaleError): string {
+function submitErrorText(error: unknown): string {
   if (error instanceof GateStaleError) {
     return error.message;
+  }
+  // A fetch-layer reject (server down / network blip) has no `.body` — guard so it renders inline
+  // rather than crashing the card on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server to submit. Check your connection and try again.";
   }
   if (error.body.error === "role_forbidden") {
     const actor = actorRoleFrom(error.body.detail);
@@ -179,10 +184,15 @@ export function StrategyIntakeCard({
       return;
     }
     setMoneyErrors({});
-    // ALWAYS fires the approve (server is authority; no client-side legal suppression).
+    // ALWAYS fires the approve (server is authority; no client-side legal suppression). Unsaved
+    // form changes ride along — the backend applies edits before the approve in one atomic call
+    // (edit and approve both accept edits); dropping them here would silently discard what the
+    // attorney typed.
     submit.mutate({
       gate: "strategy_intake",
-      body: { action: "approve", payload_version: payloadVersion },
+      body: hasChanges(built.edits)
+        ? { action: "approve", payload_version: payloadVersion, edits: built.edits }
+        : { action: "approve", payload_version: payloadVersion },
     });
   }
 

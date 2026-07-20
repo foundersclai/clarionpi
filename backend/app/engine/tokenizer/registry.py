@@ -619,6 +619,91 @@ def resolve_for_prompt(db: Session, *, matter: Matter, token: str) -> str:
     return row.display_form
 
 
+# Category labels for the AMT gloss hint (LedgerCategory members; short acronyms upper-cased).
+_AMT_CATEGORY_LABELS = {"er": "ER", "pt_chiro": "PT / chiro"}
+
+
+def amt_hint(source_ref: str | None) -> str | None:
+    """A short human label for an ``amt:<ledger key>`` source_ref — gloss-only, NEVER prose.
+
+    The registry's AMT ``display_form`` is the prose-pure dollar string the renderer substitutes
+    verbatim into the letter, so it can never carry a label — this hint exists ONLY on gloss
+    surfaces (the G2.5 fact rows, the provenance viewer's composition header) to disambiguate
+    otherwise-identical dollar figures. Deterministic
+    over the money engine's fixed key vocabulary; an unknown key falls back to the bare ledger key
+    (safe: ledger keys carry no PHI). Non-AMT source_refs return ``None``.
+    """
+    if source_ref is None or not source_ref.startswith("amt:"):
+        return None
+    key = source_ref[len("amt:") :]
+    parts = key.split(".")
+    if key == "specials.demand_basis":
+        return "demand basis"
+    if len(parts) == 3 and parts[0] == "specials" and parts[1] == "grand":
+        return f"total {parts[2]} specials"
+    if len(parts) == 4 and parts[0] == "specials" and parts[1] == "category":
+        category = _AMT_CATEGORY_LABELS.get(parts[2], parts[2].replace("_", " "))
+        return f"{category} {parts[3]}"
+    return key
+
+
+@dataclass(frozen=True)
+class TokenGloss:
+    """A prompt-safe display label for one bare token id — the G2.5 plan-review chip gloss.
+
+    ``display_form`` is the registry's fabrication-safe string (inv 5 — never value/anchors). An id
+    that does not resolve — an orphan, a superseded-away slot, or an attorney-typed non-token —
+    carries the :data:`SENTINEL` with ``resolved=False`` so the wire can *flag* a stale/bad token
+    rather than hide it (inv 11: never a raw leak, never a guess). ``hint`` is the AMT
+    disambiguator from :func:`amt_hint` (``None`` for non-AMT tokens) — display-side only, never
+    part of the prose-substituted display form.
+    """
+
+    token_id: str
+    kind: str
+    display_form: str
+    resolved: bool
+    hint: str | None = None
+
+
+def gloss_tokens(db: Session, *, matter: Matter, token_ids: Sequence[str]) -> dict[str, TokenGloss]:
+    """Prompt-mode display forms for a set of BARE token ids, keyed by normalized id.
+
+    One query over the matter's live rows (latest per ``token_id``), then a lookup per requested
+    id — so glossing a whole plan's ``allowed ∪ required`` set is a single round-trip. Tolerant by
+    design: duplicates collapse, an already-bracketed id is accepted, and a malformed id (the
+    required-token editor lets an attorney type free-form) resolves to an unresolved gloss instead
+    of raising. Exposes only ``display_form`` (inv 5); an unknown/superseded slot is an orphan →
+    SENTINEL + ``resolved=False`` (inv 11).
+    """
+    latest = {row.token_id: row for row in _all_latest_rows(db, matter=matter)}
+    out: dict[str, TokenGloss] = {}
+    for raw in token_ids:
+        bare = raw.strip()
+        if not bare:
+            continue
+        try:
+            kind, ordinal = parse_token(bare if bare.startswith("[[") else f"[[{bare}]]")
+        except ValueError:
+            # Not a token id (e.g. an attorney typo) — surface it as unresolved, keyed as typed.
+            out.setdefault(
+                bare, TokenGloss(token_id=bare, kind="", display_form=SENTINEL, resolved=False)
+            )
+            continue
+        token_id = f"{_KIND_PREFIX[kind]}_{ordinal}"
+        if token_id in out:
+            continue
+        row = latest.get(token_id)
+        out[token_id] = TokenGloss(
+            token_id=token_id,
+            kind=_KIND_PREFIX[kind],
+            display_form=row.display_form if row is not None else SENTINEL,
+            resolved=row is not None,
+            hint=amt_hint(row.source_ref) if row is not None else None,
+        )
+    return out
+
+
 def resolve_for_render(
     db: Session,
     *,

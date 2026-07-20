@@ -24,6 +24,7 @@ from __future__ import annotations
 import tempfile
 import uuid
 from collections.abc import Iterator
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,6 +54,7 @@ from app.models.enums import (
 )
 from app.models.orm import (
     AuditEvent,
+    BillingLine,
     CaseDocument,
     DedupDecision,
     FactToken,
@@ -207,6 +209,8 @@ def _insert_token_row(
     anchors: list[dict],
     display_form: str,
     value: object,
+    source_ref: str | None = None,
+    ledger_ref: dict | None = None,
 ) -> str:
     """Insert a FactToken row directly (to exercise the unverified/disputed/AMT outcomes).
 
@@ -232,11 +236,41 @@ def _insert_token_row(
             anchors=anchors,
             status=status_.value,
             source=source.value,
-            source_ref=f"test:{uuid.uuid4()}",
+            source_ref=source_ref if source_ref is not None else f"test:{uuid.uuid4()}",
+            ledger_ref=ledger_ref,
         )
         db.add(row)
         db.commit()
         return token_id
+    finally:
+        db.close()
+
+
+def _add_billing_line(
+    session_factory: sessionmaker[Session],
+    matter_id: uuid.UUID,
+    *,
+    provider: str,
+    date_of_service: date,
+    billed_cents: int,
+    category: str = "er",
+    anchor: dict,
+) -> uuid.UUID:
+    """Insert one BillingLine (the AMT-composition join target); return its id."""
+    db = session_factory()
+    try:
+        line = BillingLine(
+            firm_id=DEV_FIRM_ID,
+            matter_id=matter_id,
+            provider=provider,
+            date_of_service=date_of_service,
+            billed_cents=billed_cents,
+            category=category,
+            anchor=anchor,
+        )
+        db.add(line)
+        db.commit()
+        return line.id
     finally:
         db.close()
 
@@ -426,9 +460,14 @@ def test_provenance_minted_fact_exact_shape(
                 "bbox": None,
                 "blob_url": f"/api/documents/{doc_id}/blob",
                 "page_count": 12,
+                # Server-joined document facts — the viewer labels a source page by NAME.
+                "filename": "bill.pdf",
+                "doc_type": "bill",
                 "superseded": False,
             }
         ],
+        # A FACT is not a ledger figure — no composition block.
+        "composition": None,
     }
     # The endpoint does NOT audit (only the blob fetch does).
     assert _audit_events(seeded, kind="phi_access") == []
@@ -549,6 +588,167 @@ def test_provenance_amt_outcome_without_live_hash_check(
     body = resp.json()
     assert body["outcome"] == "ok"  # NOT amt_mismatch — no live-hash check on this surface
     assert body["anchors"] == []
+    # The ledger_ref names a line that resolves to nothing — surfaced, never dropped.
+    assert body["composition"]["lines"] == []
+    assert body["composition"]["missing_line_ids"] == ["x"]
+
+
+def test_provenance_amt_composition_walks_ledger_lines(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    """A ledger AMT's provenance is its COMPOSITION: each pinned billing line, its per-line
+    amount, and that line's own enriched bill-page anchor — plus loud surfacing of ref ids that
+    no longer resolve and of a line whose stored anchor names no document."""
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    doc_id, _b, _k = _add_document(
+        seeded, matter_id, filename="er_bill.pdf", page_count=2, store_bytes=False
+    )
+    line_a = _add_billing_line(
+        seeded,
+        matter_id,
+        provider="Saguaro Regional Medical Center",
+        date_of_service=date(2025, 3, 14),
+        billed_cents=920_000,
+        anchor={"document_id": str(doc_id), "page": 1},
+    )
+    line_b = _add_billing_line(
+        seeded,
+        matter_id,
+        provider="Saguaro Regional Medical Center",
+        date_of_service=date(2025, 3, 15),
+        billed_cents=145_000,
+        anchor={"document_id": str(doc_id), "page": 2},
+    )
+    # A line whose stored anchor carries no document id — its row still shows, anchor null.
+    line_c = _add_billing_line(
+        seeded,
+        matter_id,
+        provider="Desert Pharmacy",
+        date_of_service=date(2025, 3, 16),
+        billed_cents=420,
+        category="pharmacy",
+        anchor={"page": 1},
+    )
+    ghost = uuid.uuid4()
+    amt_id = _insert_token_row(
+        seeded,
+        matter_id,
+        kind=TokenKind.AMOUNT,
+        status_=TokenStatus.VERIFIED,
+        source=TokenSource.EXTRACTOR,
+        anchors=[],
+        display_form="$10,654.20",
+        value={"cents": 1_065_420},
+        source_ref="amt:specials.category.er.billed",
+        ledger_ref={
+            "line_ids": [str(line_a), str(line_b), str(line_c), str(ghost), "not-a-uuid"],
+            "category": "er",
+            "column": "billed",
+        },
+    )
+
+    resp = client.get(f"/api/matters/{matter_id}/provenance/{amt_id}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["composition"] == {
+        "column": "billed",
+        "hint": "ER billed",
+        # Deterministic order: (date_of_service, provider, line_id).
+        "lines": [
+            {
+                "line_id": str(line_a),
+                "provider": "Saguaro Regional Medical Center",
+                "date_of_service": "2025-03-14",
+                "category": "er",
+                "amount": "$9,200.00",
+                "anchor": {
+                    "document_id": str(doc_id),
+                    "page": 1,
+                    "bbox": None,
+                    "blob_url": f"/api/documents/{doc_id}/blob",
+                    "page_count": 2,
+                    "filename": "er_bill.pdf",
+                    "doc_type": "bill",
+                    "superseded": False,
+                },
+            },
+            {
+                "line_id": str(line_b),
+                "provider": "Saguaro Regional Medical Center",
+                "date_of_service": "2025-03-15",
+                "category": "er",
+                "amount": "$1,450.00",
+                "anchor": {
+                    "document_id": str(doc_id),
+                    "page": 2,
+                    "bbox": None,
+                    "blob_url": f"/api/documents/{doc_id}/blob",
+                    "page_count": 2,
+                    "filename": "er_bill.pdf",
+                    "doc_type": "bill",
+                    "superseded": False,
+                },
+            },
+            {
+                "line_id": str(line_c),
+                "provider": "Desert Pharmacy",
+                "date_of_service": "2025-03-16",
+                "category": "pharmacy",
+                "amount": "$4.20",
+                "anchor": None,
+            },
+        ],
+        "missing_line_ids": sorted([str(ghost), "not-a-uuid"]),
+    }
+
+
+def test_provenance_amt_demand_basis_resolves_and_degrades(
+    client: TestClient, seeded: sessionmaker[Session], session_mode: None
+) -> None:
+    """demand_basis per-line amounts resolve via the matter's pinned pack basis (AZ = billed);
+    a drifted pin degrades them to null — the read-only viewer never 409s."""
+    _login(client, DEV_USER_EMAIL)
+    matter_id = _create_matter(client)
+    doc_id, _b, _k = _add_document(seeded, matter_id, store_bytes=False)
+    line_id = _add_billing_line(
+        seeded,
+        matter_id,
+        provider="Saguaro Regional Medical Center",
+        date_of_service=date(2025, 3, 14),
+        billed_cents=920_000,
+        anchor={"document_id": str(doc_id), "page": 1},
+    )
+    amt_id = _insert_token_row(
+        seeded,
+        matter_id,
+        kind=TokenKind.AMOUNT,
+        status_=TokenStatus.VERIFIED,
+        source=TokenSource.EXTRACTOR,
+        anchors=[],
+        display_form="$9,200.00",
+        value={"cents": 920_000},
+        source_ref="amt:specials.demand_basis",
+        ledger_ref={"line_ids": [str(line_id)], "category": None, "column": "demand_basis"},
+    )
+
+    resp = client.get(f"/api/matters/{matter_id}/provenance/{amt_id}")
+    assert resp.status_code == 200, resp.text
+    comp = resp.json()["composition"]
+    assert comp["hint"] == "demand basis"
+    assert comp["lines"][0]["amount"] == "$9,200.00"  # AZ pack basis = billed
+
+    # Drift the pack pin: the viewer still shows lines + pages, amounts degrade to null.
+    db = seeded()
+    try:
+        db.get(Matter, matter_id).rule_pack_fingerprint = "drifted-fingerprint"
+        db.commit()
+    finally:
+        db.close()
+    resp2 = client.get(f"/api/matters/{matter_id}/provenance/{amt_id}")
+    assert resp2.status_code == 200, resp2.text
+    comp2 = resp2.json()["composition"]
+    assert comp2["lines"][0]["amount"] is None
+    assert comp2["lines"][0]["anchor"]["blob_url"] == f"/api/documents/{doc_id}/blob"
 
 
 def test_provenance_response_survives_wire_guard(

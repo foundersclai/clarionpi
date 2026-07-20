@@ -15,10 +15,22 @@ Two surfaces back the M6 provenance viewer:
   (``routes/drafting.get_artifact_download``).
 * ``GET /api/matters/{id}/provenance/{token_id}`` — resolve one BARE token id (e.g. ``FACT_7``) to
   its display form + verification outcome + server-enriched anchors (each carrying the
-  ready-to-fetch ``blob_url``, the target document's ``page_count``, and a dedup-``superseded``
+  ready-to-fetch ``blob_url``, the target document's ``page_count`` + ``filename`` + ``doc_type``
+  — the viewer labels a source page by name, never a bare uuid — and a dedup-``superseded``
   flag). This is a pure read: NO audit here (the pinned decision — the token lookup is not the PHI
   event; the blob fetch is), and NO ``live_ledger_hash`` (the viewer shows provenance, not the G3
   amount-drift verdict — an AMT's outcome comes straight from its stored status, never a re-hash).
+
+  An ``[[AMT]]`` is a *computed* ledger figure — no page states it, so its ``anchors`` are empty by
+  design. Its provenance is its **composition**: the response's ``composition`` block (``null`` for
+  every non-ledger token) walks the AMT's pinned ``ledger_ref.line_ids`` back to the billing lines
+  that sum to it, each carrying provider/date/category, a per-line display amount, and that line's
+  own enriched page anchor — so a total is one click from the bill pages it came from. Ledger-ref
+  line ids that no longer resolve are surfaced in ``missing_line_ids``, never dropped. Per-line
+  amounts come from :func:`app.money.specials.line_contribution_cents` (money owns the column
+  semantics); a ``demand_basis`` column needs the jurisdiction basis from the matter's pinned rule
+  pack — if the pin refuses (drifted/unpinned), amounts degrade to ``null`` rather than 409ing a
+  read-only viewer.
 
 Highlights are page-level at v1: ``bbox`` is never populated by the current pipeline, but the wire
 still carries ``bbox: null`` per anchor for the S1-vendor future (a bbox-emitting extractor).
@@ -50,8 +62,12 @@ from app.api.wire_guard import scan_wire_payload
 from app.core.audit import record_event
 from app.core.storage import ObjectStorage, StoredObjectNotFound
 from app.engine.tokenizer import registry
-from app.models.enums import DedupResolution
-from app.models.orm import CaseDocument, DedupDecision, FactToken, Matter, User
+from app.models.enums import DedupResolution, TokenKind
+from app.models.orm import BillingLine, CaseDocument, DedupDecision, FactToken, Matter, User
+from app.money.specials import line_contribution_cents
+from app.money.types import cents_to_display
+from app.rules.errors import RulesError
+from app.rules.loader import load_pack_for_pin
 
 router = APIRouter(prefix="/api", tags=["provenance"])
 
@@ -145,13 +161,13 @@ def _blob_missing(document_id: uuid.UUID) -> JSONResponse:
     )
 
 
-def _latest_source(session: Session, *, matter: Matter, token_id: str) -> str | None:
-    """The ``source`` of the latest-version :class:`FactToken` row for ``token_id`` (or ``None``).
+def _latest_row(session: Session, *, matter: Matter, token_id: str) -> FactToken | None:
+    """The latest-version :class:`FactToken` row for ``token_id`` (or ``None``).
 
     Resolution (``resolve_for_render``) carries the display/value/anchors/outcome but not the row's
-    provenance ``source``; the wire exposes it (``extractor|attorney|rules``) so the viewer can
-    label who asserted the fact. Read from the highest-``registry_version`` row for the slot — the
-    same latest-wins rule resolution uses.
+    provenance ``source`` or its ``ledger_ref`` — the wire exposes both (who asserted the fact; an
+    AMT's pinned line-id composition). Read from the highest-``registry_version`` row for the slot —
+    the same latest-wins rule resolution uses.
     """
     rows = list(
         session.execute(
@@ -163,27 +179,31 @@ def _latest_source(session: Session, *, matter: Matter, token_id: str) -> str | 
     )
     if not rows:
         return None
-    return max(rows, key=lambda r: r.registry_version).source
+    return max(rows, key=lambda r: r.registry_version)
 
 
 def _enrich_anchor(
-    anchor: dict, *, page_counts: dict[uuid.UUID, int], superseded: frozenset[uuid.UUID]
+    anchor: dict, *, documents: dict[uuid.UUID, CaseDocument], superseded: frozenset[uuid.UUID]
 ) -> dict:
-    """One wire anchor: the (doc, page) plus server-joined ``page_count`` / ``superseded`` / url.
+    """One wire anchor: the (doc, page) plus server-joined document facts + the ready blob url.
 
     ``bbox`` is always ``null`` at v1 (page-level highlights — the pipeline emits no region),
-    carried on the wire for the S1-vendor future. ``document_id`` is normalized to a string; a
-    page's ``page_count`` is the joined target-document count (``None`` if the anchor names a
-    document not in the matter — a broken anchor a G3 ``dead_anchor`` check would catch, surfaced
-    here, not hidden).
+    carried on the wire for the S1-vendor future. ``document_id`` is normalized to a string;
+    ``page_count`` / ``filename`` / ``doc_type`` are joined from the anchor's target document so
+    the viewer can label a source page by NAME ("01_police_report.pdf · page 2"), never a bare
+    uuid (all ``None`` if the anchor names a document not in the matter — a broken anchor a G3
+    ``dead_anchor`` check would catch, surfaced here, not hidden).
     """
     doc_id = _anchor_document_id(anchor)
+    doc = documents.get(doc_id) if doc_id is not None else None
     return {
         "document_id": str(doc_id) if doc_id is not None else None,
         "page": anchor.get("page"),
         "bbox": None,
         "blob_url": _blob_url(doc_id) if doc_id is not None else None,
-        "page_count": page_counts.get(doc_id) if doc_id is not None else None,
+        "page_count": doc.page_count if doc is not None else None,
+        "filename": doc.filename if doc is not None else None,
+        "doc_type": doc.doc_type if doc is not None else None,
         "superseded": doc_id in superseded if doc_id is not None else False,
     }
 
@@ -201,13 +221,13 @@ def _anchor_document_id(anchor: dict) -> uuid.UUID | None:
         return None
 
 
-def _page_counts(session: Session, *, matter: Matter) -> dict[uuid.UUID, int]:
-    """``document_id -> page_count`` for every document in the matter (the anchor page-count join).
+def _documents_by_id(session: Session, *, matter: Matter) -> dict[uuid.UUID, CaseDocument]:
+    """``document_id -> CaseDocument`` for the matter — the anchor-enrichment join target.
 
-    The join target for each anchor's ``page_count`` field on the wire.
+    One query feeds every anchor's ``page_count`` / ``filename`` / ``doc_type`` on the wire.
     """
     return {
-        doc.id: doc.page_count
+        doc.id: doc
         for doc in session.scalars(select(CaseDocument).where(CaseDocument.matter_id == matter.id))
     }
 
@@ -222,6 +242,109 @@ def _superseded_document_ids(session: Session, *, matter: Matter) -> frozenset[u
             )
         )
     )
+
+
+# The AMT ledger_ref column vocabulary (fixed by app.money.specials.amounts_for_registry). A
+# stored column outside it is tolerated read-side: the composition still lists lines + anchors,
+# with per-line amounts null (never a 500 on a viewer read).
+_LEDGER_COLUMNS = frozenset({"billed", "paid", "outstanding", "demand_basis"})
+
+
+def _demand_basis(matter: Matter) -> str | None:
+    """The jurisdiction billed-vs-paid basis via the matter's pinned rule pack, or ``None``.
+
+    A refused pin (drifted/unpinned pack) degrades to ``None`` — the viewer then shows the
+    composition's lines and pages with ``amount: null`` instead of 409ing a read-only surface.
+    """
+    try:
+        pack = load_pack_for_pin(
+            matter.jurisdiction,
+            matter.rule_pack_version,
+            matter.rule_pack_fingerprint,
+            require_authoritative=False,
+        )
+    except RulesError:
+        return None
+    return pack.billed_vs_paid_basis
+
+
+def _amt_composition(
+    session: Session,
+    *,
+    matter: Matter,
+    row: FactToken | None,
+    documents: dict[uuid.UUID, CaseDocument],
+    superseded: frozenset[uuid.UUID],
+) -> dict | None:
+    """The billing-line composition behind an ``[[AMT]]``'s pinned ``ledger_ref`` (else ``None``).
+
+    Walks ``ledger_ref.line_ids`` back to the matter's :class:`BillingLine` rows: each entry
+    carries provider/date/category, the per-line display amount for the ref's column (money owns
+    that mapping — :func:`~app.money.specials.line_contribution_cents`; ``None`` when the column
+    has no figure for the line, e.g. missing paid), and the line's own enriched page anchor
+    (``None`` when the stored anchor has no parseable document — surfaced, not invented). Ids that
+    resolve to no line are listed in ``missing_line_ids``, never dropped. Deterministic order:
+    (date_of_service, provider, line_id).
+    """
+    if row is None or row.kind != TokenKind.AMOUNT.value:
+        return None
+    ref = row.ledger_ref
+    if not isinstance(ref, dict):
+        return None
+    raw_ids = ref.get("line_ids")
+    column = ref.get("column")
+    if not isinstance(raw_ids, list) or not isinstance(column, str):
+        return None
+
+    wanted: dict[uuid.UUID, str] = {}
+    missing: list[str] = []
+    for raw in raw_ids:
+        try:
+            wanted[uuid.UUID(str(raw))] = str(raw)
+        except (ValueError, AttributeError, TypeError):
+            missing.append(str(raw))
+    lines = list(
+        session.scalars(
+            select(BillingLine).where(
+                BillingLine.matter_id == matter.id,
+                BillingLine.id.in_(wanted.keys()),
+            )
+        )
+    )
+    found = {line.id for line in lines}
+    missing.extend(raw for line_id, raw in wanted.items() if line_id not in found)
+
+    # Only demand_basis needs the jurisdiction basis (and hence a pack load); direct columns don't.
+    basis = _demand_basis(matter) if column == "demand_basis" else None
+    entries = []
+    for line in sorted(lines, key=lambda ln: (ln.date_of_service, ln.provider, str(ln.id))):
+        cents = (
+            line_contribution_cents(line, column=column, basis=basis)
+            if column in _LEDGER_COLUMNS
+            else None
+        )
+        raw_anchor = line.anchor if isinstance(line.anchor, dict) else {}
+        anchor = (
+            _enrich_anchor(raw_anchor, documents=documents, superseded=superseded)
+            if _anchor_document_id(raw_anchor) is not None
+            else None
+        )
+        entries.append(
+            {
+                "line_id": str(line.id),
+                "provider": line.provider,
+                "date_of_service": line.date_of_service.isoformat(),
+                "category": line.category,
+                "amount": cents_to_display(cents) if cents is not None else None,
+                "anchor": anchor,
+            }
+        )
+    return {
+        "column": column,
+        "hint": registry.amt_hint(row.source_ref),
+        "lines": entries,
+        "missing_line_ids": sorted(missing),
+    }
 
 
 @router.get("/matters/{matter_id}/provenance/{token_id}", response_model=None)
@@ -241,9 +364,10 @@ def get_token_provenance(
     ``live_ledger_hash`` — the viewer shows provenance, not the G3 amount-drift verdict, so an
     AMT's outcome is its stored status, never a re-hash. An orphan (nothing resolves) → ``404
     token_not_found``; else a 200 with the resolved display/outcome + each anchor enriched
-    server-side (``page_count`` + ``superseded`` joined from the anchor's document, plus the
-    ready-to-fetch ``blob_url``). NO audit here (the token lookup is not the PHI event — the blob
-    fetch is). The payload is wire-scanned (inv 11).
+    server-side (``page_count`` + ``filename`` + ``doc_type`` + ``superseded`` joined from the
+    anchor's document, plus the ready-to-fetch ``blob_url``) + the ledger ``composition`` block
+    (``null`` for non-AMT tokens — see :func:`_amt_composition`). NO audit here (the token lookup
+    is not the PHI event — the blob fetch is). The payload is wire-scanned (inv 11).
     """
     matter = session.get(Matter, matter_id)
     if matter is None:
@@ -268,17 +392,21 @@ def get_token_provenance(
             content={"error": "token_not_found", "detail": f"token {token_id} does not resolve"},
         )
 
-    page_counts = _page_counts(session, matter=matter)
+    documents = _documents_by_id(session, matter=matter)
     superseded = _superseded_document_ids(session, matter=matter)
+    row = _latest_row(session, matter=matter, token_id=token_id)
     payload = {
         "token_id": token_id,
         "display_form": result.display_form,
         "outcome": result.outcome,
-        "source": _latest_source(session, matter=matter, token_id=token_id),
+        "source": row.source if row is not None else None,
         "anchors": [
-            _enrich_anchor(anchor, page_counts=page_counts, superseded=superseded)
+            _enrich_anchor(anchor, documents=documents, superseded=superseded)
             for anchor in result.anchors
         ],
+        "composition": _amt_composition(
+            session, matter=matter, row=row, documents=documents, superseded=superseded
+        ),
     }
     return JSONResponse(
         status_code=status.HTTP_200_OK,

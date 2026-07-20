@@ -109,6 +109,59 @@ describe("StrategyIntakeCard", () => {
     expect(body.edits).toEqual({ anchor_amount_cents: 123456 });
   });
 
+  it("approve carries unsaved form edits atomically (the silent-drop regression)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(200, { result: {}, matter: {}, record_id: "r9" }));
+
+    renderWithQuery(
+      <StrategyIntakeCard
+        matterId="m1"
+        vm={makeVm()}
+        payloadVersion={4}
+        roleAffordances={AFFORDANCES_CLEAR}
+      />,
+    );
+
+    // Fill the form and hit "Submit strategy" WITHOUT saving first — the typed inputs must ride
+    // the approve call (dropping them silently discarded the attorney's strategy).
+    await user.type(screen.getByLabelText("Liability theory"), "clear rear-end liability");
+    await user.type(screen.getByLabelText("Anchor amount (USD)"), "150,000.00");
+    await user.click(screen.getByTestId("approve-strategy"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.action).toBe("approve");
+    expect(body.edits).toEqual({
+      liability_theory: "clear rear-end liability",
+      anchor_amount_cents: 15000000,
+    });
+  });
+
+  it("approve on an untouched form sends no edits key", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(200, { result: {}, matter: {}, record_id: "r10" }));
+
+    renderWithQuery(
+      <StrategyIntakeCard
+        matterId="m1"
+        vm={makeVm()}
+        payloadVersion={4}
+        roleAffordances={AFFORDANCES_CLEAR}
+      />,
+    );
+
+    await user.click(screen.getByTestId("approve-strategy"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.action).toBe("approve");
+    expect("edits" in body).toBe(false);
+  });
+
   it("rejects an unparseable money value inline and sends NO request", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, {}));

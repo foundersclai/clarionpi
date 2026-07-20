@@ -747,12 +747,36 @@ export interface PlanView {
   approved_at?: string | null;
 }
 
+/**
+ * A prompt-safe display label for one plan token — the G2.5 chip gloss. `display_form` is the
+ * registry's fabrication-safe string; for an orphaned or attorney-typo'd id it is a sentinel and
+ * `resolved` is false, so the chip can flag it rather than hide it. `kind` ∈ "FACT" | "AMT" |
+ * "CITE" | "EX" | "" (unparseable).
+ */
+export interface TokenGlossView {
+  token_id: string;
+  kind: string;
+  display_form: string;
+  resolved: boolean;
+  /**
+   * AMT-only ledger-slot label ("total billed specials", "ER billed") — display-side
+   * disambiguation for otherwise-identical dollar figures; null for non-AMT tokens.
+   */
+  hint?: string | null;
+}
+
 /** The G2.5 (plan_review) view-model — the latest plan (or null) + a build-plan affordance. */
 export interface PlanReviewVM {
   plan: PlanView | null;
   plan_missing: boolean;
   /** The matter's current registry version — compared to plan.registry_version to surface drift. */
   registry_version_current: number;
+  /**
+   * Bare token id → display gloss for every token any section references (`allowed ∪ required`).
+   * Empty when no plan exists. Lets the screen show an attorney-readable label beside each opaque
+   * `FACT_n` / `AMT_n` chip.
+   */
+  token_glosses: Record<string, TokenGlossView>;
 }
 
 /**
