@@ -202,6 +202,7 @@ describe("ProvenanceViewer — AMT composition", () => {
         line_id: "l1",
         provider: "Saguaro Regional Medical Center",
         date_of_service: "2025-03-14",
+        service_end_date: "2025-03-20", // a service PERIOD — the heading shows the honest span
         category: "er",
         amount: "$9,200.00",
         anchor: {
@@ -219,6 +220,7 @@ describe("ProvenanceViewer — AMT composition", () => {
         line_id: "l2",
         provider: "Saguaro Regional Medical Center",
         date_of_service: "2025-03-14",
+        service_end_date: null,
         category: "er",
         amount: "$1,450.00",
         anchor: {
@@ -257,7 +259,9 @@ describe("ProvenanceViewer — AMT composition", () => {
       "Computed from the billing ledger — ER billed · sum of 2 bill lines",
     );
     const headings = screen.getAllByTestId("anchor-heading");
-    expect(headings[0]).toHaveTextContent("Saguaro Regional Medical Center · 2025-03-14 · $9,200.00");
+    expect(headings[0]).toHaveTextContent(
+      "Saguaro Regional Medical Center · 2025-03-14 – 2025-03-20 · $9,200.00",
+    );
     expect(headings[1]).toHaveTextContent("Saguaro Regional Medical Center · 2025-03-14 · $1,450.00");
     // Each row still names its bill document; nothing shows the empty-anchors message.
     expect(screen.getAllByTestId("anchor-doc-label")[0]).toHaveTextContent("03_er_bill.pdf");
@@ -293,6 +297,7 @@ describe("ProvenanceViewer — AMT composition", () => {
                 line_id: "l3",
                 provider: "Desert Pharmacy",
                 date_of_service: "2025-03-16",
+                service_end_date: null,
                 category: "pharmacy",
                 amount: "$4.20",
                 anchor: null,

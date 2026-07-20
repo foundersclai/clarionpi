@@ -21,7 +21,7 @@ from app.models.enums import LedgerCategory
 # idempotency key is (document_id, window_id, prompt_version)).
 PROMPT_VERSIONS: dict[str, str] = {
     "medical": "med_v1",
-    "bill": "bill_v1",
+    "bill": "bill_v2",  # v2: service-period handling (date_of_service = period start + end)
     "police": "pol_v1",
 }
 
@@ -96,12 +96,20 @@ def bill_prompt(window: Window) -> str:
         "Return dollar amounts as STRINGS exactly as printed (keep the '$' and thousands commas "
         'if present, e.g. "$1,234.56"). Do not compute or reconcile totals — read only what is '
         "printed.\n"
+        "date_of_service handling: if a line shows its own date of service, use it and set "
+        "service_end_date to null. If the line has NO date of its own but the statement declares "
+        "an overall service PERIOD (a printed date range such as "
+        '"Dates of Service: March 24 - June 16, 2025"), set date_of_service to the START of that '
+        "printed range and service_end_date to its END — both endpoints are printed on the "
+        "statement, so you are reading them, not guessing. Never invent a date that is not "
+        "printed.\n"
         f"category MUST be exactly one of: {_ledger_category_values()}.\n\n"
         "Return exactly one JSON object and nothing else, of this shape:\n"
         '{"lines": [\n'
         "  {\n"
         '    "provider": "<billing provider name>",\n'
         '    "date_of_service": "YYYY-MM-DD",\n'
+        '    "service_end_date": "<YYYY-MM-DD, or null for a single-date line>",\n'
         '    "code": "<CPT/procedure code, or null>",\n'
         '    "billed": "<amount billed, as printed>",\n'
         '    "adjusted": "<adjustment amount, as printed, or null>",\n'

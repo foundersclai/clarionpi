@@ -255,6 +255,7 @@ def _add_billing_line(
     billed_cents: int,
     category: str = "er",
     anchor: dict,
+    service_end_date: date | None = None,
 ) -> uuid.UUID:
     """Insert one BillingLine (the AMT-composition join target); return its id."""
     db = session_factory()
@@ -264,6 +265,7 @@ def _add_billing_line(
             matter_id=matter_id,
             provider=provider,
             date_of_service=date_of_service,
+            service_end_date=service_end_date,
             billed_cents=billed_cents,
             category=category,
             anchor=anchor,
@@ -609,6 +611,7 @@ def test_provenance_amt_composition_walks_ledger_lines(
         matter_id,
         provider="Saguaro Regional Medical Center",
         date_of_service=date(2025, 3, 14),
+        service_end_date=date(2025, 3, 20),  # a service PERIOD — surfaces honestly, not a fiction
         billed_cents=920_000,
         anchor={"document_id": str(doc_id), "page": 1},
     )
@@ -659,6 +662,7 @@ def test_provenance_amt_composition_walks_ledger_lines(
                 "line_id": str(line_a),
                 "provider": "Saguaro Regional Medical Center",
                 "date_of_service": "2025-03-14",
+                "service_end_date": "2025-03-20",
                 "category": "er",
                 "amount": "$9,200.00",
                 "anchor": {
@@ -676,6 +680,7 @@ def test_provenance_amt_composition_walks_ledger_lines(
                 "line_id": str(line_b),
                 "provider": "Saguaro Regional Medical Center",
                 "date_of_service": "2025-03-15",
+                "service_end_date": None,
                 "category": "er",
                 "amount": "$1,450.00",
                 "anchor": {
@@ -693,6 +698,7 @@ def test_provenance_amt_composition_walks_ledger_lines(
                 "line_id": str(line_c),
                 "provider": "Desert Pharmacy",
                 "date_of_service": "2025-03-16",
+                "service_end_date": None,
                 "category": "pharmacy",
                 "amount": "$4.20",
                 "anchor": None,

@@ -620,8 +620,10 @@ export interface BillingEditResponse {
 export interface BillingLine {
   id: string;
   provider: string;
-  /** ISO date string (YYYY-MM-DD). */
+  /** ISO date string (YYYY-MM-DD) — the service date, or the START of a stated service period. */
   date_of_service: string;
+  /** Period END (ISO) when the bill stated a date range with no per-line date; null otherwise. */
+  service_end_date: string | null;
   code: string | null;
   billed_cents: number;
   adjusted_cents: number | null;

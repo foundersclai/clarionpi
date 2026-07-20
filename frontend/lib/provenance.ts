@@ -67,7 +67,10 @@ export interface ProvenanceAnchor {
 export interface CompositionLineView {
   line_id: string;
   provider: string;
+  /** ISO date string (YYYY-MM-DD) — the service date, or the START of a stated service period. */
   date_of_service: string;
+  /** Period END (ISO) when the bill stated a date range with no per-line date; null otherwise. */
+  service_end_date: string | null;
   category: string;
   amount: string | null;
   anchor: ProvenanceAnchor | null;

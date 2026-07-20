@@ -334,6 +334,9 @@ def _amt_composition(
                 "line_id": str(line.id),
                 "provider": line.provider,
                 "date_of_service": line.date_of_service.isoformat(),
+                "service_end_date": (
+                    line.service_end_date.isoformat() if line.service_end_date else None
+                ),
                 "category": line.category,
                 "amount": cents_to_display(cents) if cents is not None else None,
                 "anchor": anchor,
