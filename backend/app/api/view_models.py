@@ -11,6 +11,7 @@ not raw JSON.
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.engine.brain1 import chronology as chronology_service
 from app.engine.orchestrator.service import deadlines_all_confirmed
+from app.engine.tokenizer import registry
 from app.models.enums import (
     ClaimType,
     DedupResolution,
@@ -49,7 +51,7 @@ from app.models.orm import (
     UploadSession,
     UploadSlot,
 )
-from app.models.schemas import ComplianceFindingView, DeadlineCandidate
+from app.models.schemas import ComplianceFindingView, DeadlineCandidate, PlannedSection
 from app.models.schemas import RiskFlag as RiskFlagView
 from app.models.schemas import StrategyPlan as StrategyPlanView
 from app.money.assemble import compute_matter_ledger
@@ -508,6 +510,12 @@ def plan_review_vm(db: Session, matter: Matter) -> dict:
     (the FE shows "Build plan", which drives ``POST /plan/emit``). ``plan_missing`` mirrors that as
     a flag; ``registry_version_current`` is the matter's registry version (the FE compares it to the
     plan's ``registry_version`` to surface plan-level drift before an approve).
+
+    ``token_glosses`` maps each bare token id any section references (``allowed ∪ required``) to a
+    prompt-safe display label (``{token_id, kind, display_form, resolved}``) so the screen can show
+    an attorney-readable gloss beside each opaque ``FACT_n`` / ``AMT_n`` chip; an orphaned or
+    typo'd id carries ``resolved=false`` so the FE flags it rather than hiding it. Empty when no
+    plan exists.
     """
     plan = _latest_plan(db, matter)
     plan_view = StrategyPlanView.model_validate(plan).model_dump(mode="json") if plan else None
@@ -515,7 +523,25 @@ def plan_review_vm(db: Session, matter: Matter) -> dict:
         "plan": plan_view,
         "plan_missing": plan is None,
         "registry_version_current": matter.registry_version,
+        "token_glosses": _plan_token_glosses(db, matter, plan),
     }
+
+
+def _plan_token_glosses(db: Session, matter: Matter, plan: StrategyPlan | None) -> dict:
+    """Prompt-safe display forms for every token the plan's sections reference (deduped).
+
+    Empty when no plan exists. Resolution goes through the tokenizer — the single resolution
+    authority (inv 5, display-form only); view-models never read ``FactToken`` directly.
+    """
+    if plan is None:
+        return {}
+    ids: list[str] = []
+    for raw in plan.sections:
+        section = PlannedSection.model_validate(raw)
+        ids.extend(section.allowed_tokens)
+        ids.extend(section.required_tokens)
+    glosses = registry.gloss_tokens(db, matter=matter, token_ids=ids)
+    return {token_id: asdict(gloss) for token_id, gloss in glosses.items()}
 
 
 def _draft_section_compliance_view(section: DraftSection) -> dict:

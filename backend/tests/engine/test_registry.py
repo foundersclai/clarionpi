@@ -47,6 +47,7 @@ from app.models.orm import (
     RegistryVersion,
     User,
 )
+from app.models.schemas import AmountFact
 
 # --------------------------------------------------------------------------------------
 # Fixtures — in-memory engine + firm/user/matter, direct ORM
@@ -454,6 +455,124 @@ def test_resolve_for_prompt_orphan_returns_sentinel_and_logs(
         record.levelno == logging.ERROR and "[[FACT_99]]" in record.getMessage()
         for record in caplog.records
     )
+
+
+# --------------------------------------------------------------------------------------
+# gloss_tokens — batch prompt-mode display forms for the plan-review chips
+# --------------------------------------------------------------------------------------
+
+
+def test_gloss_tokens_resolves_fact_display_form(db: Session, matter: Matter) -> None:
+    doc = _make_document(db, matter)
+    _make_encounter(
+        db,
+        matter,
+        provider="Dr. A",
+        encounter_type="ER",
+        dos=dt.date(2026, 1, 10),
+        anchors=[_anchor(doc.id, 1)],
+    )
+    db.commit()
+    registry.sync_extracted_facts(db, matter=matter)
+
+    glosses = registry.gloss_tokens(db, matter=matter, token_ids=["FACT_1"])
+    assert set(glosses) == {"FACT_1"}
+    gloss = glosses["FACT_1"]
+    assert gloss.resolved is True
+    assert gloss.kind == "FACT"
+    assert gloss.display_form == "the ER visit to Dr. A on 2026-01-10"
+    assert gloss.hint is None  # hints are AMT-only
+
+
+def test_gloss_tokens_amt_hint_disambiguates_ledger_slots(db: Session, matter: Matter) -> None:
+    # Five near-identical "$X" display forms are useless on the G2.5 screen without knowing which
+    # ledger slot each is — the hint labels them WITHOUT touching display_form (which the renderer
+    # substitutes verbatim into letter prose and must stay a pure dollar string).
+    amounts = [
+        AmountFact(
+            key="specials.grand.billed",
+            value_cents=1_875_000,
+            display_form="$18,750.00",
+            ledger_ref={},
+            ledger_hash="h1",
+        ),
+        AmountFact(
+            key="specials.demand_basis",
+            value_cents=1_875_000,
+            display_form="$18,750.00",
+            ledger_ref={},
+            ledger_hash="h2",
+        ),
+        AmountFact(
+            key="specials.category.er.billed",
+            value_cents=150_000,
+            display_form="$1,500.00",
+            ledger_ref={},
+            ledger_hash="h3",
+        ),
+        AmountFact(
+            key="specials.category.pt_chiro.billed",
+            value_cents=90_000,
+            display_form="$900.00",
+            ledger_ref={},
+            ledger_hash="h4",
+        ),
+    ]
+    registry.mint_amounts(db, matter=matter, amounts=amounts)
+
+    glosses = registry.gloss_tokens(
+        db, matter=matter, token_ids=["AMT_1", "AMT_2", "AMT_3", "AMT_4"]
+    )
+    assert glosses["AMT_1"].hint == "total billed specials"
+    assert glosses["AMT_2"].hint == "demand basis"
+    assert glosses["AMT_3"].hint == "ER billed"
+    assert glosses["AMT_4"].hint == "PT / chiro billed"
+    # display_form itself stays the prose-pure dollar string.
+    assert glosses["AMT_1"].display_form == "$18,750.00"
+
+
+def test_gloss_tokens_orphan_is_unresolved_sentinel(db: Session, matter: Matter) -> None:
+    # A well-formed id with no row → SENTINEL + resolved=False (the FE flags it, never a raw leak).
+    glosses = registry.gloss_tokens(db, matter=matter, token_ids=["FACT_99"])
+    gloss = glosses["FACT_99"]
+    assert gloss.resolved is False
+    assert gloss.kind == "FACT"
+    assert gloss.display_form == SENTINEL
+
+
+def test_gloss_tokens_malformed_id_does_not_raise(db: Session, matter: Matter) -> None:
+    # The required-token editor lets an attorney type free-form ids — a non-token must gloss as
+    # unresolved (keyed as typed), not raise.
+    glosses = registry.gloss_tokens(db, matter=matter, token_ids=["not-a-token"])
+    gloss = glosses["not-a-token"]
+    assert gloss.resolved is False
+    assert gloss.kind == ""
+    assert gloss.display_form == SENTINEL
+
+
+def test_gloss_tokens_dedupes_bare_and_bracketed(db: Session, matter: Matter) -> None:
+    doc = _make_document(db, matter)
+    _make_encounter(
+        db,
+        matter,
+        provider="Dr. A",
+        encounter_type="ER",
+        dos=dt.date(2026, 1, 10),
+        anchors=[_anchor(doc.id, 1)],
+    )
+    db.commit()
+    registry.sync_extracted_facts(db, matter=matter)
+
+    # Bare id, bracketed form, a duplicate, and blanks all collapse to one normalized key.
+    glosses = registry.gloss_tokens(
+        db, matter=matter, token_ids=["FACT_1", "[[FACT_1]]", "FACT_1", "  "]
+    )
+    assert set(glosses) == {"FACT_1"}
+    assert glosses["FACT_1"].display_form == "the ER visit to Dr. A on 2026-01-10"
+
+
+def test_gloss_tokens_empty_input_is_empty(db: Session, matter: Matter) -> None:
+    assert registry.gloss_tokens(db, matter=matter, token_ids=[]) == {}
 
 
 def test_resolve_text_for_wire_substitutes_and_sentinels(db: Session, matter: Matter) -> None:

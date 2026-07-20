@@ -179,10 +179,15 @@ export function StrategyIntakeCard({
       return;
     }
     setMoneyErrors({});
-    // ALWAYS fires the approve (server is authority; no client-side legal suppression).
+    // ALWAYS fires the approve (server is authority; no client-side legal suppression). Unsaved
+    // form changes ride along — the backend applies edits before the approve in one atomic call
+    // (edit and approve both accept edits); dropping them here would silently discard what the
+    // attorney typed.
     submit.mutate({
       gate: "strategy_intake",
-      body: { action: "approve", payload_version: payloadVersion },
+      body: hasChanges(built.edits)
+        ? { action: "approve", payload_version: payloadVersion, edits: built.edits }
+        : { action: "approve", payload_version: payloadVersion },
     });
   }
 

@@ -9,8 +9,10 @@
  *     redraws with the freshly emitted (unapproved) plan.
  *   - a plan is present → the drafting contract as an editable form: the demand amount (dollars ↔
  *     cents at the wire boundary — lib/money), a fixed `demand_type` "open" chip, an editable
- *     emphasis-directives list, and a per-section table (purpose, editable max_words, read-only
- *     allowed-token chips as BARE ids, and a small comma-separated required-token editor).
+ *     emphasis-directives list, and a per-section fact list (purpose, editable max_words, one row
+ *     per citable fact showing its attorney-readable gloss with a "must cite" checkbox — token
+ *     ids never render as text, only as row tooltips/data attributes; the wire still speaks
+ *     BARE ids).
  *
  * Save submits ONLY changed fields as a gates `edit` action — which RE-EMITS a new UNAPPROVED
  * plan version (N+1); the card renders the current version + an "unapproved changes" badge when
@@ -33,6 +35,7 @@ import type {
   PlannedSectionEdit,
   PlannedSectionView,
   RoleAffordances,
+  TokenGlossView,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +64,7 @@ export function PlanReviewCard(props: PlanReviewCardProps) {
     <PlanPresentCard
       matterId={props.matterId}
       plan={props.vm.plan}
+      tokenGlosses={props.vm.token_glosses}
       registryVersionCurrent={props.vm.registry_version_current}
       payloadVersion={props.payloadVersion}
       roleAffordances={props.roleAffordances}
@@ -124,29 +128,15 @@ function emitErrorText(error: ApiError): string {
 
 interface SectionFormState {
   max_words: string;
-  /** Comma-separated BARE required-token ids, as typed. */
-  required_tokens: string;
+  /** BARE required-token ids, kept in the section's fact-universe order (never click order). */
+  required: string[];
 }
 
 function initialSectionForm(section: PlannedSectionView): SectionFormState {
   return {
     max_words: String(section.max_words),
-    required_tokens: section.required_tokens.join(", "),
+    required: [...section.required_tokens],
   };
-}
-
-/** Parse a comma-separated bare-id list into a trimmed, non-empty, de-duplicated array. */
-function parseTokenList(raw: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of raw.split(",")) {
-    const id = part.trim();
-    if (id.length > 0 && !seen.has(id)) {
-      seen.add(id);
-      out.push(id);
-    }
-  }
-  return out;
 }
 
 /** Array equality by value+order (bare id lists). */
@@ -154,20 +144,45 @@ function sameList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+/** Set equality (order-insensitive) — a must-cite toggle must never emit an order-only edit. */
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every((v) => bSet.has(v));
+}
+
+/**
+ * The fact rows a section renders: its allowed tokens (plan order) plus any required id that is
+ * no longer in the allowed set (registry drift / legacy free-text) — kept visible so the attorney
+ * can uncheck it; flagged, never hidden.
+ */
+function sectionFactUniverse(section: PlannedSectionView, required: string[]): string[] {
+  const universe = [...section.allowed_tokens];
+  for (const id of required) {
+    if (!universe.includes(id)) universe.push(id);
+  }
+  return universe;
+}
+
 function PlanPresentCard({
   matterId,
   plan,
+  tokenGlosses,
   registryVersionCurrent,
   payloadVersion,
   roleAffordances,
 }: {
   matterId: string;
   plan: PlanView;
+  tokenGlosses: Record<string, TokenGlossView>;
   registryVersionCurrent: number;
   payloadVersion: number;
   roleAffordances: RoleAffordances;
 }) {
   const submit = useSubmitGate(matterId);
+  // Re-propose: re-runs the strategist and emits a fresh (unapproved) plan version — the recovery
+  // affordance for registry drift and for restoring the proposal after manual edits.
+  const reEmit = useEmitPlan(matterId);
 
   const [demandAmount, setDemandAmount] = useState(() =>
     centsToDollars(plan.demand_amount_cents),
@@ -229,9 +244,8 @@ function PlanPresentCard({
         changed = true;
       }
 
-      const required = parseTokenList(form.required_tokens);
-      if (!sameList(required, s.required_tokens)) {
-        edit.required_tokens = required;
+      if (!sameSet(form.required, s.required_tokens)) {
+        edit.required_tokens = form.required;
         changed = true;
       }
 
@@ -284,10 +298,15 @@ function PlanPresentCard({
     }
     setMoneyError(null);
     setSectionErrors({});
-    // ALWAYS fires (server is authority; no client-side legal suppression).
+    // ALWAYS fires (server is authority; no client-side legal suppression). Unsaved form changes
+    // ride along — the backend applies edits before the approve in one atomic call (edit and
+    // approve both accept edits); dropping them here would silently approve the STALE plan and
+    // discard what the attorney typed (e.g. the demand amount).
     submit.mutate({
       gate: "plan_review",
-      body: { action: "approve", payload_version: payloadVersion },
+      body: hasChanges(built.edits)
+        ? { action: "approve", payload_version: payloadVersion, edits: built.edits }
+        : { action: "approve", payload_version: payloadVersion },
     });
   }
 
@@ -299,11 +318,26 @@ function PlanPresentCard({
 
   const submitError = submit.error ?? null;
 
-  function setSectionField(sectionId: string, key: keyof SectionFormState, value: string) {
+  function setSectionMaxWords(sectionId: string, value: string) {
     setSections((prev) => ({
       ...prev,
-      [sectionId]: { ...prev[sectionId], [key]: value },
+      [sectionId]: { ...prev[sectionId], max_words: value },
     }));
+  }
+
+  function toggleSectionRequired(section: PlannedSectionView, tokenId: string) {
+    setSections((prev) => {
+      const form = prev[section.section_id] ?? initialSectionForm(section);
+      const next = new Set(form.required);
+      if (next.has(tokenId)) {
+        next.delete(tokenId);
+      } else {
+        next.add(tokenId);
+      }
+      // Deterministic order: the section's fact-universe order, never click order.
+      const ordered = sectionFactUniverse(section, [...next]).filter((id) => next.has(id));
+      return { ...prev, [section.section_id]: { ...form, required: ordered } };
+    });
   }
 
   return (
@@ -375,10 +409,11 @@ function PlanPresentCard({
               <SectionRow
                 key={section.section_id}
                 section={section}
+                glosses={tokenGlosses}
                 form={sections[section.section_id] ?? initialSectionForm(section)}
                 error={sectionErrors[section.section_id]}
-                onMaxWords={(v) => setSectionField(section.section_id, "max_words", v)}
-                onRequired={(v) => setSectionField(section.section_id, "required_tokens", v)}
+                onMaxWords={(v) => setSectionMaxWords(section.section_id, v)}
+                onToggleRequired={(tokenId) => toggleSectionRequired(section, tokenId)}
               />
             ))}
           </ul>
@@ -390,7 +425,7 @@ function PlanPresentCard({
           </p>
         )}
 
-        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button variant="outline" onClick={save} disabled={submit.isPending || !canSave}>
             {submit.isPending ? "Saving…" : "Save changes"}
           </Button>
@@ -398,7 +433,22 @@ function PlanPresentCard({
           <Button onClick={approve} disabled={submit.isPending} data-testid="approve-plan">
             Approve plan &amp; start drafting
           </Button>
+          <Button
+            variant="ghost"
+            onClick={() => reEmit.mutate()}
+            disabled={reEmit.isPending || submit.isPending}
+            data-testid="re-propose-plan"
+            title="Runs the strategist again and emits a fresh proposal as a new plan version (manual edits are superseded)."
+          >
+            {reEmit.isPending ? "Re-proposing…" : "Re-propose plan"}
+          </Button>
         </div>
+
+        {reEmit.error && (
+          <p role="alert" data-testid="plan-reemit-error" className="text-sm text-danger">
+            {emitErrorText(reEmit.error)}
+          </p>
+        )}
 
         {roleAffordances.approve_blockers.length > 0 && (
           <div
@@ -507,22 +557,36 @@ function EmphasisEditor({
   );
 }
 
-/** One section row — purpose, editable max_words, read-only allowed chips, required-token editor. */
+/** "intro_and_representation" → "Intro and representation" (display only; ids stay on the wire). */
+function sectionTitle(sectionId: string): string {
+  const words = sectionId.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * One section row — purpose, editable max_words, and one row per citable fact: the attorney-
+ * readable gloss with a "must cite" checkbox. Token ids never render as text — they live in the
+ * row tooltip + data attributes only (the wire still speaks bare ids); a token with no gloss
+ * entry falls back to its bare id rather than vanishing. A required id that is unresolvable or
+ * outside the section's allowed set is flagged, not hidden, so it can be unchecked.
+ */
 function SectionRow({
   section,
+  glosses,
   form,
   error,
   onMaxWords,
-  onRequired,
+  onToggleRequired,
 }: {
   section: PlannedSectionView;
+  glosses: Record<string, TokenGlossView>;
   form: SectionFormState;
   error: string | undefined;
   onMaxWords: (value: string) => void;
-  onRequired: (value: string) => void;
+  onToggleRequired: (tokenId: string) => void;
 }) {
   const maxWordsId = `max-words-${section.section_id}`;
-  const requiredId = `required-${section.section_id}`;
+  const universe = sectionFactUniverse(section, form.required);
   return (
     <li
       className="flex flex-col gap-2 rounded-md border border-border p-3"
@@ -530,7 +594,7 @@ function SectionRow({
       data-section-id={section.section_id}
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-medium text-ink">{section.section_id}</span>
+        <span className="font-medium text-ink">{sectionTitle(section.section_id)}</span>
         <span className="text-sm text-ink-muted">{section.purpose}</span>
       </div>
 
@@ -547,22 +611,55 @@ function SectionRow({
         </div>
       </div>
 
-      <TokenChips label="Allowed tokens" tokens={section.allowed_tokens} testid="allowed-tokens" />
-
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={requiredId}>Required tokens (comma-separated ids)</Label>
-        <Input
-          id={requiredId}
-          value={form.required_tokens}
-          onChange={(e) => onRequired(e.target.value)}
-          placeholder="e.g. FACT_3, AMT_1"
-        />
-        <TokenChips
-          label="Currently required"
-          tokens={parseTokenList(form.required_tokens)}
-          testid="required-tokens"
-        />
-      </div>
+      {universe.length === 0 ? (
+        <p className="text-xs text-ink-muted" data-testid="section-no-facts">
+          No case facts may be cited in this section (boilerplate only).
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5" data-testid="section-facts">
+          <p className="text-xs text-ink-muted">
+            Facts this section may cite — check the ones the letter{" "}
+            <span className="font-medium text-ink">must</span> cite:
+          </p>
+          <ul className="flex flex-col gap-1">
+            {universe.map((tokenId) => {
+              const gloss = glosses[tokenId];
+              const label = gloss?.display_form ?? tokenId;
+              const required = form.required.includes(tokenId);
+              const unresolved = gloss ? !gloss.resolved : false;
+              const foreign = !section.allowed_tokens.includes(tokenId);
+              return (
+                <li
+                  key={tokenId}
+                  title={tokenId}
+                  data-testid="fact-row"
+                  data-token-id={tokenId}
+                  data-required={String(required)}
+                  data-token-resolved={gloss ? String(gloss.resolved) : undefined}
+                >
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={required}
+                      onChange={() => onToggleRequired(tokenId)}
+                      aria-label={`Must cite: ${label}`}
+                    />
+                    <span className="text-sm text-ink">{label}</span>
+                    {gloss?.hint ? (
+                      <span className="text-xs text-ink-muted">— {gloss.hint}</span>
+                    ) : null}
+                    {unresolved && <Badge variant="warning">no longer available</Badge>}
+                    {foreign && !unresolved && (
+                      <Badge variant="warning">not in this section&apos;s fact set</Badge>
+                    )}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {error && (
         <p role="alert" data-testid={`section-error-${section.section_id}`} className="text-xs text-danger">
@@ -570,31 +667,5 @@ function SectionRow({
         </p>
       )}
     </li>
-  );
-}
-
-/** A read-only row of BARE token-id chips (never token-shaped — the wire sends bare ids). */
-function TokenChips({
-  label,
-  tokens,
-  testid,
-}: {
-  label: string;
-  tokens: string[];
-  testid: string;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-1" data-testid={testid}>
-      <span className="text-xs text-ink-muted">{label}:</span>
-      {tokens.length === 0 ? (
-        <span className="text-xs text-ink-muted">none</span>
-      ) : (
-        tokens.map((token) => (
-          <Badge key={token} variant="secondary" data-token-id={token}>
-            {token}
-          </Badge>
-        ))
-      )}
-    </div>
   );
 }

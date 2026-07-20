@@ -29,7 +29,13 @@ view-models (`view_models.py::plan_review_vm` / `compliance_review_vm` / `packag
 generate SSE run, the finding-action route, the package build SSE run, artifact list +
 byte download). The demand + package runs are SSE (a `post_draft` compliance pre-check runs
 INSIDE the demand stream); the compliance panel exposes each section's RENDERED preview,
-never the tokenized body.
+never the tokenized body. `plan_review_vm` also carries `token_glosses` — a bare token id →
+`{token_id, kind, display_form, resolved, hint}` map over every token any section references
+(`allowed ∪ required`), so the G2.5 rows show an attorney-readable gloss instead of the opaque
+id; resolution is prompt-mode display-form only (inv 5) via `app.engine.tokenizer` (view-models
+never read `FactToken`), an orphan/typo id is `resolved=false` + sentinel (never a raw leak), and
+`hint` is the AMT-only ledger-slot label ("total billed specials") — display-side only, never part
+of the prose-substituted display form.
 
 **Extended @ M6.** The provenance-viewer read surface is live (`routes/provenance.py`, two
 routes; no view-model builder — both serialize directly): `GET /api/documents/{id}/blob`
