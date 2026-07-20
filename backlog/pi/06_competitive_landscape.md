@@ -96,3 +96,58 @@ Two viable postures existed:
 - Provenance report elevated to MVP (E4) — our counter-positioning artifact, promoted from
   v1.x after this analysis.
 - Their pricing opacity → our transparency (when/if we license the software outbound).
+
+## 5. The architectural edge — the TMEPAgent lineage
+
+- **Added:** 2026-07-20 · architecture-edge analysis (design reasoning + repo grounding),
+  distinct from the §1–§4 web recon (2026-07-03). Competitor claims below reuse the §1
+  findings and their stated confidence — the "no page-level provenance" gap remains a *soft
+  signal* (see §1 weakness 2), not a confirmed non-feature.
+
+**Thesis:** Everyone else — EvenUp, Supio, Parrot, Filevine — built AI that **writes demand
+letters**. The architecture inherited from TMEPAgent builds a **verified system of record**;
+the letter is a deterministic *rendering* of it. That is a difference in kind, not in draft
+quality — and draft quality is the axis they win on (data flywheel + 100–150 reviewers).
+
+**Why the lineage transfers.** TMEPAgent was built for trademark prosecution: drafting
+against an *adversarial, codified reader* (the USPTO examining attorney), where every
+assertion must trace to selected evidence and cited authority or it fails. PI demands have
+the **same adversarial-reader structure** — the adjuster, defense counsel, and behind them
+the firm's malpractice carrier — but the market treats demand generation as mail-merge with
+an LLM. The edge is importing prosecution discipline into a domain that never demanded it.
+
+**Mechanisms → the incumbent's documented failure modes.** Each row attacks a weakness §1
+already records for EvenUp:
+
+| Our mechanism (this repo) | Makes structurally impossible | Their answer to the same problem (§1) |
+|---|---|---|
+| **Tokenize-or-omit** — `[[FACT]]`/`[[AMT]]` spine, renderer substitutes `display_form` verbatim, orphan → SENTINEL → G3 block | The model *cannot express* an uninvented fact or dollar in the letter — fabrication is unrepresentable, not caught-after | 100–150 human reviewers; their reply to the 2024 hallucination reports was "review catches it," not "the AI is accurate" (§1 weakness 1) |
+| **Deterministic money engine** — integer cents, derived ledger, hash-pinned `[[AMT]]`, dedup-before-sum | Double-counted bills, totals that don't tie, silent post-edit drift (surfaces as "ledger drift" *on the figure*) | Reviewed spreadsheets; no published money invariants |
+| **Page-level provenance as the spine** — every fact → source page; computed totals decompose to their bill lines | Un-auditable claims; "where did this number come from?" has no answer | Their conspicuous gap — no click-to-source-page (§1 weakness 2, soft signal) |
+| **In-firm HITL gates** — atomic approve-with-edits, versioned plans, idempotency, audited overrides | Un-attributable approvals; the audit trail *is* the workflow (malpractice-defensible) | Vendor-side review: their staff, their black box, the firm's liability |
+| **Plan-as-contract (G2.5)** — attorney approves what the letter may argue *with* before drafting; edits re-emit the plan | Steering by red-lining prose after generation | Draft-then-edit, like everyone |
+
+Underneath these: rule packs pinned per matter by fingerprint (SOL/deadline math — the actual
+malpractice surface — as lawyer-audited data, not prompt seasoning), byte-deterministic
+packages with continuous Bates (certainty about *what was sent*), and the LLM treated as the
+least-trusted component — one metered choke point, fail-visible degradation.
+
+**Why it's an economic edge, not only an engineering one.** EvenUp's hallucination control is
+*headcount* — a services-margin problem PLAAS deepens (legal-ops Glassdoor 1.8/5, §1 weakness
+4). Ours is *invariants* — near-zero marginal verification cost per demand, and the firm's own
+attorney at the gate instead of a vendor's contractor. Their moat (outcomes dataset, $385M,
+distribution) is real and we do not neutralize it — but it does not neutralize ours, because
+ours attacks their **documented failure mode: trust.** Trust in legal work is asymmetric: one
+fabricated injury in one letter costs a firm more than a year of saved drafting time. In the
+captive-firm model this compounds — provenance and audit are not a sales feature, they are how
+our own firm survives its own carrier audit ([07_captive_firm_model.md](./07_captive_firm_model.md)).
+
+**What the architecture does *not* buy (honest bounds).** Not extraction quality (same
+foundation models, same failure on session-priced bills — observed 2026-07-20, see
+[../planned/extraction_confidence_roadmap.md](../planned/extraction_confidence_roadmap.md)),
+not their data flywheel, not their distribution. The design never claimed extraction
+perfection — it claims **extraction failure cannot be silent** (the EC roadmap closes the one
+gap that claim had). That yields the one sentence EvenUp structurally cannot say, because for
+them verification is their staff's job and for us it is the substrate:
+
+> *"Nothing reaches your demand letter without either a page citation or your own hands on it."*
