@@ -16,9 +16,13 @@ export const metadata: Metadata = {
  * me() and drive login/logout without turning the whole shell into a client component.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // suppressHydrationWarning on <html>/<body>: browser extensions (password managers, form
+  // fillers, Grammarly) inject attributes onto these tags before React hydrates, which would
+  // otherwise trip a hydration-mismatch warning. This suppresses ONLY same-element attribute/text
+  // mismatches on html/body — never mismatches inside the component tree.
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <QueryProvider>
           <div className="flex min-h-screen flex-col">
             <header className="border-b border-border bg-surface">
