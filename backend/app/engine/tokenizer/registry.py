@@ -623,12 +623,13 @@ def resolve_for_prompt(db: Session, *, matter: Matter, token: str) -> str:
 _AMT_CATEGORY_LABELS = {"er": "ER", "pt_chiro": "PT / chiro"}
 
 
-def _amt_hint(source_ref: str | None) -> str | None:
+def amt_hint(source_ref: str | None) -> str | None:
     """A short human label for an ``amt:<ledger key>`` source_ref — gloss-only, NEVER prose.
 
     The registry's AMT ``display_form`` is the prose-pure dollar string the renderer substitutes
-    verbatim into the letter, so it can never carry a label — this hint exists ONLY on the gloss
-    surface (the G2.5 fact rows) to disambiguate otherwise-identical dollar figures. Deterministic
+    verbatim into the letter, so it can never carry a label — this hint exists ONLY on gloss
+    surfaces (the G2.5 fact rows, the provenance viewer's composition header) to disambiguate
+    otherwise-identical dollar figures. Deterministic
     over the money engine's fixed key vocabulary; an unknown key falls back to the bare ledger key
     (safe: ledger keys carry no PHI). Non-AMT source_refs return ``None``.
     """
@@ -654,7 +655,7 @@ class TokenGloss:
     that does not resolve — an orphan, a superseded-away slot, or an attorney-typed non-token —
     carries the :data:`SENTINEL` with ``resolved=False`` so the wire can *flag* a stale/bad token
     rather than hide it (inv 11: never a raw leak, never a guess). ``hint`` is the AMT
-    disambiguator from :func:`_amt_hint` (``None`` for non-AMT tokens) — display-side only, never
+    disambiguator from :func:`amt_hint` (``None`` for non-AMT tokens) — display-side only, never
     part of the prose-substituted display form.
     """
 
@@ -698,7 +699,7 @@ def gloss_tokens(db: Session, *, matter: Matter, token_ids: Sequence[str]) -> di
             kind=_KIND_PREFIX[kind],
             display_form=row.display_form if row is not None else SENTINEL,
             resolved=row is not None,
-            hint=_amt_hint(row.source_ref) if row is not None else None,
+            hint=amt_hint(row.source_ref) if row is not None else None,
         )
     return out
 

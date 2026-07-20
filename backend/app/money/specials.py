@@ -197,6 +197,30 @@ def build_specials_ledger(
     )
 
 
+def line_contribution_cents(
+    line: BillingLineLike, *, column: str, basis: str | None
+) -> Cents | None:
+    """One line's share of an ``[[AMT]]`` ledger column — provenance display, never a new sum.
+
+    Direct columns read their own field; ``paid``/``outstanding`` may be ``None`` ("no data"),
+    surfaced as ``None`` and never zero-filled (the same discipline as the rollup).
+    ``demand_basis`` resolves through the jurisdiction ``basis`` (rules-owned) — a ``None`` basis
+    (e.g. the caller's pack pin refused) returns ``None`` rather than guessing a column. Any other
+    column is a :class:`ValueError` (typed refusal — the vocabulary is fixed by
+    :func:`amounts_for_registry`).
+    """
+    resolved = basis if column == "demand_basis" else column
+    if resolved is None:
+        return None
+    if resolved == "billed":
+        return line.billed_cents
+    if resolved == "paid":
+        return line.paid_cents
+    if resolved == "outstanding":
+        return line.outstanding_cents
+    raise ValueError(f"unknown ledger column {column!r} (basis {basis!r})")
+
+
 def _amount_fact(
     *,
     key: str,

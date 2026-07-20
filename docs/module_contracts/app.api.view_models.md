@@ -43,12 +43,20 @@ routes; no view-model builder — both serialize directly): `GET /api/documents/
 `phi_access` audit row written BEFORE the bytes leave — the PHI byte-access event, inv 7 —
 mirroring `get_artifact_download`; raw bytes, NOT wire-scanned) and
 `GET /api/matters/{id}/provenance/{token_id}` (a BARE token id → `{token_id, display_form,
-outcome, source, anchors[]}`, each anchor `{document_id, page, bbox, blob_url, page_count,
-filename, doc_type, superseded}` — `filename`/`doc_type` server-joined so the viewer labels a
-source page by name, never a bare uuid — with `bbox` always `null` at v1 — page-level highlights;
-NO audit here, the token lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-span map reaching
-the FE viewer (the deferred M5 line): the compliance panel's BARE-id `spans` click through to
-this route.
+outcome, source, anchors[], composition}`, each anchor `{document_id, page, bbox, blob_url,
+page_count, filename, doc_type, superseded}` — `filename`/`doc_type` server-joined so the viewer
+labels a source page by name, never a bare uuid — with `bbox` always `null` at v1 — page-level
+highlights; NO audit here, the token lookup is not the PHI event; wire-scanned, inv 11).
+`composition` is `null` for non-ledger tokens; for an `[[AMT]]` (a computed sum — `anchors` empty
+by design) it walks the pinned `ledger_ref.line_ids` back to the billing lines that sum to it:
+`{column, hint, lines[], missing_line_ids[]}`, each line `{line_id, provider, date_of_service,
+category, amount, anchor}` — `amount` server-formatted via `app.money.specials.
+line_contribution_cents` (money owns the column semantics; `demand_basis` resolves through the
+matter's pinned pack basis and degrades to `null` on a refused pin, never a 409 on a read),
+`anchor` the line's own enriched page anchor (same shape as above, `null` when the stored anchor
+names no document), and unresolvable ref ids surfaced in `missing_line_ids`, never dropped. This
+realizes the render-span map reaching the FE viewer (the deferred M5 line): the compliance
+panel's BARE-id `spans` click through to this route.
 
 **Extended @ WI-2 (pilot intake preflight).** Matter creation is gated by the v1
 eligibility box: `MatterCreate` REQUIRES the four tri-state intake flags (no silent

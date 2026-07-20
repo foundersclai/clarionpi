@@ -12,6 +12,9 @@
  *     disputed → red, amt_mismatch → red "ledger drift", ok → green) + a source chip
  *     (extractor/attorney/rules), then the anchor list (doc + page rows; a superseded anchor is
  *     badged red "superseded source"). Selecting an anchor renders {@link PdfPageView}.
+ *     An AMT token carries a `composition` block instead of anchors (a computed sum lives on no
+ *     page): the viewer renders the billing lines behind the figure — provider · date · amount
+ *     headings over each line's own bill-page anchor — so a total is one click from its bills.
  *   - ANCHORS mode (`{kind: "anchors", anchors, label}`): NO provenance hop — the caller already
  *     holds the anchors (chronology rows / risk flags). They are normalized (blob_url via the ONE
  *     sanctioned helper in lib/provenance) and rendered directly.
@@ -26,7 +29,9 @@ import { ApiError } from "@/lib/api";
 import {
   toProvenanceAnchor,
   useProvenance,
+  type AmtCompositionView,
   type AnchorLike,
+  type CompositionLineView,
   type ProvenanceAnchor,
   type ProvenanceOutcome,
   type ProvenanceResponse,
@@ -194,7 +199,63 @@ function ResolvedProvenance({ provenance }: { provenance: ProvenanceResponse }) 
         </p>
       </div>
 
-      <AnchorList anchors={provenance.anchors} />
+      {provenance.composition ? (
+        <CompositionList composition={provenance.composition} />
+      ) : (
+        <AnchorList items={provenance.anchors.map((anchor) => ({ anchor }))} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+// Composition — the billing lines behind a computed [[AMT]] figure (no page states the sum).
+// ---------------------------------------------------------------------------------------
+
+/** "Saguaro Regional Medical Center · 2025-03-14 · $9,200.00" — the per-line row heading. */
+function lineHeading(line: CompositionLineView): string {
+  const parts = [line.provider, line.date_of_service];
+  if (line.amount !== null) parts.push(line.amount);
+  return parts.join(" · ");
+}
+
+/**
+ * An AMT's ledger composition: a summary line ("Computed from the billing ledger — ER billed ·
+ * sum of 4 bill lines"), then the contributing lines as selectable anchor rows (each heading over
+ * its own bill-page anchor). Ref ids that no longer resolve, and lines whose stored anchor names
+ * no document, are surfaced — never silently dropped (backend state is displayed, not invented).
+ */
+function CompositionList({ composition }: { composition: AmtCompositionView }) {
+  const linked = composition.lines.filter(
+    (line): line is CompositionLineView & { anchor: ProvenanceAnchor } => line.anchor !== null,
+  );
+  const unlinked = composition.lines.filter((line) => line.anchor === null);
+  return (
+    <div className="flex flex-col gap-3" data-testid="composition">
+      <p className="text-xs text-ink-muted" data-testid="composition-summary">
+        Computed from the billing ledger
+        {composition.hint ? ` — ${composition.hint}` : ""} · sum of {composition.lines.length} bill{" "}
+        line{composition.lines.length === 1 ? "" : "s"}
+      </p>
+      {composition.missing_line_ids.length > 0 && (
+        <p role="alert" className="text-xs text-danger" data-testid="composition-missing">
+          {composition.missing_line_ids.length} ledger line
+          {composition.missing_line_ids.length === 1 ? "" : "s"} in this figure no longer resolve
+          {composition.missing_line_ids.length === 1 ? "s" : ""}.
+        </p>
+      )}
+      <AnchorList
+        items={linked.map((line) => ({ anchor: line.anchor, heading: lineHeading(line) }))}
+      />
+      {unlinked.length > 0 && (
+        <ul className="flex flex-col gap-1" data-testid="composition-unlinked">
+          {unlinked.map((line) => (
+            <li key={line.line_id} className="text-xs text-ink-muted">
+              {lineHeading(line)} — no source page linked
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -212,6 +273,7 @@ function AnchorsBody({
 }) {
   // Normalize the lean wire anchors to full anchors — blob_url via the ONE sanctioned helper.
   const normalized = useMemo(() => anchors.map(toProvenanceAnchor), [anchors]);
+  const items = useMemo(() => normalized.map((anchor) => ({ anchor })), [normalized]);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1" data-testid="provenance-header">
@@ -222,7 +284,7 @@ function AnchorsBody({
           {normalized.length} source page{normalized.length === 1 ? "" : "s"}
         </span>
       </div>
-      <AnchorList anchors={normalized} />
+      <AnchorList items={items} />
     </div>
   );
 }
@@ -231,16 +293,22 @@ function AnchorsBody({
 // Shared: the selectable anchor list + the selected page render.
 // ---------------------------------------------------------------------------------------
 
-function AnchorList({ anchors }: { anchors: ProvenanceAnchor[] }) {
+/** One selectable row: an anchor, optionally under a heading (a composition line's label). */
+interface AnchorItem {
+  anchor: ProvenanceAnchor;
+  heading?: string | null;
+}
+
+function AnchorList({ items }: { items: AnchorItem[] }) {
   // Select the first anchor by default so a page is shown immediately when one exists.
   const [selected, setSelected] = useState<number>(0);
 
   // Keep the selection in range if the anchor set changes under us.
   useEffect(() => {
-    setSelected((i) => (i < anchors.length ? i : 0));
-  }, [anchors.length]);
+    setSelected((i) => (i < items.length ? i : 0));
+  }, [items.length]);
 
-  if (anchors.length === 0) {
+  if (items.length === 0) {
     return (
       <p data-testid="provenance-no-anchors" className="text-sm text-ink-muted">
         No source pages are linked to this item.
@@ -248,13 +316,13 @@ function AnchorList({ anchors }: { anchors: ProvenanceAnchor[] }) {
     );
   }
 
-  const active = anchors[Math.min(selected, anchors.length - 1)];
+  const active = items[Math.min(selected, items.length - 1)].anchor;
 
   return (
     <div className="flex flex-col gap-4">
       <ul className="flex flex-col gap-2" data-testid="anchor-list">
-        {anchors.map((anchor, i) => {
-          const isActive = i === Math.min(selected, anchors.length - 1);
+        {items.map(({ anchor, heading }, i) => {
+          const isActive = i === Math.min(selected, items.length - 1);
           return (
             <li key={`${anchor.document_id}:${anchor.page}:${i}`}>
               <button
@@ -271,9 +339,20 @@ function AnchorList({ anchors }: { anchors: ProvenanceAnchor[] }) {
                 }
               >
                 <span className="flex flex-col">
+                  {/* A composition line's heading (provider · date · amount) sits above the doc
+                      label and takes over the emphasis; a plain anchor row keeps the doc name
+                      as its lead line. */}
+                  {heading && (
+                    <span className="text-xs font-medium text-ink" data-testid="anchor-heading">
+                      {heading}
+                    </span>
+                  )}
                   {/* Attorney-facing label: the document NAME (server-joined in token mode);
                       the bare id survives only as a data attribute + shortened fallback. */}
-                  <span className="text-xs font-medium text-ink" data-testid="anchor-doc-label">
+                  <span
+                    className={heading ? "text-xs text-ink-muted" : "text-xs font-medium text-ink"}
+                    data-testid="anchor-doc-label"
+                  >
                     {anchor.filename ?? `Document ${anchor.document_id.slice(0, 8)}…`}
                   </span>
                   <span className="text-xs text-ink-muted">

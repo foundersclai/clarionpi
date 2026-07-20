@@ -18,6 +18,7 @@ from app.money.specials import (
     LedgerLine,
     amounts_for_registry,
     build_specials_ledger,
+    line_contribution_cents,
     line_set_hash,
 )
 from app.money.types import cents_to_display
@@ -430,3 +431,46 @@ def test_amounts_paid_column_suppressed_when_all_none() -> None:
     assert "specials.grand.paid" not in keys
     assert "specials.grand.outstanding" not in keys
     assert "specials.category.er.billed" in keys
+
+
+# --------------------------------------------------------------------------------------
+# line_contribution_cents — the per-line share of an AMT column (provenance display)
+# --------------------------------------------------------------------------------------
+
+
+def test_line_contribution_direct_columns_read_their_field() -> None:
+    line = _line(
+        doc=_DOC_IDS[0], billed=9_200, adjusted=None, paid=5_000, outstanding=4_200, category="er"
+    )
+    assert line_contribution_cents(line, column="billed", basis=None) == 9_200
+    assert line_contribution_cents(line, column="paid", basis=None) == 5_000
+    assert line_contribution_cents(line, column="outstanding", basis=None) == 4_200
+
+
+def test_line_contribution_missing_paid_is_none_never_zero() -> None:
+    """A line with no paid figure contributes None under the paid column — no silent zero-fill."""
+    line = _line(
+        doc=_DOC_IDS[0], billed=1_000, adjusted=None, paid=None, outstanding=None, category="er"
+    )
+    assert line_contribution_cents(line, column="paid", basis=None) is None
+    assert line_contribution_cents(line, column="outstanding", basis=None) is None
+
+
+def test_line_contribution_demand_basis_resolves_via_basis() -> None:
+    line = _line(
+        doc=_DOC_IDS[0], billed=9_200, adjusted=None, paid=5_000, outstanding=None, category="er"
+    )
+    assert line_contribution_cents(line, column="demand_basis", basis="billed") == 9_200
+    assert line_contribution_cents(line, column="demand_basis", basis="paid") == 5_000
+    # An unresolvable basis (e.g. the caller's pack pin refused) yields None, never a guess.
+    assert line_contribution_cents(line, column="demand_basis", basis=None) is None
+
+
+def test_line_contribution_unknown_column_refuses() -> None:
+    line = _line(
+        doc=_DOC_IDS[0], billed=1_000, adjusted=500, paid=None, outstanding=None, category="er"
+    )
+    with pytest.raises(ValueError, match="unknown ledger column"):
+        line_contribution_cents(line, column="adjusted", basis=None)
+    with pytest.raises(ValueError, match="unknown ledger column"):
+        line_contribution_cents(line, column="demand_basis", basis="weird")

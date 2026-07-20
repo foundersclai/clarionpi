@@ -58,6 +58,34 @@ export interface ProvenanceAnchor {
   superseded: boolean;
 }
 
+/**
+ * One billing line inside an AMT's ledger composition. `amount` is the SERVER-formatted display
+ * figure for the AMT's column (null when the column has no figure for the line — e.g. missing
+ * paid — or the pack basis was unresolvable; the FE never does money math). `anchor` is the
+ * line's own server-enriched page anchor, or null when the stored anchor has no document.
+ */
+export interface CompositionLineView {
+  line_id: string;
+  provider: string;
+  date_of_service: string;
+  category: string;
+  amount: string | null;
+  anchor: ProvenanceAnchor | null;
+}
+
+/**
+ * An AMT token's ledger composition — the billing lines its pinned `ledger_ref` sums over. A
+ * computed figure has NO page of its own (anchors: []); this block is its provenance: each line
+ * maps to a bill page. `hint` is the ledger-slot gloss ("ER billed", "demand basis");
+ * `missing_line_ids` surfaces ref ids that no longer resolve (never silently dropped).
+ */
+export interface AmtCompositionView {
+  column: string;
+  hint: string | null;
+  lines: CompositionLineView[];
+  missing_line_ids: string[];
+}
+
 /** GET /api/matters/{id}/provenance/{tokenId} → the token's display form, outcome, source, anchors. */
 export interface ProvenanceResponse {
   token_id: string;
@@ -65,6 +93,8 @@ export interface ProvenanceResponse {
   outcome: ProvenanceOutcome;
   source: ProvenanceSource;
   anchors: ProvenanceAnchor[];
+  /** The AMT ledger composition — null/absent for non-ledger tokens. */
+  composition?: AmtCompositionView | null;
 }
 
 /**
