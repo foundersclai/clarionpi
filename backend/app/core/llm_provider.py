@@ -93,15 +93,19 @@ class ScriptedProvider:
 
 
 # (input, output) integer cents per million tokens, prefix-matched on the model id. A model id
-# like "claude-sonnet-5-20260203" matches the "claude-sonnet-5" prefix.
+# like "claude-sonnet-5-20260203" matches the "claude-sonnet-5" prefix. Values track Anthropic's
+# published per-MTok list rates: sonnet-5 $3/$15, haiku-4-5 $1/$5, opus $5/$25, fable $10/$50.
+# Sonnet's temporary introductory discount ($2/$10) is deliberately NOT applied — a meter that
+# errs high is safe and the discount expires; update these only if the list rates change.
 _PRICES_CENTS_PER_MTOK: dict[str, tuple[int, int]] = {
     "claude-sonnet-5": (300, 1500),
     "claude-haiku-4-5": (100, 500),
-    "claude-opus": (1500, 7500),
-    "claude-fable": (3000, 15000),
+    "claude-opus": (500, 2500),
+    "claude-fable": (1000, 5000),
 }
-# An unknown model is priced like the most expensive tier: the meter must never *undercount*
-# (the TM lesson — an unknown model that silently prices at zero hides spend).
+# Unknown/unrecognized models price at a deliberate ceiling ABOVE every known tier so a new or
+# mistyped model id can never *undercount* (the TM lesson — a silent zero price hides spend).
+# Intentionally higher than the priciest known tier (fable), not equal to it.
 _DEFAULT_PRICE = (3000, 15000)
 
 
