@@ -446,6 +446,29 @@ describe("PlanReviewCard — plan present", () => {
     expect(init?.method).toBe("POST");
   });
 
+  it("re-propose fetch-layer failure renders an inline message, not a crash", async () => {
+    // Regression: a network reject (server down) surfaces a bare TypeError with no `.body`. The
+    // error helper must guard it — reading `.body.error` off it crashed the whole card.
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+
+    renderWithQuery(
+      <PlanReviewCard
+        matterId="m1"
+        vm={makeVm()}
+        payloadVersion={5}
+        roleAffordances={AFFORDANCES_CLEAR}
+      />,
+    );
+
+    await user.click(screen.getByTestId("re-propose-plan"));
+
+    const err = await screen.findByTestId("plan-reemit-error");
+    expect(err).toHaveTextContent(/could not reach the server/i);
+    // The card itself is still mounted (no crash / error boundary).
+    expect(screen.getByTestId("plan-review-card")).toBeInTheDocument();
+  });
+
   it("rejects an unparseable demand amount inline and sends NO request", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, {}));

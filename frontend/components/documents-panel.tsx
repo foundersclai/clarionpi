@@ -122,7 +122,9 @@ export function DocumentsPanel({ matterId, onGateReady }: DocumentsPanelProps) {
       void queryClient.invalidateQueries({ queryKey: documentsKey(matterId) });
     },
     onError: (error) => {
-      setUploadError(error.body.error ?? error.body.detail ?? "Upload failed.");
+      // A fetch-layer reject (server down / network blip) has no `.body` — route through the
+      // guarded helper so it degrades to the fallback instead of throwing in the callback.
+      setUploadError(queryErrorText(error, "Upload failed."));
     },
   });
 

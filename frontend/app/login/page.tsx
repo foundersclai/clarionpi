@@ -23,7 +23,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-function loginErrorMessage(error: ApiError): string {
+function loginErrorMessage(error: unknown): string {
+  // A fetch-layer reject (server down / network blip) has no `.body` — guard so login renders an
+  // inline message rather than crashing the page on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server. Check your connection and try again.";
+  }
   switch (error.body.error) {
     case "invalid_credentials":
       return "Email or password is incorrect.";

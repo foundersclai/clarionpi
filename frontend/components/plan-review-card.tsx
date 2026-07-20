@@ -114,7 +114,13 @@ function PlanMissingCard({ matterId }: { matterId: string }) {
   );
 }
 
-function emitErrorText(error: ApiError): string {
+function emitErrorText(error: unknown): string {
+  // React Query types the mutation error as ApiError, but at runtime ANY throw lands here — a
+  // fetch-layer reject (server down, network blip, aborted request) is a bare TypeError with no
+  // `.body`. Guard so a transient failure renders an inline message instead of crashing the card.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server to build the plan. Check your connection and try again.";
+  }
   if (error.body.error === "letter_structure_missing") {
     return "This jurisdiction has no demand-letter skeleton, so a plan cannot be built. Contact an administrator.";
   }
@@ -485,9 +491,14 @@ function PlanPresentCard({
 }
 
 /** Turn a submit refusal into the inline copy (verbatim backend body preferred). */
-function planSubmitErrorText(error: ApiError | GateStaleError): string {
+function planSubmitErrorText(error: unknown): string {
   if (error instanceof GateStaleError) {
     return error.message;
+  }
+  // A fetch-layer reject (server down / network blip) is neither GateStaleError nor an ApiError
+  // with a `.body` — guard so it renders inline rather than crashing the card on `.body.error`.
+  if (!(error instanceof ApiError)) {
+    return "Could not reach the server to submit. Check your connection and try again.";
   }
   if (error.body.error === "role_forbidden") {
     const actor = actorRoleFrom(error.body.detail);
