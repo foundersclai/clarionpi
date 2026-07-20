@@ -12,7 +12,8 @@
  *     emphasis-directives list, and a per-section fact list (purpose, editable max_words, one row
  *     per citable fact showing its attorney-readable gloss with a "must cite" checkbox — token
  *     ids never render as text, only as row tooltips/data attributes; the wire still speaks
- *     BARE ids).
+ *     BARE ids). Every resolvable fact row carries a "source" affordance opening the M6
+ *     token-mode {@link ProvenanceViewer} (fact → source document page).
  *
  * Save submits ONLY changed fields as a gates `edit` action — which RE-EMITS a new UNAPPROVED
  * plan version (N+1); the card renders the current version + an "unapproved changes" badge when
@@ -39,6 +40,7 @@ import type {
 } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProvenanceViewer } from "@/components/provenance-viewer";
 import {
   Card,
   CardContent,
@@ -195,6 +197,8 @@ function PlanPresentCard({
   });
   const [moneyError, setMoneyError] = useState<string | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  // Source provenance: the bare token id a fact row's "source" affordance opened, or null.
+  const [sourceToken, setSourceToken] = useState<string | null>(null);
 
   const registryDrift = plan.registry_version !== registryVersionCurrent;
 
@@ -414,6 +418,7 @@ function PlanPresentCard({
                 error={sectionErrors[section.section_id]}
                 onMaxWords={(v) => setSectionMaxWords(section.section_id, v)}
                 onToggleRequired={(tokenId) => toggleSectionRequired(section, tokenId)}
+                onViewSource={setSourceToken}
               />
             ))}
           </ul>
@@ -466,6 +471,15 @@ function PlanPresentCard({
           </div>
         )}
       </CardContent>
+
+      {/* M6 provenance — a fact row's "source" affordance opens the token-mode viewer (lazy
+          fetch on open; the blob load inside is the audited PHI event, not this mount). */}
+      <ProvenanceViewer
+        matterId={matterId}
+        open={sourceToken !== null}
+        onClose={() => setSourceToken(null)}
+        source={{ kind: "token", tokenId: sourceToken ?? "" }}
+      />
     </Card>
   );
 }
@@ -577,6 +591,7 @@ function SectionRow({
   error,
   onMaxWords,
   onToggleRequired,
+  onViewSource,
 }: {
   section: PlannedSectionView;
   glosses: Record<string, TokenGlossView>;
@@ -584,6 +599,7 @@ function SectionRow({
   error: string | undefined;
   onMaxWords: (value: string) => void;
   onToggleRequired: (tokenId: string) => void;
+  onViewSource: (tokenId: string) => void;
 }) {
   const maxWordsId = `max-words-${section.section_id}`;
   const universe = sectionFactUniverse(section, form.required);
@@ -636,8 +652,9 @@ function SectionRow({
                   data-token-id={tokenId}
                   data-required={String(required)}
                   data-token-resolved={gloss ? String(gloss.resolved) : undefined}
+                  className="flex items-start gap-2"
                 >
-                  <label className="flex cursor-pointer items-start gap-2">
+                  <label className="flex flex-1 cursor-pointer items-start gap-2">
                     <input
                       type="checkbox"
                       className="mt-1"
@@ -654,6 +671,20 @@ function SectionRow({
                       <Badge variant="warning">not in this section&apos;s fact set</Badge>
                     )}
                   </label>
+                  {/* Provenance click-through — outside the label so it never toggles the
+                      checkbox. Hidden for a known-unresolved id (its lookup would dead-end). */}
+                  {!unresolved && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => onViewSource(tokenId)}
+                      data-testid="fact-source"
+                      aria-label={`View source: ${label}`}
+                    >
+                      source
+                    </Button>
+                  )}
                 </li>
               );
             })}

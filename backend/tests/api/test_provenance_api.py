@@ -426,6 +426,9 @@ def test_provenance_minted_fact_exact_shape(
                 "bbox": None,
                 "blob_url": f"/api/documents/{doc_id}/blob",
                 "page_count": 12,
+                # Server-joined document facts — the viewer labels a source page by NAME.
+                "filename": "bill.pdf",
+                "doc_type": "bill",
                 "superseded": False,
             }
         ],

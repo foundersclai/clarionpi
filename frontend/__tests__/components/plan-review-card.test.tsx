@@ -174,6 +174,54 @@ describe("PlanReviewCard — plan present", () => {
     expect(container.innerHTML).not.toContain("[[");
   });
 
+  it("a fact row's source affordance opens the provenance viewer on its token; unresolved rows have none", async () => {
+    const user = userEvent.setup();
+    const glosses: Record<string, TokenGlossView> = {
+      FACT_1: {
+        token_id: "FACT_1",
+        kind: "FACT",
+        display_form: "the initial visit",
+        resolved: true,
+      },
+      FACT_2: { token_id: "FACT_2", kind: "FACT", display_form: "[UNRESOLVED FACT]", resolved: false },
+    };
+    // Provenance for the clicked token — anchors empty so no PDF mounts under jsdom.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(200, {
+        token_id: "FACT_1",
+        display_form: "the initial visit",
+        outcome: "ok",
+        source: "extractor",
+        anchors: [],
+      }),
+    );
+
+    const { container } = renderWithQuery(
+      <PlanReviewCard
+        matterId="m1"
+        vm={makeVm({ token_glosses: glosses })}
+        payloadVersion={5}
+        roleAffordances={AFFORDANCES_CLEAR}
+      />,
+    );
+
+    // The unresolved row hides its source affordance (the lookup would dead-end).
+    expect(
+      container.querySelector('[data-token-id="FACT_2"] [data-testid="fact-source"]'),
+    ).toBeNull();
+
+    // Clicking source on the resolved row opens the token-mode viewer and fetches ITS provenance.
+    const sourceBtn = container.querySelector(
+      '[data-token-id="FACT_1"] [data-testid="fact-source"]',
+    ) as HTMLElement;
+    expect(sourceBtn).not.toBeNull();
+    await user.click(sourceBtn);
+
+    expect(await screen.findByTestId("provenance-viewer")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/matters/m1/provenance/FACT_1");
+  });
+
   it("renders the boilerplate copy for a section with no citable facts", () => {
     const plan = makePlan({
       sections: [

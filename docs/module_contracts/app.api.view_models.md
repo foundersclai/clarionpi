@@ -44,8 +44,9 @@ routes; no view-model builder — both serialize directly): `GET /api/documents/
 mirroring `get_artifact_download`; raw bytes, NOT wire-scanned) and
 `GET /api/matters/{id}/provenance/{token_id}` (a BARE token id → `{token_id, display_form,
 outcome, source, anchors[]}`, each anchor `{document_id, page, bbox, blob_url, page_count,
-superseded}` with `bbox` always `null` at v1 — page-level highlights; NO audit here, the token
-lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-span map reaching
+filename, doc_type, superseded}` — `filename`/`doc_type` server-joined so the viewer labels a
+source page by name, never a bare uuid — with `bbox` always `null` at v1 — page-level highlights;
+NO audit here, the token lookup is not the PHI event; wire-scanned, inv 11). This realizes the render-span map reaching
 the FE viewer (the deferred M5 line): the compliance panel's BARE-id `spans` click through to
 this route.
 

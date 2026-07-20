@@ -52,6 +52,8 @@ function makeProvenance(overrides: Partial<ProvenanceResponse> = {}): Provenance
         bbox: null,
         blob_url: "/api/documents/doc-1/blob",
         page_count: 12,
+        filename: "02_er_note.pdf",
+        doc_type: "medical_record",
         superseded: false,
       },
     ],
@@ -101,6 +103,11 @@ describe("ProvenanceViewer — token mode", () => {
     expect(screen.getByTestId("provenance-source")).toHaveTextContent("extractor");
     // The bare token id renders as an inert label (never token-shaped copy).
     expect(screen.getByTestId("provenance-token-id")).toHaveTextContent("FACT_3");
+    // The anchor row labels the source page by document NAME, not a bare uuid.
+    const docLabel = screen.getByTestId("anchor-doc-label");
+    expect(docLabel).toHaveTextContent("02_er_note.pdf");
+    expect(screen.queryByText("doc-1")).toBeNull();
+    expect(screen.getByText(/page 3 of 12 · medical record/)).toBeInTheDocument();
   });
 
   it("maps each outcome to its badge (unverified→pending, disputed→red, amt_mismatch→ledger drift)", async () => {

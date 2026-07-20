@@ -271,8 +271,16 @@ function AnchorList({ anchors }: { anchors: ProvenanceAnchor[] }) {
                 }
               >
                 <span className="flex flex-col">
-                  <span className="font-mono text-xs text-ink">{anchor.document_id}</span>
-                  <span className="text-xs text-ink-muted">page {anchor.page}</span>
+                  {/* Attorney-facing label: the document NAME (server-joined in token mode);
+                      the bare id survives only as a data attribute + shortened fallback. */}
+                  <span className="text-xs font-medium text-ink" data-testid="anchor-doc-label">
+                    {anchor.filename ?? `Document ${anchor.document_id.slice(0, 8)}…`}
+                  </span>
+                  <span className="text-xs text-ink-muted">
+                    page {anchor.page}
+                    {anchor.page_count > 0 ? ` of ${anchor.page_count}` : ""}
+                    {anchor.doc_type ? ` · ${anchor.doc_type.replaceAll("_", " ")}` : ""}
+                  </span>
                 </span>
                 {anchor.superseded && (
                   <Badge variant="danger" data-testid="anchor-superseded">

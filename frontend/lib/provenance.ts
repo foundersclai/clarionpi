@@ -48,6 +48,13 @@ export interface ProvenanceAnchor {
   bbox: null;
   blob_url: string;
   page_count: number;
+  /**
+   * Server-joined document facts (token mode sends both) — the viewer labels a source page by
+   * NAME ("01_police_report.pdf · page 2"), never a bare uuid. Absent/null on the lean
+   * anchors-mode shape (chronology rows / risk flags) until those VMs are enriched too.
+   */
+  filename?: string | null;
+  doc_type?: string | null;
   superseded: boolean;
 }
 
@@ -106,6 +113,10 @@ export function toProvenanceAnchor(anchor: AnchorLike | ProvenanceAnchor): Prove
     bbox: null,
     blob_url: blobUrl,
     page_count: typeof anchor.page_count === "number" ? anchor.page_count : 0,
+    // Pass the server-joined document facts through when the wire carries them (token mode);
+    // the lean anchors-mode shape omits them and the viewer falls back to a shortened doc id.
+    filename: typeof anchor.filename === "string" ? anchor.filename : null,
+    doc_type: typeof anchor.doc_type === "string" ? anchor.doc_type : null,
     superseded: anchor.superseded === true,
   };
 }
