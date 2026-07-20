@@ -67,6 +67,56 @@ describe("apiGet", () => {
   });
 });
 
+describe("error-body normalization", () => {
+  it("flattens the auth layer's nested {detail:{error}} 401 into a flat {error, detail}", async () => {
+    // Regression: the auth dependency serializes as { detail: { error: "unauthenticated" } }.
+    // Left nested, a renderer doing `body.error ?? body.detail` gets the raw {error} OBJECT and
+    // crashes React ("Objects are not valid as a React child"). It must arrive flattened.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(401, { detail: { error: "unauthenticated" } }),
+    );
+    try {
+      await apiGet("/api/matters/m1");
+      throw new Error("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      const body = (error as ApiError).body;
+      expect(body.error).toBe("unauthenticated");
+      expect(typeof body.detail).toBe("string"); // NEVER an object
+      expect(body.detail).toBe("unauthenticated");
+    }
+  });
+
+  it("lifts sibling fields out of a nested detail and keeps detail a string", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(403, { detail: { error: "role_forbidden", actual: ["paralegal"] } }),
+    );
+    try {
+      await apiGet("/api/x");
+      throw new Error("should have thrown");
+    } catch (error) {
+      const body = (error as ApiError).body;
+      expect(body.error).toBe("role_forbidden");
+      expect(body.actual).toEqual(["paralegal"]);
+      expect(typeof body.detail).toBe("string");
+    }
+  });
+
+  it("passes a flat {error, detail} body through unchanged", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(404, { error: "matter_not_found", detail: "no matter m1" }),
+    );
+    try {
+      await apiGet("/api/matters/m1");
+      throw new Error("should have thrown");
+    } catch (error) {
+      const body = (error as ApiError).body;
+      expect(body.error).toBe("matter_not_found");
+      expect(body.detail).toBe("no matter m1");
+    }
+  });
+});
+
 describe("apiPost", () => {
   it("serializes the body as JSON and sets Content-Type", async () => {
     const fetchMock = vi

@@ -43,15 +43,43 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * Normalize a parsed error body to the flat `{error, detail}` contract every renderer trusts.
+ *
+ * Two shapes reach the client: route refusals are flat (`{error, detail}`), but the auth
+ * dependency raises `HTTPException(detail={"error": "unauthenticated"})`, which FastAPI serializes
+ * NESTED as `{detail: {error: "unauthenticated"}}`. Left as-is, a renderer doing
+ * `body.error ?? body.detail` gets the raw `{error}` OBJECT and crashes React ("Objects are not
+ * valid as a React child"). Flattening here — the single ingestion point — lifts the nested code up
+ * to `error`, keeps any sibling fields (e.g. `actual`, `guard`), and guarantees `detail` is a
+ * string, so no downstream consumer can render an object.
+ */
+function normalizeErrorBody(parsed: unknown): ApiErrorBody {
+  if (parsed === null || typeof parsed !== "object") {
+    return { detail: String(parsed) };
+  }
+  const body = parsed as Record<string, unknown>;
+  const detail = body.detail;
+  if (body.error === undefined && detail !== null && typeof detail === "object") {
+    const inner = detail as Record<string, unknown>;
+    const code = typeof inner.error === "string" ? inner.error : undefined;
+    // Lift the nested code + sibling fields to the top level; `body` (sans its object `detail`)
+    // still wins for any real top-level keys.
+    return {
+      ...inner,
+      ...body,
+      error: code,
+      detail: code ?? JSON.stringify(detail),
+    };
+  }
+  return body as ApiErrorBody;
+}
+
 /** Shared response handler: 2xx → typed body; else throw {@link ApiError}. */
 async function handle<T>(response: Response): Promise<T> {
   const parsed = await parseJson(response);
   if (!response.ok) {
-    const body: ApiErrorBody =
-      parsed !== null && typeof parsed === "object"
-        ? (parsed as ApiErrorBody)
-        : { detail: String(parsed) };
-    throw new ApiError(response.status, body);
+    throw new ApiError(response.status, normalizeErrorBody(parsed));
   }
   return parsed as T;
 }
